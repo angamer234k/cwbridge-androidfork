@@ -25,6 +25,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install SDK packages
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          yes | sdkmanager --licenses >/dev/null || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -41,6 +46,7 @@ jobs:
           if-no-files-found: error
 
       - name: Summarize
+        if: always()
         run: |
           echo "## CWBridge debug APK" >> "$GITHUB_STEP_SUMMARY"
           ls -lh app/build/outputs/apk/debug/ >> "$GITHUB_STEP_SUMMARY" || true
