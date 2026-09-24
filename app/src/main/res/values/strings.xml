@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CWBridge</string>
+    <string name="tap_service_label">CWBridge Tap</string>
+    <string name="tap_service_summary">Tap and read the CatWeb / Roblox window tree</string>
+    <string name="tap_service_description">CWBridge Tap injects gestures and reads the accessibility tree so local CatWeb services can drive the on-device Roblox window. Enable only if you trust this build.</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="status_idle">Idle (Roblox closed)</string>
+    <string name="status_running">Running</string>
+</resources>

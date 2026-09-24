@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0A0B0D</color>
+    <color name="surface">#14161B</color>
+    <color name="elevated">#1C1F26</color>
+    <color name="primary">#9BB8E8</color>
+    <color name="on_primary">#0A0B0D</color>
+    <color name="muted">#8B909A</color>
+    <color name="ok">#8FAD86</color>
+    <color name="warn">#C4A574</color>
+    <color name="danger">#C47A7A</color>
+</resources>
