@@ -4,12 +4,16 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.util.DisplayMetrics
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Accessibility service that exposes click-by-text for CatWeb / Roblox windows.
- * Enable under Settings → Accessibility → Installed apps → CWBridge Tap.
+ * Accessibility service that exposes click-by-text and coordinate taps for CatWeb / Roblox.
+ *
+ * Roblox (and most game engines) draw to a surface with an empty accessibility tree,
+ * so clickByText usually finds nothing. Use clickAt / clickAtPercent instead —
+ * dispatchGesture works against screen coordinates regardless of the node tree.
  */
 class TapService : AccessibilityService() {
 
@@ -57,13 +61,39 @@ class TapService : AccessibilityService() {
             return true
         }
 
-        val cx = bounds.centerX().toFloat()
-        val cy = bounds.centerY().toFloat()
-        val path = Path().apply { moveTo(cx, cy) }
+        return gestureTap(bounds.centerX().toFloat(), bounds.centerY().toFloat(), "text=\"$label\"")
+    }
+
+    /**
+     * Tap at absolute screen pixels. Works on Roblox / game surfaces where the
+     * accessibility tree is empty.
+     */
+    fun clickAt(x: Float, y: Float): Boolean {
+        return gestureTap(x, y, "px")
+    }
+
+    /**
+     * Tap at a percentage of the physical screen (0–100 for both axes).
+     * Prefer this for Roblox so positions survive resolution changes.
+     */
+    fun clickAtPercent(xPercent: Float, yPercent: Float): Boolean {
+        val dm = resources.displayMetrics
+        val x = (xPercent.coerceIn(0f, 100f) / 100f) * dm.widthPixels
+        val y = (yPercent.coerceIn(0f, 100f) / 100f) * dm.heightPixels
+        LogBuffer.i(
+            "A11y",
+            "percent (${xPercent}%, ${yPercent}%) → px (${x.toInt()}, ${y.toInt()}) " +
+                "screen=${dm.widthPixels}x${dm.heightPixels}",
+        )
+        return gestureTap(x, y, "percent")
+    }
+
+    private fun gestureTap(x: Float, y: Float, tag: String): Boolean {
+        val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0, 50)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         val ok = dispatchGesture(gesture, null, null)
-        LogBuffer.i("A11y", "GESTURE_TAP text=\"$label\" at=($cx,$cy) ok=$ok")
+        LogBuffer.i("A11y", "GESTURE_TAP $tag at=(${x.toInt()},${y.toInt()}) ok=$ok")
         return ok
     }
 

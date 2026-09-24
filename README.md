@@ -4,11 +4,19 @@ Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge) 
 
 Windows CWBridge drives the Roblox window from the desktop. This app does the same on a phone:
 
-- **CWBridge Tap** — `AccessibilityService` that clicks nodes by text and can dispatch gesture taps
+- **CWBridge Tap** — `AccessibilityService` that:
+  - clicks nodes by text (normal Android UI)
+  - injects **gesture taps by % of screen or pixels** (Roblox / game surfaces with an empty a11y tree)
 - **Logcat** — process-local ring buffer always on; system `logcat` when `READ_LOGS` is granted via ADB
 - **Bridge control** — start / stop with the same idle-while-Roblox-closed model as desktop
 
-Version aligns with the npm package line: **2.7.1-android**.
+Version: **2.7.2-android**.
+
+## Why % / px for Roblox
+
+Roblox draws with its own renderer. Android only sees one opaque surface — no buttons or labels in the accessibility tree. `clickByText` therefore finds nothing inside the game. `dispatchGesture` still works at screen coordinates, so use **Tap %** (preferred) or **Tap px**.
+
+Example defaults: `50%` / `85%` ≈ center-bottom (often a primary action).
 
 ## Build a debug APK (CI)
 
@@ -28,12 +36,21 @@ gradle :app:assembleDebug
 adb install -r app-debug.apk
 
 # Accessibility: Settings → Accessibility → CWBridge Tap → On
+# Android 13+: App info → ⋮ → Allow restricted settings (once)
 
 # Optional system logcat (privileged):
 adb shell pm grant com.cwbridge.android.debug android.permission.READ_LOGS
 ```
 
 Without `READ_LOGS`, the in-app log view still shows CWBridge / A11y lines from the process buffer.
+
+## Usage
+
+1. Enable **CWBridge Tap** in Accessibility (unlock restricted settings if needed).
+2. Open the app → **Start**.
+3. Open Roblox in the foreground.
+4. In CWBridge, set **X % / Y %** (or pixels) → **Tap %** / **Tap px**.
+5. Logs show each gesture and resolved pixel position.
 
 ## Package
 

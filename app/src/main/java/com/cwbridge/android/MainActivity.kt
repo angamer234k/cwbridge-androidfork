@@ -32,7 +32,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartStop.setOnClickListener { toggleBridge() }
         binding.btnA11y.setOnClickListener { openAccessibilitySettings() }
         binding.btnLogcatHint.setOnClickListener { showAdbGrantHint() }
-        binding.btnTap.setOnClickListener { performTap() }
+        binding.btnTap.setOnClickListener { performTapByText() }
+        binding.btnTapPercent.setOnClickListener { performTapPercent() }
+        binding.btnTapPx.setOnClickListener { performTapPx() }
         binding.btnClearLogs.setOnClickListener {
             LogBuffer.clear()
             binding.logView.text = ""
@@ -40,7 +42,7 @@ class MainActivity : AppCompatActivity() {
 
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
-        LogBuffer.i("CWBridge", "session start version=2.7.1-android")
+        LogBuffer.i("CWBridge", "session start version=2.7.2-android")
         refreshUi()
     }
 
@@ -78,22 +80,63 @@ class MainActivity : AppCompatActivity() {
                 "bridge running services=weather,translate,fetch,playerinfo,datastore,qr logcat=${logcatReader.hasPermission()}",
             )
             LogBuffer.i("CWBridge", "stays idle while Roblox is closed; resumes when the window is attached")
+            LogBuffer.i("CWBridge", "Roblox tip: use Tap % / Tap px — game UI has no a11y nodes")
         }
         refreshUi()
     }
 
-    private fun performTap() {
-        val query = binding.tapQuery.text?.toString().orEmpty()
+    private fun requireService(): TapService? {
         val service = TapService.instance
         if (service == null) {
             Toast.makeText(this, "CWBridge Tap is not connected", Toast.LENGTH_SHORT).show()
             LogBuffer.w("A11y", "tap requested but service offline")
-            return
         }
+        return service
+    }
+
+    private fun performTapByText() {
+        val query = binding.tapQuery.text?.toString().orEmpty()
+        val service = requireService() ?: return
         val ok = service.clickByText(query)
         Toast.makeText(
             this,
-            if (ok) "Tapped \"$query\"" else "No match for \"$query\"",
+            if (ok) "Tapped \"$query\"" else "No match for \"$query\" (use %/px for Roblox)",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    private fun performTapPercent() {
+        val service = requireService() ?: return
+        val xStr = binding.tapXPercent.text?.toString().orEmpty()
+        val yStr = binding.tapYPercent.text?.toString().orEmpty()
+        val x = xStr.toFloatOrNull()
+        val y = yStr.toFloatOrNull()
+        if (x == null || y == null) {
+            Toast.makeText(this, "Enter X% and Y% (0–100)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ok = service.clickAtPercent(x, y)
+        Toast.makeText(
+            this,
+            if (ok) "Tapped ${x}% ${y}%" else "Gesture failed",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    private fun performTapPx() {
+        val service = requireService() ?: return
+        val xStr = binding.tapXPx.text?.toString().orEmpty()
+        val yStr = binding.tapYPx.text?.toString().orEmpty()
+        val x = xStr.toFloatOrNull()
+        val y = yStr.toFloatOrNull()
+        if (x == null || y == null) {
+            Toast.makeText(this, "Enter X and Y pixels", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ok = service.clickAt(x, y)
+        Toast.makeText(
+            this,
+            if (ok) "Tapped px ($x, $y)" else "Gesture failed",
             Toast.LENGTH_SHORT,
         ).show()
     }
@@ -139,7 +182,8 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 binding.statusPill.text = getString(R.string.status_running)
                 binding.statusPill.setTextColor(ContextCompat.getColor(this, R.color.ok))
-                binding.statusDetail.text = "Tap service connected. Use tap-by-text against the foreground window."
+                binding.statusDetail.text =
+                    "Running. For Roblox use Tap % or Tap px — game UI has no a11y nodes."
                 binding.btnStartStop.text = "Stop"
             }
         }
