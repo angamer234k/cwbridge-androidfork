@@ -3,6 +3,7 @@ package com.cwbridge.android
 import java.util.ArrayDeque
 
 enum class ConsoleLevel {
+    CATWEB,
     INFO,
     WARN,
     ERROR,
@@ -15,8 +16,8 @@ data class ConsoleLine(
 )
 
 /**
- * Ring buffer of game/CatWeb console lines (after FLog::CreatorOutput / bullet lines).
- * Max 25. Levels inferred from info / warn / error markers.
+ * Ring buffer of console lines (max 25).
+ * After FLog strip, lines that start with • are CatWeb → [CATWEB] tag + blueish-white.
  */
 object RobloxLogBuffer {
     private const val MAX = 25
@@ -31,9 +32,14 @@ object RobloxLogBuffer {
         val cleaned = clean(rawLine)
         if (cleaned.isEmpty()) return
         val level = detectLevel(cleaned)
+        val display = if (level == ConsoleLevel.CATWEB && !cleaned.startsWith("[CATWEB]")) {
+            "[CATWEB] $cleaned"
+        } else {
+            cleaned
+        }
         synchronized(lock) {
             if (lines.size >= MAX) lines.removeFirst()
-            lines.addLast(ConsoleLine(cleaned, level))
+            lines.addLast(ConsoleLine(display, level))
             everReceived = true
         }
         AntiDisconnect.noteActivity()
@@ -55,13 +61,19 @@ object RobloxLogBuffer {
     }
 
     fun detectLevel(text: String): ConsoleLevel {
-        val t = text
-        when {
-            t.contains("\u274C") || t.contains("\u2716") || t.contains("\u2A2F") -> return ConsoleLevel.ERROR
-            t.contains("\u26A0") -> return ConsoleLevel.WARN
-            t.contains("\u2139") -> return ConsoleLevel.INFO
+        val trimmed = text.trimStart()
+        if (trimmed.startsWith("\u2022") || trimmed.startsWith("\u00B7") ||
+            trimmed.startsWith("[CATWEB]")
+        ) {
+            return ConsoleLevel.CATWEB
         }
-        val lower = t.lowercase()
+        when {
+            text.contains("\u274C") || text.contains("\u2716") || text.contains("\u2A2F") ->
+                return ConsoleLevel.ERROR
+            text.contains("\u26A0") -> return ConsoleLevel.WARN
+            text.contains("\u2139") -> return ConsoleLevel.INFO
+        }
+        val lower = text.lowercase()
         return when {
             lower.contains("error") || lower.contains("invalid") ||
                 lower.contains("exception") || lower.contains("failed") -> ConsoleLevel.ERROR
@@ -70,11 +82,10 @@ object RobloxLogBuffer {
         }
     }
 
-    /** Prefer body after FLog::CreatorOutput (any case), then from first bullet. */
+    /** Strip FLog::CreatorOutput (any case). If result starts with • → CatWeb. */
     fun clean(raw: String): String {
         var body = raw.trim()
         val lower = body.lowercase()
-
         val markers = listOf(
             "[flog::creatoroutput]",
             "flog::creatoroutput",
@@ -87,12 +98,6 @@ object RobloxLogBuffer {
                 break
             }
         }
-
-        val bulletIdx = body.indexOf('\u2022').let { if (it >= 0) it else body.indexOf('\u00B7') }
-        if (bulletIdx >= 0) {
-            body = body.substring(bulletIdx).trim()
-        }
-
         return body.take(500)
     }
 }

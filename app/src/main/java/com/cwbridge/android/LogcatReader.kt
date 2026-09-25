@@ -65,7 +65,7 @@ class LogcatReader(
                                 lower.contains("[from ")
 
                         when {
-                            isFlog || looksLikeSiteLog || (hasBullet && (isFlog || lower.contains("catweb"))) -> {
+                            hasBullet || isFlog || looksLikeSiteLog -> {
                                 RobloxLogBuffer.add(line)
                                 if (isInvoke) {
                                     AntiDisconnect.noteActivity()
@@ -75,9 +75,6 @@ class LogcatReader(
                             isInvoke -> {
                                 AntiDisconnect.noteActivity()
                                 invokeSink?.invoke(line)
-                            }
-                            hasBullet && lower.contains("catweb") -> {
-                                RobloxLogBuffer.add(line)
                             }
                         }
                     }
