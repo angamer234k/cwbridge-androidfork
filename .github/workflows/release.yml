@@ -88,8 +88,7 @@ jobs:
           tag_name: ${{ steps.collect.outputs.tag }}
           name: CWBridge ${{ steps.collect.outputs.tag }}
           body: |
-            ## CWBridge Android + Helper
-new overlay smh yay hooray yippe im tired 🫩
+            ## CWBridge Android + Helper (new overlay)
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
