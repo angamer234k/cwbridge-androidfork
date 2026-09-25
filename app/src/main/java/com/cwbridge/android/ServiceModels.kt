@@ -1,5 +1,11 @@
 package com.cwbridge.android
 
+import android.content.Context
+import androidx.room.Room
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
 /**
  * Represents an automation service with triggers and actions.
  * In-memory only (no Parcelable needed).
@@ -138,27 +144,71 @@ enum class InfoType {
 }
 
 object ServiceRepository {
-    private val services: MutableList<Service> = mutableListOf()
+    private var database: ServiceDatabase? = null
+    private val inMemoryServices: MutableList<Service> = mutableListOf()
+    private var useDatabase = false
 
-    fun getAllServices(): List<Service> = services.toList()
-
-    fun getServiceById(id: String): Service? = services.find { it.id == id }
-
-    fun addService(service: Service) {
-        services.add(service)
-    }
-
-    fun updateService(updatedService: Service) {
-        val index = services.indexOfFirst { it.id == updatedService.id }
-        if (index != -1) {
-            services[index] = updatedService
+    fun init(context: Context, scope: CoroutineScope) {
+        if (database == null) {
+            database = Room.databaseBuilder(
+                context,
+                ServiceDatabase::class.java,
+                ServiceDatabase.DATABASE_NAME
+            ).build()
+            useDatabase = true
+            scope.launch(Dispatchers.IO) {
+                loadFromDatabase()
+            }
         }
     }
 
+    private suspend fun loadFromDatabase() {
+        database?.serviceDao()?.getAll()?.forEach { entity ->
+            val service = entity.toService()
+            if (!inMemoryServices.any { it.id == service.id }) {
+                inMemoryServices.add(service)
+            }
+        }
+    }
+
+    private fun saveToDatabase(service: Service) {
+        if (useDatabase) {
+            CoroutineScope(Dispatchers.IO).launch {
+                database?.serviceDao()?.insert(ServiceEntity.fromService(service))
+            }
+        }
+    }
+
+    private fun deleteFromDatabase(id: String) {
+        if (useDatabase) {
+            CoroutineScope(Dispatchers.IO).launch {
+                database?.serviceDao()?.deleteById(id)
+            }
+        }
+    }
+
+    fun getAllServices(): List<Service> = inMemoryServices.toList()
+
+    fun getServiceById(id: String): Service? = inMemoryServices.find { it.id == id }
+
+    fun addService(service: Service) {
+        inMemoryServices.add(service)
+        saveToDatabase(service)
+    }
+
+    fun updateService(updatedService: Service) {
+        val index = inMemoryServices.indexOfFirst { it.id == updatedService.id }
+        if (index != -1) {
+            inMemoryServices[index] = updatedService
+        }
+        saveToDatabase(updatedService)
+    }
+
     fun deleteService(id: String): Boolean {
-        val service = services.find { it.id == id }
+        val service = inMemoryServices.find { it.id == id }
         return if (service != null) {
-            services.remove(service)
+            inMemoryServices.remove(service)
+            deleteFromDatabase(id)
             true
         } else {
             false
@@ -166,20 +216,22 @@ object ServiceRepository {
     }
 
     fun reorderActions(serviceId: String, newOrder: List<String>) {
-        val service = services.find { it.id == serviceId }
+        val service = inMemoryServices.find { it.id == serviceId }
         service?.let { s ->
             val orderedActions = s.actions.sortedBy { action ->
                 newOrder.indexOf(action.id)
             }.toMutableList()
             s.actions.clear()
             s.actions.addAll(orderedActions)
+            saveToDatabase(s)
         }
     }
 
     fun addActionToService(serviceId: String, action: Action): Boolean {
-        val service = services.find { it.id == serviceId }
+        val service = inMemoryServices.find { it.id == serviceId }
         return if (service != null) {
             service.actions.add(action)
+            saveToDatabase(service)
             true
         } else {
             false
@@ -187,9 +239,32 @@ object ServiceRepository {
     }
 
     fun removeActionFromService(serviceId: String, actionId: String): Boolean {
-        val service = services.find { it.id == serviceId }
+        val service = inMemoryServices.find { it.id == serviceId }
         return if (service != null) {
             service.actions.removeIf { it.id == actionId }
+            saveToDatabase(service)
+            true
+        } else {
+            false
+        }
+    }
+
+    fun addTriggerToService(serviceId: String, trigger: Trigger): Boolean {
+        val service = inMemoryServices.find { it.id == serviceId }
+        return if (service != null) {
+            service.triggers.add(trigger)
+            saveToDatabase(service)
+            true
+        } else {
+            false
+        }
+    }
+
+    fun removeTriggerFromService(serviceId: String, triggerId: String): Boolean {
+        val service = inMemoryServices.find { it.id == serviceId }
+        return if (service != null) {
+            service.triggers.removeIf { it.id == triggerId }
+            saveToDatabase(service)
             true
         } else {
             false
