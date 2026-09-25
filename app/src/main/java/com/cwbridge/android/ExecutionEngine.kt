@@ -139,7 +139,9 @@ class ExecutionEngine(
                 // Find and execute the target service
                 val targetService = ServiceRepository.getServiceById(action.serviceId)
                 if (targetService != null) {
-                    executeActions(targetService.actions)
+                    scope.launch(Dispatchers.IO) {
+                        executeActions(targetService.actions)
+                    }
                 }
                 ""
             }
