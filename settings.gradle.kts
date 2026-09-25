@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CWBridge"
 include(":app")
+include(":helper")
