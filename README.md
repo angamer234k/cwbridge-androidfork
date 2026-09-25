@@ -2,6 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/angamer234k/cwbridge-androidfork?label=Release)](https://github.com/angamer234k/cwbridge-androidfork/releases)
 [![Downloads](https://img.shields.io/github/downloads/angamer234k/cwbridge-androidfork/total?label=Downloads)](https://github.com/angamer234k/cwbridge-androidfork/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/angamer234k/cwbridge-androidfork/build-debug-apk.yml?label=Build)](https://github.com/angamer234k/cwbridge-androidfork/actions/workflows/build-debug-apk.yml)
 
 Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge).
 
