@@ -12,17 +12,14 @@ import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-/**
- * Attaches to system logcat when READ_LOGS is granted so Roblox FLog
- * `invoke|…` lines reach [InvokeEngine], and `[FLog::CreatorOutput]`
- * lines fill [RobloxLogBuffer] for the overlay.
- */
+/** Reads system logcat for Roblox [FLog::CreatorOutput] and invoke| lines. */
 class LogcatReader(
     private val context: Context,
     private var invokeSink: ((String) -> Unit)? = null,
 ) {
 
     private var job: Job? = null
+    private var process: Process? = null
 
     fun setInvokeSink(sink: ((String) -> Unit)?) {
         invokeSink = sink
@@ -38,7 +35,7 @@ class LogcatReader(
     fun start(scope: CoroutineScope) {
         stop()
         if (!hasPermission()) {
-            LogBuffer.w("Logcat", "READ_LOGS not granted — Roblox invoke| lines won't be seen")
+            LogBuffer.w("Logcat", "READ_LOGS not granted — game console lines won't be seen")
             LogBuffer.i(
                 "Logcat",
                 "grant with: adb shell pm grant ${context.packageName} android.permission.READ_LOGS",
@@ -47,38 +44,53 @@ class LogcatReader(
         }
         job = scope.launch(Dispatchers.IO) {
             try {
-                val proc = ProcessBuilder("logcat", "-v", "time", "*:I")
-                    .redirectErrorStream(true)
-                    .start()
-                LogBuffer.i("Logcat", "attached (invoke| + FLog::CreatorOutput)")
+                val proc = ProcessBuilder(
+                    "logcat",
+                    "-b", "main",
+                    "-b", "system",
+                    "-v", "threadtime",
+                    "*:V",
+                ).redirectErrorStream(true).start()
+                process = proc
+                // Do NOT include FLog::CreatorOutput in this string (avoids echo into overlay)
+                LogBuffer.i("Logcat", "attached — watching game console + invoke commands")
+                val myPkg = context.packageName
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
                         val line = reader.readLine() ?: break
+                        if (line.contains(myPkg) && !line.contains("invoke|")) continue
+                        if (line.contains("attached — watching")) continue
+                        if (line.contains("I/Logcat") && line.contains("attached")) continue
+
+                        val isFlog = line.contains("FLog::CreatorOutput", ignoreCase = true) ||
+                            line.contains("FLog::Output", ignoreCase = true)
+                        val isInvoke = line.contains("invoke|")
+
                         when {
-                            line.contains("FLog::CreatorOutput") -> {
+                            isFlog -> {
                                 RobloxLogBuffer.add(line)
                                 if (BridgeStatus.state == OverlayState.WAITING) {
                                     BridgeStatus.set(OverlayState.ACTIVE, "Listening")
                                 }
-                                if (line.contains("invoke|")) {
+                                if (isInvoke) {
                                     LogBuffer.d("sys", line.take(300))
                                     invokeSink?.invoke(line)
                                 }
                             }
-                            line.contains("invoke|") -> {
+                            isInvoke -> {
                                 LogBuffer.d("sys", line.take(300))
                                 invokeSink?.invoke(line)
-                            }
-                            line.contains("CWBridge") || line.contains("A11y") ||
-                                line.contains("Invoke") || line.contains("Roblox") -> {
-                                LogBuffer.d("sys", line.take(240))
                             }
                         }
                     }
                 }
             } catch (t: Throwable) {
-                LogBuffer.e("Logcat", "failed to attach: ${t.message}")
-                BridgeStatus.set(OverlayState.ERROR, "Logcat failed")
+                if (isActive) {
+                    LogBuffer.e("Logcat", "failed to attach: ${t.message}")
+                    BridgeStatus.set(OverlayState.ERROR, "Logcat failed")
+                }
+            } finally {
+                process = null
             }
         }
     }
@@ -86,5 +98,7 @@ class LogcatReader(
     fun stop() {
         job?.cancel()
         job = null
+        try { process?.destroy() } catch (_: Exception) {}
+        process = null
     }
 }
