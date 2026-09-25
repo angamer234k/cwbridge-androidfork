@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+import java.util.Properties
+
 android {
     namespace = "com.cwbridge.android"
     compileSdk = 34
@@ -11,9 +13,24 @@ android {
         applicationId = "com.cwbridge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.7.2-android"
+        versionCode = 3
+        versionName = "2.7.3-android"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Fixed debug keystore so every CI APK shares the same signature
+    // and can update over previous installs without "package conflict".
+    val debugStoreFile = rootProject.file("keystore/cwbridge-debug.p12")
+    signingConfigs {
+        create("debugFixed") {
+            if (debugStoreFile.exists()) {
+                storeFile = debugStoreFile
+                storePassword = "cwbridge-debug"
+                keyAlias = "cwbridge-debug"
+                keyPassword = "cwbridge-debug"
+                storeType = "PKCS12"
+            }
+        }
     }
 
     buildTypes {
@@ -21,6 +38,9 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            if (debugStoreFile.exists()) {
+                signingConfig = signingConfigs.getByName("debugFixed")
+            }
         }
         release {
             isMinifyEnabled = false
