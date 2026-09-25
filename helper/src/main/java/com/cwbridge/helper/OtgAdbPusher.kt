@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
-import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.util.Base64
@@ -20,10 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
-/**
- * OTG ADB host using flashbot UsbChannel (UsbRequest reads + bulk writes).
- * Stock AdbLib TCP streams hang on USB — this is what working ADB-OTG apps use.
- */
+/** OTG ADB host using flashbot UsbChannel (UsbRequest reads + bulk writes). */
 class OtgAdbPusher(private val context: Context) {
 
     companion object {
@@ -124,8 +120,7 @@ class OtgAdbPusher(private val context: Context) {
             } catch (e: TimeoutException) {
                 future.cancel(true)
                 throw IllegalStateException(
-                    "ADB handshake timed out — if other ADB apps work, this was the old USB stream bug; " +
-                        "retry after installing helper 1.0.2+. Still no prompt: revoke authorizations on tablet.",
+                    "ADB handshake timed out — retry after Reset ADB keys + revoke on tablet.",
                 )
             } catch (e: Exception) {
                 val cause = e.cause ?: e
@@ -145,7 +140,8 @@ class OtgAdbPusher(private val context: Context) {
                 val n = input.read(buf)
                 if (n <= 0) break
                 val chunk = if (n == buf.size) buf else buf.copyOf(n)
-                stream.write(chunk, true)
+                // flashbot AdbStream: write(byte[]) only
+                stream.write(chunk)
             }
         }
         val out = StringBuilder()
@@ -191,7 +187,6 @@ class OtgAdbPusher(private val context: Context) {
                 return iface
             }
         }
-        // fallback: first bulk in+out interface
         for (i in 0 until device.interfaceCount) {
             val iface = device.getInterface(i)
             var hasIn = false
