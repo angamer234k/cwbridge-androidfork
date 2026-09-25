@@ -511,7 +511,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Version 2.8.0-android 7 com.cwbridge.android"
+                android:text="Version 2.8.0-android · com.cwbridge.android"
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
         </LinearLayout>
