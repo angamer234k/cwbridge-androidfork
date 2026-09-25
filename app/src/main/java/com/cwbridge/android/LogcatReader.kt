@@ -13,12 +13,19 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * Tries to attach to system logcat when READ_LOGS is granted.
- * Without the privilege, [LogBuffer] still captures CWBridge's own lines.
+ * Attaches to system logcat when READ_LOGS is granted so Roblox FLog
+ * `invoke|…` lines reach [InvokeEngine].
  */
-class LogcatReader(private val context: Context) {
+class LogcatReader(
+    private val context: Context,
+    private var invokeSink: ((String) -> Unit)? = null,
+) {
 
     private var job: Job? = null
+
+    fun setInvokeSink(sink: ((String) -> Unit)?) {
+        invokeSink = sink
+    }
 
     fun hasPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -30,7 +37,7 @@ class LogcatReader(private val context: Context) {
     fun start(scope: CoroutineScope) {
         stop()
         if (!hasPermission()) {
-            LogBuffer.w("Logcat", "READ_LOGS not granted — using process-local buffer only")
+            LogBuffer.w("Logcat", "READ_LOGS not granted — Roblox invoke| lines won't be seen")
             LogBuffer.i(
                 "Logcat",
                 "grant with: adb shell pm grant ${context.packageName} android.permission.READ_LOGS",
@@ -39,15 +46,23 @@ class LogcatReader(private val context: Context) {
         }
         job = scope.launch(Dispatchers.IO) {
             try {
+                // Clear is optional; -v raw keeps body easy to scan for invoke|
                 val proc = ProcessBuilder("logcat", "-v", "time", "*:I")
                     .redirectErrorStream(true)
                     .start()
-                LogBuffer.i("Logcat", "attached to system logcat")
+                LogBuffer.i("Logcat", "attached to system logcat (watching invoke|)")
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
                         val line = reader.readLine() ?: break
-                        if (line.contains("CWBridge") || line.contains("A11y") || line.contains("Roblox")) {
-                            LogBuffer.d("sys", line.take(240))
+                        when {
+                            line.contains("invoke|") -> {
+                                LogBuffer.d("sys", line.take(300))
+                                invokeSink?.invoke(line)
+                            }
+                            line.contains("CWBridge") || line.contains("A11y") ||
+                                line.contains("Invoke") || line.contains("Roblox") -> {
+                                LogBuffer.d("sys", line.take(240))
+                            }
                         }
                     }
                 }

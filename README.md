@@ -1,83 +1,66 @@
 # CWBridge Android
 
-Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge) — the local Roblox / CatWeb services bridge.
+Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge).
 
-Windows CWBridge drives the Roblox window from the desktop. This app does the same on a phone:
+Version **2.8.0-android** — Accessibility taps + **`invoke|` log engine** (MacroDroid-compatible).
 
-- **CWBridge Tap** — `AccessibilityService` that:
-  - clicks nodes by text (normal Android UI)
-  - injects **gesture taps by % of screen or pixels** (Roblox / game surfaces with an empty a11y tree)
-- **Logcat** — process-local ring buffer always on; system `logcat` when `READ_LOGS` is granted via ADB
-- **Bridge control** — start / stop with the same idle-while-Roblox-closed model as desktop
+## invoke| protocol
 
-Version: **2.7.3-android**.
-
-## Why % / px for Roblox
-
-Roblox draws with its own renderer. Android only sees one opaque surface — no buttons or labels in the accessibility tree. `clickByText` therefore finds nothing inside the game. `dispatchGesture` still works at screen coordinates, so use **Tap %** (preferred) or **Tap px**.
-
-Example defaults: `50%` / `85%` ≈ center-bottom (often a primary action).
-
-## Signing (no more package conflict)
-
-Debug APKs are signed with a **fixed keystore** (`keystore/cwbridge-debug.p12`, decoded from `.b64` in CI). Once you install a 2.7.3+ build, later CI APKs update over it without uninstalling.
-
-**First time only** (if you still have an older CI build with a random debug key):
+Roblox / Creator logs a line containing:
 
 ```text
-Uninstall old CWBridge → install new APK → re-enable Accessibility
+invoke|request.data1.data2
 ```
 
-## Build a debug APK (CI)
+CWBridge watches system logcat (needs `READ_LOGS`) and dispatches:
 
-Every push to `main` (and manual **Run workflow**) builds a debug APK:
+| Command | Meaning |
+|---------|---------|
+| `save.key.data` | Store value under `local.rbx` / key |
+| `load.key.domain` | Load key for domain (`weather.rbx` only — no extra subdomains/paths); value → clipboard + `cwbridge\|ok\|load\|…` |
+| `status` | Battery %, charging, wifi RSSI + level (**no SSID**), uptime |
+| `tap.x.y` | Gesture tap at % of screen |
+| `tappx.x.y` | Gesture tap at pixels |
+| `paste.text` | Focus % → wait 1s → paste clipboard → wait 1s → submit px |
+| `clip.set.text` / `clip.get` | Clipboard |
+| `focus.x.y` | Set paste focus % (default 50 50) |
+| `submit.x.y` | Set paste submit pixels (default 730 1028) |
+| `wait.ms` | Delay up to 30s |
+| `toast.msg` | Toast |
+| `echo.msg` | Reply with payload |
+| `help` | List commands |
+| `ai.prompt` | Passthrough paste for now (no in-app LLM key yet) |
 
-**.github/workflows/build-debug-apk.yml** → artifact **`cwbridge-debug-apk`**
+Replies are logged as:
 
-```bash
-# Locally (decode keystore first if you only have the .b64):
-base64 -d keystore/cwbridge-debug.p12.b64 > keystore/cwbridge-debug.p12
-gradle :app:assembleDebug
-# → app/build/outputs/apk/debug/app-debug.apk
+```text
+cwbridge|ok|<request>|<payload>
+cwbridge|err|<request>|<reason>
 ```
 
-## Install & permissions
+### Domain rule (`load`)
+
+Domain must match `^[a-z0-9_-]+\.rbx$` (e.g. `weather.rbx`, `notes.rbx`).  
+Rejected: `a.b.rbx`, `weather.rbx/page`, `https://…`.
+
+## Permissions
 
 ```bash
 adb install -r app-debug.apk
-
-# Accessibility: Settings → Accessibility → CWBridge Tap → On
-# Android 13+: App info → ⋮ → Allow restricted settings (once)
-
-# Optional system logcat (privileged):
+# Accessibility → CWBridge Tap → On  (allow restricted settings once)
 adb shell pm grant com.cwbridge.android.debug android.permission.READ_LOGS
 ```
 
-Without `READ_LOGS`, the in-app log view still shows CWBridge / A11y lines from the process buffer.
+`READ_LOGS` is required to see Roblox `FLog::CreatorOutput` lines with `invoke|`.
 
-## Usage
+## Build
 
-1. Enable **CWBridge Tap** in Accessibility (unlock restricted settings if needed).
-2. Open the app → **Start**.
-3. Open Roblox in the foreground.
-4. In CWBridge, set **X % / Y %** (or pixels) → **Tap %** / **Tap px**.
-5. Logs show each gesture and resolved pixel position.
+CI on push to `main` → artifact **cwbridge-debug-apk** (fixed debug keystore — updates without uninstall after 2.7.3+).
 
-## Package
-
-| | |
-|---|---|
-| applicationId | `com.cwbridge.android` (debug suffix `.debug`) |
-| minSdk | 26 |
-| targetSdk | 34 |
-| Tap service | `com.cwbridge.android.TapService` |
-
-## Security notes
-
-- Accessibility can observe and click other apps. Only enable builds you trust.
-- The committed debug keystore is **for debug sideload only**, not Play Store release signing.
-- `READ_LOGS` is signature/privileged; production Play Store builds will not receive it without OEM privileges. Debug sideload + ADB grant is the intended path.
-- Network services (weather, fetch, etc.) can be wired in follow-up; this tree ships the Android control plane first.
+```bash
+base64 -d keystore/cwbridge-debug.p12.b64 > keystore/cwbridge-debug.p12
+gradle :app:assembleDebug
+```
 
 ## License
 

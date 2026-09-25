@@ -16,6 +16,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var logcatReader: LogcatReader
+    private lateinit var invokeEngine: InvokeEngine
     private var bridgeRunning = false
 
     private val logListener: (LogBuffer.Line) -> Unit = { line ->
@@ -27,7 +28,8 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        logcatReader = LogcatReader(this)
+        invokeEngine = InvokeEngine(applicationContext, lifecycleScope)
+        logcatReader = LogcatReader(this) { raw -> invokeEngine.onExternalLog(raw) }
 
         binding.btnStartStop.setOnClickListener { toggleBridge() }
         binding.btnA11y.setOnClickListener { openAccessibilitySettings() }
@@ -42,7 +44,7 @@ class MainActivity : AppCompatActivity() {
 
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
-        LogBuffer.i("CWBridge", "session start version=2.7.2-android")
+        LogBuffer.i("CWBridge", "session start version=2.8.0-android")
         refreshUi()
     }
 
@@ -58,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        invokeEngine.stop()
         LogBuffer.removeListener(logListener)
         super.onDestroy()
     }
@@ -65,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private fun toggleBridge() {
         if (bridgeRunning) {
             bridgeRunning = false
+            invokeEngine.stop()
             LogBuffer.i("CWBridge", "bridge stopped")
         } else {
             if (!TapService.isConnected()) {
@@ -75,12 +79,21 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             bridgeRunning = true
+            invokeEngine.start()
+            // Sensible defaults matching the MacroDroid paste block; override via invoke|submit / focus
+            invokeEngine.focusXPct = 50f
+            invokeEngine.focusYPct = 50f
+            invokeEngine.submitXPx = 730f
+            invokeEngine.submitYPx = 1028f
             LogBuffer.i(
                 "CWBridge",
-                "bridge running services=weather,translate,fetch,playerinfo,datastore,qr logcat=${logcatReader.hasPermission()}",
+                "bridge running invoke=on logcat=${logcatReader.hasPermission()}",
             )
-            LogBuffer.i("CWBridge", "stays idle while Roblox is closed; resumes when the window is attached")
-            LogBuffer.i("CWBridge", "Roblox tip: use Tap % / Tap px — game UI has no a11y nodes")
+            LogBuffer.i("CWBridge", "stays idle while Roblox is closed; watches invoke| in logcat")
+            LogBuffer.i("CWBridge", "paste defaults focus=50,50 submit=730,1028 — change with invoke|focus / submit")
+            if (!logcatReader.hasPermission()) {
+                LogBuffer.w("CWBridge", "without READ_LOGS, only in-app test invokes work — grant via ADB")
+            }
         }
         refreshUi()
     }
@@ -107,10 +120,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun performTapPercent() {
         val service = requireService() ?: return
-        val xStr = binding.tapXPercent.text?.toString().orEmpty()
-        val yStr = binding.tapYPercent.text?.toString().orEmpty()
-        val x = xStr.toFloatOrNull()
-        val y = yStr.toFloatOrNull()
+        val x = binding.tapXPercent.text?.toString()?.toFloatOrNull()
+        val y = binding.tapYPercent.text?.toString()?.toFloatOrNull()
         if (x == null || y == null) {
             Toast.makeText(this, "Enter X% and Y% (0–100)", Toast.LENGTH_SHORT).show()
             return
@@ -125,10 +136,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun performTapPx() {
         val service = requireService() ?: return
-        val xStr = binding.tapXPx.text?.toString().orEmpty()
-        val yStr = binding.tapYPx.text?.toString().orEmpty()
-        val x = xStr.toFloatOrNull()
-        val y = yStr.toFloatOrNull()
+        val x = binding.tapXPx.text?.toString()?.toFloatOrNull()
+        val y = binding.tapYPx.text?.toString()?.toFloatOrNull()
         if (x == null || y == null) {
             Toast.makeText(this, "Enter X and Y pixels", Toast.LENGTH_SHORT).show()
             return
@@ -150,10 +159,9 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Grant READ_LOGS")
             .setMessage(
-                "READ_LOGS is a privileged permission.\n\n" +
-                    "On a debug device:\n\n" +
+                "Required to see Roblox FLog invoke| lines.\n\n" +
                     "adb shell pm grant $pkg android.permission.READ_LOGS\n\n" +
-                    "Without it, CWBridge still keeps a process-local log buffer.",
+                    "Without it, only the process-local buffer works.",
             )
             .setPositiveButton("OK", null)
             .show()
@@ -183,7 +191,7 @@ class MainActivity : AppCompatActivity() {
                 binding.statusPill.text = getString(R.string.status_running)
                 binding.statusPill.setTextColor(ContextCompat.getColor(this, R.color.ok))
                 binding.statusDetail.text =
-                    "Running. For Roblox use Tap % or Tap px — game UI has no a11y nodes."
+                    "invoke| engine on. Roblox needs READ_LOGS. Try invoke|help"
                 binding.btnStartStop.text = "Stop"
             }
         }
