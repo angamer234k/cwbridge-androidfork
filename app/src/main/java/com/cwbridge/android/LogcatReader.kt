@@ -12,7 +12,11 @@ import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-/** Reads system logcat for Roblox [FLog::CreatorOutput] and invoke| lines. */
+/**
+ * Reads system logcat for:
+ * - CatWeb status lines (→ overlay yellow until "finished", then green)
+ * - Roblox [FLog::CreatorOutput] / invoke| commands
+ */
 class LogcatReader(
     private val context: Context,
     private var invokeSink: ((String) -> Unit)? = null,
@@ -52,8 +56,7 @@ class LogcatReader(
                     "*:V",
                 ).redirectErrorStream(true).start()
                 process = proc
-                // Do NOT include FLog::CreatorOutput in this string (avoids echo into overlay)
-                LogBuffer.i("Logcat", "attached — watching game console + invoke commands")
+                LogBuffer.i("Logcat", "attached — watching CatWeb + invoke commands")
                 val myPkg = context.packageName
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
@@ -62,6 +65,8 @@ class LogcatReader(
                         if (line.contains("attached — watching")) continue
                         if (line.contains("I/Logcat") && line.contains("attached")) continue
 
+                        CatWebTracker.onLogLine(line)
+
                         val isFlog = line.contains("FLog::CreatorOutput", ignoreCase = true) ||
                             line.contains("FLog::Output", ignoreCase = true)
                         val isInvoke = line.contains("invoke|")
@@ -69,9 +74,6 @@ class LogcatReader(
                         when {
                             isFlog -> {
                                 RobloxLogBuffer.add(line)
-                                if (BridgeStatus.state == OverlayState.WAITING) {
-                                    BridgeStatus.set(OverlayState.ACTIVE, "Listening")
-                                }
                                 if (isInvoke) {
                                     LogBuffer.d("sys", line.take(300))
                                     invokeSink?.invoke(line)
