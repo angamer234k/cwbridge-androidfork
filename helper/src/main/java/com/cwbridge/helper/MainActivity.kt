@@ -4,10 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import android.widget.ScrollView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "ADB keys cleared", Toast.LENGTH_SHORT).show()
         }
         binding.btnDiagnostics.setOnClickListener { runDiagnostics() }
+        binding.btnGrantLogs.setOnClickListener { grantLogsOnly() }
+        binding.btnLaunchTarget.setOnClickListener { launchTarget() }
 
         val filter = IntentFilter().apply {
             addAction(OtgAdbPusher.ACTION_USB_PERMISSION)
@@ -74,19 +76,34 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.0.5 \u2014 APK cache + stall reconnect + diagnostics")
+        log("Helper 1.0.6 — scrollable logs + target diagnostics")
     }
 
     override fun onDestroy() {
-        unregisterReceiver(usbReceiver)
+        try { unregisterReceiver(usbReceiver) } catch (_: Exception) {}
         super.onDestroy()
+    }
+
+    private fun requireTarget(): UsbDevice? {
+        val device = selected
+        if (device == null) {
+            Toast.makeText(this, "Connect target device via OTG first", Toast.LENGTH_SHORT).show()
+            refreshUsb()
+            return null
+        }
+        if (!pusher.hasPermission(device)) {
+            pusher.requestPermission(device)
+            Toast.makeText(this, "Allow USB access, then try again", Toast.LENGTH_LONG).show()
+            return null
+        }
+        return device
     }
 
     private fun refreshUsb() {
         val devices = pusher.listDevices()
         if (devices.isEmpty()) {
             selected = null
-            binding.usbState.text = "USB: no device \u2014 plug OTG tablet"
+            binding.usbState.text = "USB: no device — plug OTG cable to target"
             binding.usbState.setTextColor(0xFFC4A574.toInt())
             log("No USB devices")
             return
@@ -106,31 +123,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startPush() {
-        val device = selected
-        if (device == null) {
-            Toast.makeText(this, "Connect tablet via OTG first", Toast.LENGTH_SHORT).show()
-            refreshUsb()
-            return
-        }
-        if (!pusher.hasPermission(device)) {
-            pusher.requestPermission(device)
-            Toast.makeText(this, "Allow USB access, then tap Push again", Toast.LENGTH_LONG).show()
-            return
-        }
+        val device = requireTarget() ?: return
         binding.btnPush.isEnabled = false
         lifecycleScope.launch {
             try {
-                log("\u2014\u2014 push start \u2014\u2014")
-                val apkCache = File(cacheDir, "apk-cache")
                 val apk = withContext(Dispatchers.IO) {
-                    ReleaseDownloader.downloadLatestCwbridge(apkCache) { msg ->
+                    ReleaseDownloader.downloadLatestCwbridge(File(cacheDir, "apk-cache")) { msg ->
                         runOnUiThread { log(msg) }
                     }.file
                 }
+                log("APK ready: ${apk.absolutePath} (${apk.length()} bytes)")
                 withContext(Dispatchers.IO) {
                     pusher.push(apk, device) { msg -> runOnUiThread { log(msg) } }
                 }
-                log("SUCCESS \u2014 CWBridge updated + READ_LOGS granted")
+                log("SUCCESS — CWBridge updated + READ_LOGS granted")
                 Toast.makeText(this@MainActivity, "Success", Toast.LENGTH_LONG).show()
             } catch (t: Throwable) {
                 log("FAIL: ${t.message}")
@@ -141,83 +147,112 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun grantLogsOnly() {
+        val device = requireTarget() ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val out = pusher.grantReadLogs(device) { msg -> runOnUiThread { log(msg) } }
+                withContext(Dispatchers.Main) {
+                    log("grant result: ${out.ifBlank { \"ok\" }}")
+                    Toast.makeText(this@MainActivity, "READ_LOGS grant sent", Toast.LENGTH_SHORT).show()
+                }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { log("grant FAIL: ${t.message}") }
+            }
+        }
+    }
+
+    private fun launchTarget() {
+        val device = requireTarget() ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val out = pusher.launchTarget(device) { msg -> runOnUiThread { log(msg) } }
+                withContext(Dispatchers.Main) { log("launch: ${out.take(200)}") }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { log("launch FAIL: ${t.message}") }
+            }
+        }
+    }
+
     private fun runDiagnostics() {
         lifecycleScope.launch(Dispatchers.IO) {
             log("\u2014\u2014 DIAGNOSTICS \u2014\u2014")
-            
-            // Check if main app is installed
-            val packageName = "com.cwbridge.android.debug"
-            val isInstalled = try {
-                packageManager.getPackageInfo(packageName, 0)
-                true
-            } catch (e: PackageManager.NameNotFoundException) {
-                false
-            }
-            
-            withContext(Dispatchers.Main) {
-                if (isInstalled) {
-                    log("[OK] Main app is installed ($packageName)")
-                } else {
-                    log("[FAIL] Main app NOT installed ($packageName)")
+            log("(Install check runs on the USB *target* device, not this phone)")
+
+            val device = selected
+            if (device == null || !pusher.hasPermission(device)) {
+                withContext(Dispatchers.Main) {
+                    log("[WARN] No USB target with permission — connect device & allow USB")
+                }
+            } else {
+                try {
+                    val installed = pusher.isTargetInstalled(device) { msg ->
+                        runOnUiThread { log(msg) }
+                    }
+                    withContext(Dispatchers.Main) {
+                        if (installed) {
+                            log("[OK] Main app installed on target (${OtgAdbPusher.TARGET_PKG})")
+                        } else {
+                            log("[FAIL] Main app NOT on target (${OtgAdbPusher.TARGET_PKG})")
+                        }
+                    }
+                    val grantProbe = pusher.shellOnDevice(
+                        device,
+                        "dumpsys package ${OtgAdbPusher.TARGET_PKG} | grep -i READ_LOGS || true",
+                    ) { msg -> runOnUiThread { log(msg) } }
+                    withContext(Dispatchers.Main) {
+                        log("READ_LOGS probe: ${grantProbe.trim().ifBlank { \"(no line)\" }.take(200)}")
+                    }
+                } catch (t: Throwable) {
+                    withContext(Dispatchers.Main) {
+                        log("[FAIL] Target check: ${t.message}")
+                    }
                 }
             }
-            
-            // Check USB debugging authorization
-            val usbManager = getSystemService(USB_SERVICE) as UsbManager
-            val deviceList = usbManager.deviceList
-            
+
             withContext(Dispatchers.Main) {
+                val usbManager = getSystemService(USB_SERVICE) as UsbManager
+                val deviceList = usbManager.deviceList
                 if (deviceList.isNotEmpty()) {
                     log("[OK] USB device detected: ${deviceList.values.first().deviceName}")
-                    val device = deviceList.values.first()
-                    val hasPerm = pusher.hasPermission(device)
-                    if (hasPerm) {
-                        log("[OK] USB permission granted")
-                    } else {
-                        log("[WARN] USB permission NOT granted - tap Refresh USB")
-                    }
+                    val d = deviceList.values.first()
+                    if (pusher.hasPermission(d)) log("[OK] USB permission granted")
+                    else log("[WARN] USB permission NOT granted")
                 } else {
                     log("[WARN] No USB devices connected")
                 }
-            }
-            
-            // Check ADB keys
-            withContext(Dispatchers.Main) {
-                val adbDir = File("${cacheDir.parent}/adb")
+
+                val adbDir = File(filesDir, "adbkey")
                 if (adbDir.exists()) {
-                    val keyFiles = adbDir.listFiles(FileFilter { file -> file.name.endsWith(".pub") || file.name.endsWith(".key") })
+                    val keyFiles = adbDir.listFiles(
+                        FileFilter { f -> f.name.contains("adbkey") },
+                    )
                     if (keyFiles != null && keyFiles.isNotEmpty()) {
                         log("[OK] ADB keys exist (${keyFiles.size} files)")
                     } else {
-                        log("[WARN] No ADB keys found - try Reset ADB keys")
+                        log("[WARN] No ADB keys — try Reset ADB keys")
                     }
                 } else {
-                    log("[WARN] ADB directory not found")
+                    log("[WARN] ADB key dir missing")
                 }
             }
-            
-            // Check if we can download the APK
+
             withContext(Dispatchers.IO) {
                 try {
-                    val apkCache = File(cacheDir, "apk-cache")
-                    apkCache.mkdirs()
                     val release = ReleaseDownloader.getLatestRelease()
                     if (release != null) {
-                        log("[OK] Can reach GitHub releases (latest: ${release.tag_name})")
+                        log("[OK] GitHub releases (latest: ${release.tag_name})")
                         val apkAsset = ReleaseDownloader.findApkAsset(release)
-                        if (apkAsset != null) {
-                            log("[OK] APK asset found: ${apkAsset.name}")
-                        } else {
-                            log("[WARN] No APK asset in release")
-                        }
+                        if (apkAsset != null) log("[OK] APK asset: ${apkAsset.name}")
+                        else log("[WARN] No APK asset in release")
                     } else {
                         log("[FAIL] Cannot reach GitHub releases")
                     }
                 } catch (t: Throwable) {
-                    log("[FAIL] GitHub check failed: ${t.message}")
+                    log("[FAIL] GitHub check: ${t.message}")
                 }
             }
-            
+
             withContext(Dispatchers.Main) {
                 log("\u2014\u2014 DIAGNOSTICS COMPLETE \u2014\u2014")
             }
@@ -226,5 +261,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun log(msg: String) {
         binding.logView.append(msg + "\n")
+        binding.logScroll.post {
+            binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+        }
     }
 }
