@@ -12,11 +12,6 @@ import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-/**
- * Reads system logcat for:
- * - CatWeb status lines (→ overlay yellow until "finished", then green)
- * - Roblox [FLog::CreatorOutput] / invoke| commands
- */
 class LogcatReader(
     private val context: Context,
     private var invokeSink: ((String) -> Unit)? = null,
@@ -39,56 +34,57 @@ class LogcatReader(
     fun start(scope: CoroutineScope) {
         stop()
         if (!hasPermission()) {
-            LogBuffer.w("Logcat", "READ_LOGS not granted — game console lines won't be seen")
-            LogBuffer.i(
-                "Logcat",
-                "grant with: adb shell pm grant ${context.packageName} android.permission.READ_LOGS",
-            )
+            LogBuffer.w("Logcat", "READ_LOGS not granted")
             return
         }
         job = scope.launch(Dispatchers.IO) {
             try {
                 val proc = ProcessBuilder(
-                    "logcat",
-                    "-b", "main",
-                    "-b", "system",
-                    "-v", "threadtime",
-                    "*:V",
+                    "logcat", "-b", "main", "-b", "system", "-v", "threadtime", "*:V",
                 ).redirectErrorStream(true).start()
                 process = proc
-                LogBuffer.i("Logcat", "attached — watching CatWeb + invoke commands")
+                LogBuffer.i("Logcat", "attached \u2014 watching CatWeb + console + invoke")
                 val myPkg = context.packageName
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
                         val line = reader.readLine() ?: break
                         if (line.contains(myPkg) && !line.contains("invoke|")) continue
-                        if (line.contains("attached — watching")) continue
+                        if (line.contains("attached \u2014 watching")) continue
                         if (line.contains("I/Logcat") && line.contains("attached")) continue
 
                         CatWebTracker.onLogLine(line)
+                        AntiDisconnect.onLogLine(line)
 
-                        val isFlog = line.contains("FLog::CreatorOutput", ignoreCase = true) ||
-                            line.contains("FLog::Output", ignoreCase = true)
+                        val lower = line.lowercase()
+                        val isFlog = lower.contains("flog::creatoroutput") ||
+                            lower.contains("flog::output")
+                        val hasBullet = line.contains('\u2022') || line.contains('\u00B7')
                         val isInvoke = line.contains("invoke|")
+                        val looksLikeSiteLog =
+                            line.contains("\u2139") || line.contains("\u26A0") || line.contains("\u274C") ||
+                                lower.contains("[from ")
 
                         when {
-                            isFlog -> {
+                            isFlog || looksLikeSiteLog || (hasBullet && (isFlog || lower.contains("catweb"))) -> {
                                 RobloxLogBuffer.add(line)
                                 if (isInvoke) {
-                                    LogBuffer.d("sys", line.take(300))
+                                    AntiDisconnect.noteActivity()
                                     invokeSink?.invoke(line)
                                 }
                             }
                             isInvoke -> {
-                                LogBuffer.d("sys", line.take(300))
+                                AntiDisconnect.noteActivity()
                                 invokeSink?.invoke(line)
+                            }
+                            hasBullet && lower.contains("catweb") -> {
+                                RobloxLogBuffer.add(line)
                             }
                         }
                     }
                 }
             } catch (t: Throwable) {
                 if (isActive) {
-                    LogBuffer.e("Logcat", "failed to attach: ${t.message}")
+                    LogBuffer.e("Logcat", "failed: ${t.message}")
                     BridgeStatus.set(OverlayState.ERROR, "Logcat failed")
                 }
             } finally {
