@@ -1,12 +1,9 @@
 package com.cwbridge.android
 
-import android.os.Parcelable
-import kotlinx.parcelize.Parcelize
-
 /**
  * Represents an automation service with triggers and actions.
+ * In-memory only (no Parcelable needed).
  */
-@Parcelize
 data class Service(
     val id: String = System.currentTimeMillis().toString(),
     val name: String,
@@ -14,18 +11,13 @@ data class Service(
     val isEnabled: Boolean = true,
     val triggers: MutableList<Trigger> = mutableListOf(),
     val actions: MutableList<Action> = mutableListOf()
-) : Parcelable
+)
 
-/**
- * Base class for all trigger types.
- */
-@Parcelize
-sealed class Trigger : Parcelable {
+sealed class Trigger {
     abstract val id: String
     abstract val name: String
     abstract val type: TriggerType
 
-    @Parcelize
     data class LogTrigger(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Log Trigger",
@@ -36,7 +28,6 @@ sealed class Trigger : Parcelable {
         override val type: TriggerType = TriggerType.LOG
     }
 
-    @Parcelize
     data class TimeTrigger(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Time Trigger",
@@ -46,7 +37,6 @@ sealed class Trigger : Parcelable {
         override val type: TriggerType = TriggerType.TIME
     }
 
-    @Parcelize
     data class AccessibilityTrigger(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Accessibility Trigger",
@@ -58,16 +48,11 @@ sealed class Trigger : Parcelable {
     }
 }
 
-/**
- * Base class for all action types.
- */
-@Parcelize
-sealed class Action : Parcelable {
+sealed class Action {
     abstract val id: String
     abstract val name: String
     abstract val type: ActionType
 
-    @Parcelize
     data class TapAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Tap",
@@ -80,7 +65,6 @@ sealed class Action : Parcelable {
         override val type: ActionType = ActionType.TAP
     }
 
-    @Parcelize
     data class GetInfoAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Get Info",
@@ -90,7 +74,6 @@ sealed class Action : Parcelable {
         override val type: ActionType = ActionType.GET_INFO
     }
 
-    @Parcelize
     data class HttpRequestAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "HTTP Request",
@@ -103,7 +86,6 @@ sealed class Action : Parcelable {
         override val type: ActionType = ActionType.HTTP_REQUEST
     }
 
-    @Parcelize
     data class AiAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "AI Action",
@@ -114,7 +96,6 @@ sealed class Action : Parcelable {
         override val type: ActionType = ActionType.AI
     }
 
-    @Parcelize
     data class DelayAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Delay",
@@ -123,7 +104,6 @@ sealed class Action : Parcelable {
         override val type: ActionType = ActionType.DELAY
     }
 
-    @Parcelize
     data class RunServiceAction(
         override val id: String = System.currentTimeMillis().toString(),
         override val name: String = "Run Service",
@@ -157,9 +137,6 @@ enum class InfoType {
     CLIPBOARD
 }
 
-/**
- * Repository for managing services.
- */
 object ServiceRepository {
     private val services: MutableList<Service> = mutableListOf()
 
