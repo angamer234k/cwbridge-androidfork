@@ -1,5 +1,8 @@
 # CWBridge Android
 
+[![Release](https://img.shields.io/github/v/release/angamer234k/cwbridge-androidfork?label=Release)](https://github.com/angamer234k/cwbridge-androidfork/releases)
+[![Downloads](https://img.shields.io/github/downloads/angamer234k/cwbridge-androidfork/total?label=Downloads)](https://github.com/angamer234k/cwbridge-androidfork/releases)
+
 Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge).
 
 ## Downloads (Releases)
@@ -11,7 +14,7 @@ Published builds live under **[Releases](https://github.com/angamer234k/cwbridge
 | `cwbridge-android-debug.apk` | Main app — taps, `invoke|` engine, logcat |
 | `cwbridge-helper-debug.apk` | Phone helper — OTG ADB push to tablet |
 
-Trigger a new release: **Actions → Release APKs → Run workflow** (enter tag e.g. `v2.8.1`).
+Trigger a new release: **Actions ↦ Release APKs ↦ Run workflow** (enter tag e.g. `v2.8.1`).
 
 ## Helper (phone → tablet)
 
@@ -19,7 +22,7 @@ Trigger a new release: **Actions → Release APKs → Run workflow** (enter tag 
 2. Tablet: **USB debugging** ON.
 3. Connect phone ↔ OTG ↔ tablet (data cable).
 4. Allow USB debugging on the tablet (once).
-5. Open helper → **Push update**.
+5. Open helper ↦ **Push update**.
 
 The helper:
 
