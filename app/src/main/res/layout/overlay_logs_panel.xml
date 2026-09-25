@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="280dp"
+    android:layout_height="wrap_content"
+    android:background="#E614161B"
+    android:elevation="10dp"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Roblox console (last 10)"
+        android:textColor="#9BB8E8"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/overlayLogsText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="monospace"
+        android:maxHeight="220dp"
+        android:scrollbars="vertical"
+        android:text="(no FLog::CreatorOutput yet)"
+        android:textColor="#E0E0E0"
+        android:textSize="10sp" />
+
+    <TextView
+        android:id="@+id/overlayLogsHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Tap outside or bubble to close"
+        android:textColor="#8B909A"
+        android:textSize="10sp" />
+</LinearLayout>
