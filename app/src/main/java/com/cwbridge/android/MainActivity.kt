@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
@@ -36,7 +37,6 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Setup drawer
         setupDrawer()
 
         invokeEngine = InvokeEngine(applicationContext, lifecycleScope)
@@ -53,13 +53,13 @@ class MainActivity : AppCompatActivity() {
             binding.logView.text = ""
         }
 
-        // Services setup
         binding.btnAddService.setOnClickListener { showAddServiceDialog() }
         setupServicesRecyclerView()
 
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
-        LogBuffer.i("CWBridge", "session start version=2.8.0-android")
+        LogBuffer.i("CWBridge", "session start version=2.9.0-android")
+        showCategory("bridge")
         refreshUi()
     }
 
@@ -184,11 +184,7 @@ class MainActivity : AppCompatActivity() {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Manage Actions for ${service.name}")
 
-        val items = arrayOf(
-            "Add Action",
-            "Reorder Actions",
-            "Add Trigger"
-        )
+        val items = arrayOf("Add Action", "Reorder Actions", "Add Trigger")
 
         builder.setItems(items) { _, which ->
             when (which) {
@@ -203,12 +199,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAddActionDialog(service: Service) {
         val actionTypes = arrayOf(
-            "Tap",
-            "Get Info",
-            "HTTP Request",
-            "AI Action",
-            "Delay",
-            "Run Service"
+            "Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service"
         )
 
         MaterialAlertDialogBuilder(this)
@@ -363,6 +354,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showReorderActionsDialog(service: Service) {
+        if (service.actions.isEmpty()) {
+            Toast.makeText(this, "No actions to reorder", Toast.LENGTH_SHORT).show()
+            return
+        }
         val actionNames = service.actions.map { it.name }.toTypedArray()
 
         MaterialAlertDialogBuilder(this)
@@ -383,7 +378,6 @@ class MainActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> {
-                        // Move up
                         if (currentIndex > 0) {
                             val action = service.actions[currentIndex]
                             service.actions.removeAt(currentIndex)
@@ -393,7 +387,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     1 -> {
-                        // Move down
                         if (currentIndex < service.actions.size - 1) {
                             val action = service.actions[currentIndex]
                             service.actions.removeAt(currentIndex)
@@ -403,8 +396,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     2 -> {
-                        // Remove
-                        ServiceRepository.removeActionFromService(service.id, service.actions[currentIndex].id)
+                        ServiceRepository.removeActionFromService(
+                            service.id,
+                            service.actions[currentIndex].id
+                        )
                         refreshServices()
                     }
                 }
@@ -414,11 +409,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddTriggerDialog(service: Service) {
-        val triggerTypes = arrayOf(
-            "Log Trigger",
-            "Time Trigger",
-            "Accessibility Trigger"
-        )
+        val triggerTypes = arrayOf("Log Trigger", "Time Trigger", "Accessibility Trigger")
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Trigger")
@@ -480,12 +471,12 @@ class MainActivity : AppCompatActivity() {
         builder.setTitle("Add Accessibility Trigger")
 
         val view = layoutInflater.inflate(R.layout.dialog_trigger_accessibility, null)
-        val textEdit = view.findViewById<android.widget.EditText>(R.id.editAccTextPattern)
+        val patternEdit = view.findViewById<android.widget.EditText>(R.id.editAccessibilityPattern)
 
         builder.setView(view)
         builder.setPositiveButton("Add") { _, _ ->
             val trigger = Trigger.AccessibilityTrigger(
-                textPattern = textEdit.text.toString()
+                textPattern = patternEdit.text.toString()
             )
             service.triggers.add(trigger)
             ServiceRepository.updateService(service)
@@ -499,7 +490,7 @@ class MainActivity : AppCompatActivity() {
     private fun deleteService(service: Service) {
         MaterialAlertDialogBuilder(this)
             .setTitle("Delete Service")
-            .setMessage("Are you sure you want to delete '${service.name}'?")
+            .setMessage("Delete ${service.name}?")
             .setPositiveButton("Delete") { _, _ ->
                 ServiceRepository.deleteService(service.id)
                 refreshServices()
@@ -510,118 +501,69 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleService(service: Service) {
-        val updatedService = service.copy(isEnabled = !service.isEnabled)
-        ServiceRepository.updateService(updatedService)
+        val updated = service.copy(isEnabled = !service.isEnabled)
+        ServiceRepository.updateService(updated)
         refreshServices()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshUi()
-        logcatReader.start(lifecycleScope)
-    }
-
-    override fun onPause() {
-        logcatReader.stop()
-        super.onPause()
+        Toast.makeText(
+            this,
+            if (updated.isEnabled) "Enabled" else "Disabled",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     override fun onDestroy() {
-        invokeEngine.stop()
         LogBuffer.removeListener(logListener)
-        super.onDestroy()
-    }
-
-    override fun onBackPressed() {
-        if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-        } else {
-            super.onBackPressed()
+        if (bridgeRunning) {
+            logcatReader.stop()
         }
+        super.onDestroy()
     }
 
     private fun toggleBridge() {
         if (bridgeRunning) {
+            logcatReader.stop()
             bridgeRunning = false
-            invokeEngine.stop()
             LogBuffer.i("CWBridge", "bridge stopped")
         } else {
-            if (!TapService.isConnected()) {
-                LogBuffer.e("CWBridge", "refusing start: Accessibility service is off")
-                Toast.makeText(this, "Enable CWBridge Tap first", Toast.LENGTH_SHORT).show()
-                openAccessibilitySettings()
-                refreshUi()
+            if (!logcatReader.start()) {
+                Toast.makeText(
+                    this,
+                    "logcat failed — grant READ_LOGS via helper/ADB",
+                    Toast.LENGTH_LONG
+                ).show()
                 return
             }
             bridgeRunning = true
-            invokeEngine.start()
-            invokeEngine.focusXPct = 50f
-            invokeEngine.focusYPct = 50f
-            invokeEngine.submitXPx = 730f
-            invokeEngine.submitYPx = 1028f
-            LogBuffer.i(
-                "CWBridge",
-                "bridge running invoke=on logcat=${logcatReader.hasPermission()}",
-            )
-            LogBuffer.i("CWBridge", "stays idle while Roblox is closed; watches invoke| in logcat")
-            LogBuffer.i("CWBridge", "paste defaults focus=50,50 submit=730,1028 - change with invoke|focus / submit")
-            if (!logcatReader.hasPermission()) {
-                LogBuffer.w("CWBridge", "without READ_LOGS, only in-app test invokes work - grant via ADB")
-            }
+            LogBuffer.i("CWBridge", "bridge started")
         }
         refreshUi()
     }
 
-    private fun requireService(): TapService? {
-        val service = TapService.instance
-        if (service == null) {
-            Toast.makeText(this, "CWBridge Tap is not connected", Toast.LENGTH_SHORT).show()
-            LogBuffer.w("A11y", "tap requested but service offline")
-        }
-        return service
+    private fun refreshUi() {
+        binding.btnStartStop.text = if (bridgeRunning) "Stop bridge" else "Start bridge"
+        val a11y = isAccessibilityEnabled()
+        binding.chipA11y.text = if (a11y) "A11y ON" else "A11y OFF"
+        binding.chipA11y.setTextColor(
+            ContextCompat.getColor(this, if (a11y) R.color.ok else R.color.warn)
+        )
+        binding.chipBridge.text = if (bridgeRunning) "Bridge ON" else "Bridge OFF"
+        binding.chipBridge.setTextColor(
+            ContextCompat.getColor(this, if (bridgeRunning) R.color.ok else R.color.warn)
+        )
     }
 
-    private fun performTapByText() {
-        val query = binding.tapQuery.text?.toString().orEmpty()
-        val service = requireService() ?: return
-        val ok = service.clickByText(query)
-        Toast.makeText(
-            this,
-            if (ok) "Tapped \"$query\"" else "No match for \"$query\" (use %/px for Roblox)",
-            Toast.LENGTH_SHORT,
-        ).show()
-    }
-
-    private fun performTapPercent() {
-        val service = requireService() ?: return
-        val x = binding.tapXPercent.text?.toString()?.toFloatOrNull()
-        val y = binding.tapYPercent.text?.toString()?.toFloatOrNull()
-        if (x == null || y == null) {
-            Toast.makeText(this, "Enter X% and Y% (0-100)", Toast.LENGTH_SHORT).show()
-            return
+    private fun isAccessibilityEnabled(): Boolean {
+        val cn = ComponentName(this, TapService::class.java)
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val splitter = TextUtils.SimpleStringSplitter(':')
+        splitter.setString(enabled)
+        while (splitter.hasNext()) {
+            if (ComponentName.unflattenFromString(splitter.next()) == cn) return true
         }
-        val ok = service.clickAtPercent(x, y)
-        Toast.makeText(
-            this,
-            if (ok) "Tapped ${x}% ${y}%" else "Gesture failed",
-            Toast.LENGTH_SHORT,
-        ).show()
-    }
-
-    private fun performTapPx() {
-        val service = requireService() ?: return
-        val x = binding.tapXPx.text?.toString()?.toFloatOrNull()
-        val y = binding.tapYPx.text?.toString()?.toFloatOrNull()
-        if (x == null || y == null) {
-            Toast.makeText(this, "Enter X and Y pixels", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val ok = service.clickAt(x, y)
-        Toast.makeText(
-            this,
-            if (ok) "Tapped px ($x, $y)" else "Gesture failed",
-            Toast.LENGTH_SHORT,
-        ).show()
+        return false
     }
 
     private fun openAccessibilitySettings() {
@@ -629,65 +571,82 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAdbGrantHint() {
-        val pkg = packageName
         MaterialAlertDialogBuilder(this)
             .setTitle("Grant READ_LOGS")
             .setMessage(
-                "Required to see Roblox FLog invoke| lines.\n\n" +
-                    "adb shell pm grant $pkg android.permission.READ_LOGS\n\n" +
-                    "Without it, only the process-local buffer works.",
+                "adb shell pm grant ${packageName} android.permission.READ_LOGS\n\n" +
+                    "Or use CWBridge Helper over OTG."
             )
             .setPositiveButton("OK", null)
             .show()
     }
 
-    private fun refreshUi() {
-        val a11yOn = isAccessibilityEnabled()
-        binding.a11yState.text = if (a11yOn) "on" else "off"
-        binding.a11yState.setTextColor(
-            ContextCompat.getColor(this, if (a11yOn) R.color.ok else R.color.danger),
-        )
-
-        val logsOn = logcatReader.hasPermission()
-        binding.logcatState.text = if (logsOn) "granted" else "not granted (ADB)"
-        binding.logcatState.setTextColor(
-            ContextCompat.getColor(this, if (logsOn) R.color.ok else R.color.warn),
-        )
-
-        when {
-            !bridgeRunning -> {
-                binding.statusPill.text = getString(R.string.status_stopped)
-                binding.statusPill.setTextColor(ContextCompat.getColor(this, R.color.muted))
-                binding.statusDetail.text = "Enable CWBridge Tap, then start the bridge."
-                binding.btnStartStop.text = "Start"
-            }
-            else -> {
-                binding.statusPill.text = getString(R.string.status_running)
-                binding.statusPill.setTextColor(ContextCompat.getColor(this, R.color.ok))
-                binding.statusDetail.text =
-                    "invoke| engine on. Roblox needs READ_LOGS. Try invoke|help"
-                binding.btnStartStop.text = "Stop"
-            }
+    private fun performTapByText() {
+        val text = binding.editTapText.text?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) {
+            Toast.makeText(this, "Enter text to tap", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val ok = TapService.instance?.tapText(text) == true
+            Toast.makeText(
+                this@MainActivity,
+                if (ok) "Tapped $text" else "Tap failed / a11y off",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
-    private fun isAccessibilityEnabled(): Boolean {
-        if (TapService.isConnected()) return true
-        val expected = ComponentName(this, TapService::class.java).flattenToString()
-        val enabled = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ) ?: return false
-        val splitter = TextUtils.SimpleStringSplitter(':')
-        splitter.setString(enabled)
-        while (splitter.hasNext()) {
-            if (splitter.next().equals(expected, ignoreCase = true)) return true
+    private fun performTapPercent() {
+        val x = binding.editTapXPercent.text?.toString()?.toFloatOrNull()
+        val y = binding.editTapYPercent.text?.toString()?.toFloatOrNull()
+        if (x == null || y == null) {
+            Toast.makeText(this, "Enter X% and Y%", Toast.LENGTH_SHORT).show()
+            return
         }
-        return false
+        lifecycleScope.launch {
+            val ok = TapService.instance?.tapPercent(x, y) == true
+            Toast.makeText(
+                this@MainActivity,
+                if (ok) "Tapped $x% $y%" else "Tap failed / a11y off",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun performTapPx() {
+        val x = binding.editTapXPx.text?.toString()?.toIntOrNull()
+        val y = binding.editTapYPx.text?.toString()?.toIntOrNull()
+        if (x == null || y == null) {
+            Toast.makeText(this, "Enter Xpx and Ypx", Toast.LENGTH_SHORT).show()
+            return
+        }
+        lifecycleScope.launch {
+            val ok = TapService.instance?.tapPx(x, y) == true
+            Toast.makeText(
+                this@MainActivity,
+                if (ok) "Tapped $x,$y" else "Tap failed / a11y off",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun appendLog(line: LogBuffer.Line) {
-        val row = "${line.ts} ${line.level} ${line.tag}: ${line.msg}\n"
-        binding.logView.append(row)
+        val color = when (line.level) {
+            "E" -> 0xFFFF6B6B.toInt()
+            "W" -> 0xFFFFD166.toInt()
+            else -> 0xFFE8E6E3.toInt()
+        }
+        binding.logView.append("${line.tag}: ${line.message}\n")
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
     }
 }
