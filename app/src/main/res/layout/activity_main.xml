@@ -7,22 +7,28 @@
     android:background="@color/bg"
     android:fitsSystemWindows="true">
 
-    <!-- Toolbar -->
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/surface"
-        app:title="CWBridge"
-        app:titleTextColor="@android:color/white" />
-
-    <!-- Main content -->
-    <ScrollView
-        android:id="@+id/mainContent"
+    <!-- Main content container -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/bg"
-        android:fillViewport="true">
+        android:orientation="vertical">
+
+        <!-- Toolbar -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/surface"
+            app:title="CWBridge"
+            app:titleTextColor="@android:color/white" />
+
+        <!-- Main content -->
+        <ScrollView
+            android:id="@+id/mainContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
