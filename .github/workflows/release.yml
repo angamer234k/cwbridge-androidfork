@@ -89,13 +89,7 @@ jobs:
           name: CWBridge ${{ steps.collect.outputs.tag }}
           body: |
             ## CWBridge Android + Helper
-
-            Helper OTG stack now uses **flashbot UsbChannel** (same approach as working ADB-OTG apps).
-
-            | APK | Purpose |
-            |-----|---------|
-            | `cwbridge-android-debug.apk` | Main app |
-            | `cwbridge-helper-debug.apk` | Phone → tablet OTG push |
+new overlay smh yay hooray yippe im tired 🫩
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
