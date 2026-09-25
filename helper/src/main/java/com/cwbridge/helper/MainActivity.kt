@@ -57,6 +57,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnRefreshUsb.setOnClickListener { refreshUsb() }
         binding.btnPush.setOnClickListener { startPush() }
+        binding.btnResetKeys.setOnClickListener {
+            pusher.resetAdbKeys { msg -> log(msg) }
+            Toast.makeText(this, "ADB keys cleared", Toast.LENGTH_SHORT).show()
+        }
 
         val filter = IntentFilter().apply {
             addAction(OtgAdbPusher.ACTION_USB_PERMISSION)
@@ -66,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.0.0 — downloads from GitHub Releases, pushes over OTG ADB")
+        log("Helper 1.0.1 — if stuck on ADB connect, Reset keys + revoke on tablet")
     }
 
     override fun onDestroy() {

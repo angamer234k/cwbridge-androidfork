@@ -33,7 +33,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="1. Tablet: USB debugging ON\n2. OTG: phone host ↔ tablet\n3. Allow USB debugging on tablet when asked\n4. Tap Push update"
+            android:text="1. Tablet: USB debugging ON\n2. OTG: phone host ↔ tablet\n3. Allow USB debugging on tablet when asked\n4. Tap Push update\n\nStuck with no prompt? Revoke USB debugging authorizations on tablet, set USB to File transfer, Reset ADB keys, unplug/replug."
             android:textColor="#8B909A"
             android:textSize="13sp" />
 
@@ -53,6 +53,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Refresh USB" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnResetKeys"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Reset ADB keys" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPush"

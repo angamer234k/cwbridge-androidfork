@@ -13,6 +13,10 @@ import com.cgutman.adblib.AdbCrypto
 import com.cwbridge.helper.adb.UsbStreamPair
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /** OTG ADB host: connect to tablet, install/update CWBridge, grant READ_LOGS. */
 class OtgAdbPusher(private val context: Context) {
@@ -21,6 +25,8 @@ class OtgAdbPusher(private val context: Context) {
         const val ACTION_USB_PERMISSION = "com.cwbridge.helper.USB_PERMISSION"
         const val TARGET_PKG = "com.cwbridge.android.debug"
         const val PERM_LOGS = "android.permission.READ_LOGS"
+        /** AdbLib connect can block forever if adbd never answers. */
+        private const val CONNECT_TIMEOUT_SEC = 20L
     }
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -36,6 +42,17 @@ class OtgAdbPusher(private val context: Context) {
         usb.requestPermission(device, pi)
     }
 
+    /** Delete stored ADB keypair so the tablet should show the allow prompt again. */
+    fun resetAdbKeys(log: (String) -> Unit) {
+        val dir = File(context.filesDir, "adbkey")
+        var n = 0
+        dir.listFiles()?.forEach {
+            if (it.delete()) n++
+        }
+        log("Deleted $n ADB key file(s). Next push should re-prompt on tablet.")
+        log("Also on tablet: Developer options → Revoke USB debugging authorizations")
+    }
+
     fun push(apk: File, device: UsbDevice, log: (String) -> Unit) {
         if (!usb.hasPermission(device)) {
             throw IllegalStateException("No USB permission — grant and retry")
@@ -43,9 +60,10 @@ class OtgAdbPusher(private val context: Context) {
         val pair = openAdbStreams(device, log)
         try {
             val crypto = loadOrCreateCrypto(log)
-            log("ADB connect… (accept prompt on tablet if shown)")
-            val conn = AdbConnection.create(pair.input, pair.output, crypto)
-            conn.connect()
+            log("ADB connect… (max ${CONNECT_TIMEOUT_SEC}s)")
+            log("If no prompt on tablet: Revoke USB debugging authorizations, unplug/replug,")
+            log("set USB mode to File transfer/MTP, then Reset ADB keys here and retry.")
+            val conn = connectWithTimeout(pair, crypto, log)
             log("ADB connected")
 
             val installed = shell(conn, "pm path $TARGET_PKG", log).contains("package:")
@@ -69,9 +87,44 @@ class OtgAdbPusher(private val context: Context) {
 
             val path = shell(conn, "pm path $TARGET_PKG", log).trim()
             log("Done. $path")
-            conn.close()
+            try {
+                conn.close()
+            } catch (_: Exception) {
+            }
         } finally {
             pair.close()
+        }
+    }
+
+    private fun connectWithTimeout(
+        pair: UsbStreamPair,
+        crypto: AdbCrypto,
+        log: (String) -> Unit,
+    ): AdbConnection {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val future = pool.submit(
+                Callable {
+                    val c = AdbConnection.create(pair.input, pair.output, crypto)
+                    c.connect()
+                    c
+                },
+            )
+            return try {
+                future.get(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                future.cancel(true)
+                throw IllegalStateException(
+                    "ADB handshake timed out after ${CONNECT_TIMEOUT_SEC}s — " +
+                        "no response from tablet adbd (prompt often never shows in this case). " +
+                        "Revoke USB debugging on tablet, Reset ADB keys, replug, retry.",
+                )
+            } catch (e: Exception) {
+                val cause = e.cause ?: e
+                throw IllegalStateException("ADB connect failed: ${cause.message}", cause)
+            }
+        } finally {
+            pool.shutdownNow()
         }
     }
 
@@ -95,12 +148,15 @@ class OtgAdbPusher(private val context: Context) {
             }
         } catch (_: Exception) {
         }
-        try { stream.close() } catch (_: Exception) {}
+        try {
+            stream.close()
+        } catch (_: Exception) {
+        }
         return out.toString()
     }
 
     private fun shell(conn: AdbConnection, cmd: String, log: (String) -> Unit): String {
-        log("$ $cmd")
+        log("\$ $cmd")
         val stream = conn.open("shell:$cmd")
         val out = StringBuilder()
         try {
@@ -110,7 +166,10 @@ class OtgAdbPusher(private val context: Context) {
             }
         } catch (_: Exception) {
         }
-        try { stream.close() } catch (_: Exception) {}
+        try {
+            stream.close()
+        } catch (_: Exception) {
+        }
         return out.toString()
     }
 
