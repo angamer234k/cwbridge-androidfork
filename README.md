@@ -2,66 +2,37 @@
 
 Native Android companion for [cwbridge](https://www.npmjs.com/package/cwbridge).
 
-Version **2.8.0-android** — Accessibility taps + **`invoke|` log engine** (MacroDroid-compatible).
+## Downloads (Releases)
 
-## invoke| protocol
+Published builds live under **[Releases](https://github.com/angamer234k/cwbridge-androidfork/releases)**:
 
-Roblox / Creator logs a line containing:
+| APK | What |
+|-----|------|
+| `cwbridge-android-debug.apk` | Main app — taps, `invoke|` engine, logcat |
+| `cwbridge-helper-debug.apk` | Phone helper — OTG ADB push to tablet |
 
-```text
-invoke|request.data1.data2
-```
+Trigger a new release: **Actions → Release APKs → Run workflow** (enter tag e.g. `v2.8.1`).
 
-CWBridge watches system logcat (needs `READ_LOGS`) and dispatches:
+## Helper (phone → tablet)
 
-| Command | Meaning |
-|---------|---------|
-| `save.key.data` | Store value under `local.rbx` / key |
-| `load.key.domain` | Load key for domain (`weather.rbx` only — no extra subdomains/paths); value → clipboard + `cwbridge\|ok\|load\|…` |
-| `status` | Battery %, charging, wifi RSSI + level (**no SSID**), uptime |
-| `tap.x.y` | Gesture tap at % of screen |
-| `tappx.x.y` | Gesture tap at pixels |
-| `paste.text` | Focus % → wait 1s → paste clipboard → wait 1s → submit px |
-| `clip.set.text` / `clip.get` | Clipboard |
-| `focus.x.y` | Set paste focus % (default 50 50) |
-| `submit.x.y` | Set paste submit pixels (default 730 1028) |
-| `wait.ms` | Delay up to 30s |
-| `toast.msg` | Toast |
-| `echo.msg` | Reply with payload |
-| `help` | List commands |
-| `ai.prompt` | Passthrough paste for now (no in-app LLM key yet) |
+1. Install **helper** on the phone (OTG host).
+2. Tablet: **USB debugging** ON.
+3. Connect phone ↔ OTG ↔ tablet (data cable).
+4. Allow USB debugging on the tablet (once).
+5. Open helper → **Push update**.
 
-Replies are logged as:
+The helper:
 
-```text
-cwbridge|ok|<request>|<payload>
-cwbridge|err|<request>|<reason>
-```
+1. Downloads latest `cwbridge-android-debug.apk` from GitHub Releases  
+2. Checks if `com.cwbridge.android.debug` is installed  
+3. Installs or updates via OTG ADB  
+4. Runs `pm grant … READ_LOGS`  
+5. Shows success / error in the log pane  
 
-### Domain rule (`load`)
+## Main app — `invoke|` (see earlier docs)
 
-Domain must match `^[a-z0-9_-]+\.rbx$` (e.g. `weather.rbx`, `notes.rbx`).  
-Rejected: `a.b.rbx`, `weather.rbx/page`, `https://…`.
-
-## Permissions
-
-```bash
-adb install -r app-debug.apk
-# Accessibility → CWBridge Tap → On  (allow restricted settings once)
-adb shell pm grant com.cwbridge.android.debug android.permission.READ_LOGS
-```
-
-`READ_LOGS` is required to see Roblox `FLog::CreatorOutput` lines with `invoke|`.
-
-## Build
-
-CI on push to `main` → artifact **cwbridge-debug-apk** (fixed debug keystore — updates without uninstall after 2.7.3+).
-
-```bash
-base64 -d keystore/cwbridge-debug.p12.b64 > keystore/cwbridge-debug.p12
-gradle :app:assembleDebug
-```
+`save` / `load.key.domain` / `status` / `tap` / `paste` / … need **READ_LOGS** on the tablet to see Roblox FLog lines.
 
 ## License
 
-UNLICENSED — companion experiment around the public `cwbridge` npm CLI.
+UNLICENSED experiment. Helper vendors [cgutman/AdbLib](https://github.com/cgutman/AdbLib) (BSD-3-Clause) at build time.
