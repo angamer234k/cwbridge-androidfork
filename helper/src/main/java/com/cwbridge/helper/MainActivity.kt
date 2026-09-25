@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileFilter
 
 class MainActivity : AppCompatActivity() {
 
@@ -184,7 +185,7 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 val adbDir = File("${cacheDir.parent}/adb")
                 if (adbDir.exists()) {
-                    val keyFiles = adbDir.listFiles { it.name.endsWith(".pub") || it.name.endsWith(".key") }
+                    val keyFiles = adbDir.listFiles(FileFilter { file -> file.name.endsWith(".pub") || file.name.endsWith(".key") })
                     if (keyFiles != null && keyFiles.isNotEmpty()) {
                         log("[OK] ADB keys exist (${keyFiles.size} files)")
                     } else {
