@@ -1,6 +1,6 @@
-# CWBridge Android
-
 <p align="center">
+  <img src="https://www.xn--e1aleee.space/api/png/text?t=cwbridge-androidfork" alt="CWBridge Android" />
+  <br />
   <img src="https://img.shields.io/github/v/release/angamer234k/cwbridge-androidfork?label=Release" alt="Release" />
   <img src="https://img.shields.io/github/downloads/angamer234k/cwbridge-androidfork/total?label=Downloads" alt="Downloads" />
   <img src="https://img.shields.io/github/actions/workflow/status/angamer234k/cwbridge-androidfork/build-debug-apk.yml?label=Build" alt="Build" />
