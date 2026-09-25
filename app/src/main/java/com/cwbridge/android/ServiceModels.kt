@@ -6,10 +6,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/**
- * Represents an automation service with triggers and actions.
- * In-memory only (no Parcelable needed).
- */
 data class Service(
     val id: String = System.currentTimeMillis().toString(),
     val name: String,
@@ -119,29 +115,9 @@ sealed class Action {
     }
 }
 
-enum class TriggerType {
-    LOG,
-    TIME,
-    ACCESSIBILITY
-}
-
-enum class ActionType {
-    TAP,
-    GET_INFO,
-    HTTP_REQUEST,
-    AI,
-    DELAY,
-    RUN_SERVICE
-}
-
-enum class InfoType {
-    SCREEN_TEXT,
-    NODE_TEXT,
-    NODE_BOUNDS,
-    CURRENT_APP,
-    TIMESTAMP,
-    CLIPBOARD
-}
+enum class TriggerType { LOG, TIME, ACCESSIBILITY }
+enum class ActionType { TAP, GET_INFO, HTTP_REQUEST, AI, DELAY, RUN_SERVICE }
+enum class InfoType { SCREEN_TEXT, NODE_TEXT, NODE_BOUNDS, CURRENT_APP, TIMESTAMP, CLIPBOARD }
 
 object ServiceRepository {
     private var database: ServiceDatabase? = null
@@ -151,13 +127,12 @@ object ServiceRepository {
     fun init(context: Context, scope: CoroutineScope) {
         if (database == null) {
             database = Room.databaseBuilder(
-                context,
-                ServiceDatabase::class.java,
-                ServiceDatabase.DATABASE_NAME
+                context, ServiceDatabase::class.java, ServiceDatabase.DATABASE_NAME
             ).build()
             useDatabase = true
             scope.launch(Dispatchers.IO) {
                 loadFromDatabase()
+                ensureDefaultServices()
             }
         }
     }
@@ -165,9 +140,7 @@ object ServiceRepository {
     private suspend fun loadFromDatabase() {
         database?.serviceDao()?.getAll()?.forEach { entity ->
             val service = entity.toService()
-            if (!inMemoryServices.any { it.id == service.id }) {
-                inMemoryServices.add(service)
-            }
+            if (!inMemoryServices.any { it.id == service.id }) inMemoryServices.add(service)
         }
     }
 
@@ -188,7 +161,6 @@ object ServiceRepository {
     }
 
     fun getAllServices(): List<Service> = inMemoryServices.toList()
-
     fun getServiceById(id: String): Service? = inMemoryServices.find { it.id == id }
 
     fun addService(service: Service) {
@@ -198,76 +170,94 @@ object ServiceRepository {
 
     fun updateService(updatedService: Service) {
         val index = inMemoryServices.indexOfFirst { it.id == updatedService.id }
-        if (index != -1) {
-            inMemoryServices[index] = updatedService
-        }
+        if (index != -1) inMemoryServices[index] = updatedService
         saveToDatabase(updatedService)
     }
 
     fun deleteService(id: String): Boolean {
-        val service = inMemoryServices.find { it.id == id }
-        return if (service != null) {
-            inMemoryServices.remove(service)
-            deleteFromDatabase(id)
-            true
-        } else {
-            false
-        }
+        val service = inMemoryServices.find { it.id == id } ?: return false
+        inMemoryServices.remove(service)
+        deleteFromDatabase(id)
+        return true
     }
 
     fun reorderActions(serviceId: String, newOrder: List<String>) {
-        val service = inMemoryServices.find { it.id == serviceId }
-        service?.let { s ->
-            val orderedActions = s.actions.sortedBy { action ->
-                newOrder.indexOf(action.id)
-            }.toMutableList()
-            s.actions.clear()
-            s.actions.addAll(orderedActions)
-            saveToDatabase(s)
-        }
+        val service = inMemoryServices.find { it.id == serviceId } ?: return
+        val ordered = service.actions.sortedBy { newOrder.indexOf(it.id) }.toMutableList()
+        service.actions.clear()
+        service.actions.addAll(ordered)
+        saveToDatabase(service)
     }
 
     fun addActionToService(serviceId: String, action: Action): Boolean {
-        val service = inMemoryServices.find { it.id == serviceId }
-        return if (service != null) {
-            service.actions.add(action)
-            saveToDatabase(service)
-            true
-        } else {
-            false
-        }
+        val service = inMemoryServices.find { it.id == serviceId } ?: return false
+        service.actions.add(action)
+        saveToDatabase(service)
+        return true
     }
 
     fun removeActionFromService(serviceId: String, actionId: String): Boolean {
-        val service = inMemoryServices.find { it.id == serviceId }
-        return if (service != null) {
-            service.actions.removeIf { it.id == actionId }
-            saveToDatabase(service)
-            true
-        } else {
-            false
-        }
+        val service = inMemoryServices.find { it.id == serviceId } ?: return false
+        service.actions.removeIf { it.id == actionId }
+        saveToDatabase(service)
+        return true
     }
 
     fun addTriggerToService(serviceId: String, trigger: Trigger): Boolean {
-        val service = inMemoryServices.find { it.id == serviceId }
-        return if (service != null) {
-            service.triggers.add(trigger)
-            saveToDatabase(service)
-            true
-        } else {
-            false
-        }
+        val service = inMemoryServices.find { it.id == serviceId } ?: return false
+        service.triggers.add(trigger)
+        saveToDatabase(service)
+        return true
     }
 
     fun removeTriggerFromService(serviceId: String, triggerId: String): Boolean {
-        val service = inMemoryServices.find { it.id == serviceId }
-        return if (service != null) {
-            service.triggers.removeIf { it.id == triggerId }
-            saveToDatabase(service)
-            true
-        } else {
-            false
-        }
+        val service = inMemoryServices.find { it.id == serviceId } ?: return false
+        service.triggers.removeIf { it.id == triggerId }
+        saveToDatabase(service)
+        return true
+    }
+
+    /** Seed save/load helper services once when the list is empty. */
+    fun ensureDefaultServices() {
+        if (inMemoryServices.isNotEmpty()) return
+        addService(
+            Service(
+                id = "default-save-keys",
+                name = "Save keys",
+                description = "Fires on invoke|save… lines. Add more actions as needed.",
+                isEnabled = true,
+                triggers = mutableListOf(
+                    Trigger.LogTrigger(
+                        id = "default-save-trigger",
+                        name = "invoke save",
+                        pattern = "invoke|save",
+                        matchCase = false,
+                    )
+                ),
+                actions = mutableListOf(
+                    Action.DelayAction(id = "default-save-delay", name = "Ack", milliseconds = 50),
+                ),
+            )
+        )
+        addService(
+            Service(
+                id = "default-load-keys",
+                name = "Load keys",
+                description = "Fires on invoke|load… lines. Add more actions as needed.",
+                isEnabled = true,
+                triggers = mutableListOf(
+                    Trigger.LogTrigger(
+                        id = "default-load-trigger",
+                        name = "invoke load",
+                        pattern = "invoke|load",
+                        matchCase = false,
+                    )
+                ),
+                actions = mutableListOf(
+                    Action.DelayAction(id = "default-load-delay", name = "Ack", milliseconds = 50),
+                ),
+            )
+        )
+        LogBuffer.i("Services", "seeded default Save keys / Load keys")
     }
 }
