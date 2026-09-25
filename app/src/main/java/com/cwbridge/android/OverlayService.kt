@@ -54,8 +54,7 @@ class OverlayService : Service() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         ContextCompat.registerReceiver(
-            this,
-            stopReceiver,
+            this, stopReceiver,
             IntentFilter().apply {
                 addAction(ACTION_STOP)
                 addAction(ACTION_REFRESH)
@@ -70,9 +69,7 @@ class OverlayService : Service() {
         BridgeStatus.removeListener(statusListener)
         try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
         hideLogs()
-        bubbleView?.let {
-            try { windowManager?.removeView(it) } catch (_: Exception) {}
-        }
+        bubbleView?.let { try { windowManager?.removeView(it) } catch (_: Exception) {} }
         bubbleView = null
         super.onDestroy()
     }
@@ -80,9 +77,7 @@ class OverlayService : Service() {
     private fun overlayType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
     private fun showBubble() {
         if (bubbleView != null) return
@@ -91,75 +86,49 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 24
-            y = 200
+            x = 24; y = 200
         }
         bubbleParams = params
-
-        var downX = 0f
-        var downY = 0f
-        var startX = 0
-        var startY = 0
-        var moved = false
+        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.rawX
-                    downY = event.rawY
-                    startX = params.x
-                    startY = params.y
-                    moved = false
-                    true
+                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; moved = false; true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (event.rawX - downX).toInt()
-                    val dy = (event.rawY - downY).toInt()
+                    val dx = (event.rawX - downX).toInt(); val dy = (event.rawY - downY).toInt()
                     if (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8) moved = true
-                    params.x = startX + dx
-                    params.y = startY + dy
-                    try { windowManager?.updateViewLayout(view, params) } catch (_: Exception) {}
-                    true
+                    params.x = startX + dx; params.y = startY + dy
+                    try { windowManager?.updateViewLayout(view, params) } catch (_: Exception) {}; true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (!moved) onBubbleTap()
-                    true
-                }
+                MotionEvent.ACTION_UP -> { if (!moved) onBubbleTap(); true }
                 else -> false
             }
         }
-
         windowManager?.addView(view, params)
         bubbleView = view
         applyColor(BridgeStatus.state)
     }
 
-    private fun onBubbleTap() {
-        if (logsVisible) hideLogs() else showLogs()
-    }
+    private fun onBubbleTap() { if (logsVisible) hideLogs() else showLogs() }
 
     private fun showLogs() {
-        if (logsView != null) {
-            refreshLogsText()
-            return
-        }
+        if (logsView != null) { refreshLogsText(); return }
         val view = LayoutInflater.from(this).inflate(R.layout.overlay_logs_panel, null)
         val bp = bubbleParams
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (bp?.x ?: 24) + 56
-            y = bp?.y ?: 200
+            x = (bp?.x ?: 24) + 56; y = bp?.y ?: 200
         }
         logsView = view
         view.setOnClickListener { hideLogs() }
@@ -171,36 +140,26 @@ class OverlayService : Service() {
     private fun refreshLogsText() {
         val tv = logsView?.findViewById<TextView>(R.id.overlayLogsText) ?: return
         val last = RobloxLogBuffer.last(25)
-        if (last.isEmpty()) {
-            tv.text = "(no console lines yet)"
-            return
-        }
+        if (last.isEmpty()) { tv.text = "(no console lines yet)"; return }
         val sb = SpannableStringBuilder()
         last.forEachIndexed { i, line ->
             if (i > 0) sb.append("\n\n")
             val color = when (line.level) {
+                ConsoleLevel.CATWEB -> Color.parseColor("#E8F1FF")
                 ConsoleLevel.ERROR -> Color.parseColor("#F07178")
                 ConsoleLevel.WARN -> Color.parseColor("#E6C07B")
                 ConsoleLevel.INFO -> Color.parseColor("#7FD4FF")
             }
             val start = sb.length
             sb.append(line.text)
-            sb.setSpan(
-                ForegroundColorSpan(color),
-                start,
-                sb.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
+            sb.setSpan(ForegroundColorSpan(color), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         tv.text = sb
     }
 
     private fun hideLogs() {
-        logsView?.let {
-            try { windowManager?.removeView(it) } catch (_: Exception) {}
-        }
-        logsView = null
-        logsVisible = false
+        logsView?.let { try { windowManager?.removeView(it) } catch (_: Exception) {} }
+        logsView = null; logsVisible = false
     }
 
     private fun applyColor(state: OverlayState) {
@@ -223,21 +182,16 @@ class OverlayService : Service() {
     companion object {
         const val ACTION_STOP = "com.cwbridge.android.OVERLAY_STOP"
         const val ACTION_REFRESH = "com.cwbridge.android.OVERLAY_REFRESH"
-
         fun canDrawOverlays(context: Context): Boolean =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context)
-            else true
-
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context) else true
         fun start(context: Context) {
             if (!canDrawOverlays(context)) return
             context.startService(Intent(context, OverlayService::class.java))
         }
-
         fun stop(context: Context) {
             context.sendBroadcast(Intent(ACTION_STOP).setPackage(context.packageName))
             context.stopService(Intent(context, OverlayService::class.java))
         }
-
         fun refresh(context: Context) {
             context.sendBroadcast(Intent(ACTION_REFRESH).setPackage(context.packageName))
         }
