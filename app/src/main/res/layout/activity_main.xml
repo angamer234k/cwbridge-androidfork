@@ -7,6 +7,15 @@
     android:background="@color/bg"
     android:fitsSystemWindows="true">
 
+    <!-- Toolbar -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/surface"
+        app:title="CWBridge"
+        app:titleTextColor="@android:color/white" />
+
     <!-- Main content -->
     <ScrollView
         android:id="@+id/mainContent"

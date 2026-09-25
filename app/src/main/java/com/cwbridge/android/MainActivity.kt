@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setSupportActionBar(binding.toolbar)
         setupDrawer()
 
         invokeEngine = InvokeEngine(applicationContext, lifecycleScope)
@@ -79,10 +80,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupDrawer() {
         drawerToggle = ActionBarDrawerToggle(
-            this, binding.drawerLayout, R.string.app_name, R.string.app_name
+            this, binding.drawerLayout, binding.toolbar, R.string.app_name, R.string.app_name
         )
         binding.drawerLayout.addDrawerListener(drawerToggle)
         drawerToggle.syncState()
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setHomeButtonEnabled(true)
         binding.navigationView.setNavigationItemSelectedListener { item ->
             onNavigationItemSelected(item)
             true
