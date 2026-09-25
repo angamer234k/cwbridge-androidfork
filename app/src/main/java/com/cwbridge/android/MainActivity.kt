@@ -183,9 +183,7 @@ class MainActivity : AppCompatActivity() {
     private fun showServiceActionsDialog(service: Service) {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Manage Actions for ${service.name}")
-
         val items = arrayOf("Add Action", "Reorder Actions", "Add Trigger")
-
         builder.setItems(items) { _, which ->
             when (which) {
                 0 -> showAddActionDialog(service)
@@ -201,7 +199,6 @@ class MainActivity : AppCompatActivity() {
         val actionTypes = arrayOf(
             "Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service"
         )
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Action")
             .setItems(actionTypes) { _, which ->
@@ -221,14 +218,12 @@ class MainActivity : AppCompatActivity() {
     private fun addTapAction(service: Service) {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Add Tap Action")
-
         val view = layoutInflater.inflate(R.layout.dialog_action_tap, null)
         val xPercentEdit = view.findViewById<android.widget.EditText>(R.id.editTapXPercent)
         val yPercentEdit = view.findViewById<android.widget.EditText>(R.id.editTapYPercent)
         val xPxEdit = view.findViewById<android.widget.EditText>(R.id.editTapXPx)
         val yPxEdit = view.findViewById<android.widget.EditText>(R.id.editTapYPx)
         val textEdit = view.findViewById<android.widget.EditText>(R.id.editTapText)
-
         builder.setView(view)
         builder.setPositiveButton("Add") { _, _ ->
             val action = Action.TapAction(
@@ -248,7 +243,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun addGetInfoAction(service: Service) {
         val infoTypes = InfoType.values().map { it.name }.toTypedArray()
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Get Info Action")
             .setItems(infoTypes) { _, which ->
@@ -267,11 +261,9 @@ class MainActivity : AppCompatActivity() {
     private fun addHttpRequestAction(service: Service) {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Add HTTP Request Action")
-
         val view = layoutInflater.inflate(R.layout.dialog_action_http, null)
         val urlEdit = view.findViewById<android.widget.EditText>(R.id.editHttpUrl)
         val methodSpinner = view.findViewById<android.widget.Spinner>(R.id.spinnerHttpMethod)
-
         builder.setView(view)
         builder.setPositiveButton("Add") { _, _ ->
             val action = Action.HttpRequestAction(
@@ -289,15 +281,11 @@ class MainActivity : AppCompatActivity() {
     private fun addAiAction(service: Service) {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Add AI Action")
-
         val view = layoutInflater.inflate(R.layout.dialog_action_ai, null)
         val promptEdit = view.findViewById<android.widget.EditText>(R.id.editAiPrompt)
-
         builder.setView(view)
         builder.setPositiveButton("Add") { _, _ ->
-            val action = Action.AiAction(
-                prompt = promptEdit.text.toString()
-            )
+            val action = Action.AiAction(prompt = promptEdit.text.toString())
             ServiceRepository.addActionToService(service.id, action)
             refreshServices()
             Toast.makeText(this, "AI action added", Toast.LENGTH_SHORT).show()
@@ -309,10 +297,8 @@ class MainActivity : AppCompatActivity() {
     private fun addDelayAction(service: Service) {
         val builder = MaterialAlertDialogBuilder(this)
         builder.setTitle("Add Delay Action")
-
         val view = layoutInflater.inflate(R.layout.dialog_action_delay, null)
         val delayEdit = view.findViewById<android.widget.EditText>(R.id.editDelayMs)
-
         builder.setView(view)
         builder.setPositiveButton("Add") { _, _ ->
             val action = Action.DelayAction(
@@ -327,24 +313,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addRunServiceAction(service: Service) {
-        val availableServices = ServiceRepository.getAllServices()
-            .filter { it.id != service.id }
-            .map { it.name }
-            .toTypedArray()
-
-        if (availableServices.isEmpty()) {
+        val others = ServiceRepository.getAllServices().filter { it.id != service.id }
+        if (others.isEmpty()) {
             Toast.makeText(this, "No other services available", Toast.LENGTH_SHORT).show()
             return
         }
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Run Service Action")
-            .setItems(availableServices) { _, which ->
-                val targetService = ServiceRepository.getAllServices()
-                    .filter { it.id != service.id }[which]
-                val action = Action.RunServiceAction(
-                    serviceId = targetService.id
-                )
+            .setItems(others.map { it.name }.toTypedArray()) { _, which ->
+                val action = Action.RunServiceAction(serviceId = others[which].id)
                 ServiceRepository.addActionToService(service.id, action)
                 refreshServices()
                 Toast.makeText(this, "Run Service action added", Toast.LENGTH_SHORT).show()
@@ -358,12 +335,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "No actions to reorder", Toast.LENGTH_SHORT).show()
             return
         }
-        val actionNames = service.actions.map { it.name }.toTypedArray()
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Reorder Actions")
-            .setMessage("Select an action to move up or down")
-            .setItems(actionNames) { _, which ->
+            .setItems(service.actions.map { it.name }.toTypedArray()) { _, which ->
                 showMoveActionDialog(service, which)
             }
             .setNegativeButton("Cancel", null)
@@ -371,34 +345,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMoveActionDialog(service: Service, currentIndex: Int) {
-        val items = arrayOf("Move Up", "Move Down", "Remove")
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Action: ${service.actions[currentIndex].name}")
-            .setItems(items) { _, which ->
+            .setItems(arrayOf("Move Up", "Move Down", "Remove")) { _, which ->
                 when (which) {
-                    0 -> {
-                        if (currentIndex > 0) {
-                            val action = service.actions[currentIndex]
-                            service.actions.removeAt(currentIndex)
-                            service.actions.add(currentIndex - 1, action)
-                            ServiceRepository.updateService(service)
-                            refreshServices()
-                        }
+                    0 -> if (currentIndex > 0) {
+                        val a = service.actions.removeAt(currentIndex)
+                        service.actions.add(currentIndex - 1, a)
+                        ServiceRepository.updateService(service)
+                        refreshServices()
                     }
-                    1 -> {
-                        if (currentIndex < service.actions.size - 1) {
-                            val action = service.actions[currentIndex]
-                            service.actions.removeAt(currentIndex)
-                            service.actions.add(currentIndex + 1, action)
-                            ServiceRepository.updateService(service)
-                            refreshServices()
-                        }
+                    1 -> if (currentIndex < service.actions.size - 1) {
+                        val a = service.actions.removeAt(currentIndex)
+                        service.actions.add(currentIndex + 1, a)
+                        ServiceRepository.updateService(service)
+                        refreshServices()
                     }
                     2 -> {
                         ServiceRepository.removeActionFromService(
-                            service.id,
-                            service.actions[currentIndex].id
+                            service.id, service.actions[currentIndex].id
                         )
                         refreshServices()
                     }
@@ -409,11 +374,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAddTriggerDialog(service: Service) {
-        val triggerTypes = arrayOf("Log Trigger", "Time Trigger", "Accessibility Trigger")
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Trigger")
-            .setItems(triggerTypes) { _, which ->
+            .setItems(arrayOf("Log Trigger", "Time Trigger", "Accessibility Trigger")) { _, which ->
                 when (which) {
                     0 -> addLogTrigger(service)
                     1 -> addTimeTrigger(service)
@@ -425,66 +388,58 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addLogTrigger(service: Service) {
-        val builder = MaterialAlertDialogBuilder(this)
-        builder.setTitle("Add Log Trigger")
-
         val view = layoutInflater.inflate(R.layout.dialog_trigger_log, null)
         val patternEdit = view.findViewById<android.widget.EditText>(R.id.editLogPattern)
-
-        builder.setView(view)
-        builder.setPositiveButton("Add") { _, _ ->
-            val trigger = Trigger.LogTrigger(
-                pattern = patternEdit.text.toString()
-            )
-            service.triggers.add(trigger)
-            ServiceRepository.updateService(service)
-            refreshServices()
-            Toast.makeText(this, "Log trigger added", Toast.LENGTH_SHORT).show()
-        }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add Log Trigger")
+            .setView(view)
+            .setPositiveButton("Add") { _, _ ->
+                service.triggers.add(Trigger.LogTrigger(pattern = patternEdit.text.toString()))
+                ServiceRepository.updateService(service)
+                refreshServices()
+                Toast.makeText(this, "Log trigger added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun addTimeTrigger(service: Service) {
-        val builder = MaterialAlertDialogBuilder(this)
-        builder.setTitle("Add Time Trigger")
-
         val view = layoutInflater.inflate(R.layout.dialog_trigger_time, null)
         val intervalEdit = view.findViewById<android.widget.EditText>(R.id.editTimeInterval)
-
-        builder.setView(view)
-        builder.setPositiveButton("Add") { _, _ ->
-            val trigger = Trigger.TimeTrigger(
-                intervalMs = intervalEdit.text.toString().toLongOrNull() ?: 1000
-            )
-            service.triggers.add(trigger)
-            ServiceRepository.updateService(service)
-            refreshServices()
-            Toast.makeText(this, "Time trigger added", Toast.LENGTH_SHORT).show()
-        }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add Time Trigger")
+            .setView(view)
+            .setPositiveButton("Add") { _, _ ->
+                service.triggers.add(
+                    Trigger.TimeTrigger(
+                        intervalMs = intervalEdit.text.toString().toLongOrNull() ?: 1000
+                    )
+                )
+                ServiceRepository.updateService(service)
+                refreshServices()
+                Toast.makeText(this, "Time trigger added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun addAccessibilityTrigger(service: Service) {
-        val builder = MaterialAlertDialogBuilder(this)
-        builder.setTitle("Add Accessibility Trigger")
-
         val view = layoutInflater.inflate(R.layout.dialog_trigger_accessibility, null)
-        val patternEdit = view.findViewById<android.widget.EditText>(R.id.editAccessibilityPattern)
-
-        builder.setView(view)
-        builder.setPositiveButton("Add") { _, _ ->
-            val trigger = Trigger.AccessibilityTrigger(
-                textPattern = patternEdit.text.toString()
-            )
-            service.triggers.add(trigger)
-            ServiceRepository.updateService(service)
-            refreshServices()
-            Toast.makeText(this, "Accessibility trigger added", Toast.LENGTH_SHORT).show()
-        }
-        builder.setNegativeButton("Cancel", null)
-        builder.show()
+        // layout id is editAccTextPattern
+        val patternEdit = view.findViewById<android.widget.EditText>(R.id.editAccTextPattern)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Add Accessibility Trigger")
+            .setView(view)
+            .setPositiveButton("Add") { _, _ ->
+                service.triggers.add(
+                    Trigger.AccessibilityTrigger(textPattern = patternEdit.text.toString())
+                )
+                ServiceRepository.updateService(service)
+                refreshServices()
+                Toast.makeText(this, "Accessibility trigger added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun deleteService(service: Service) {
@@ -501,21 +456,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleService(service: Service) {
-        val updated = service.copy(isEnabled = !service.isEnabled)
-        ServiceRepository.updateService(updated)
+        ServiceRepository.updateService(service.copy(isEnabled = !service.isEnabled))
         refreshServices()
-        Toast.makeText(
-            this,
-            if (updated.isEnabled) "Enabled" else "Disabled",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
     override fun onDestroy() {
         LogBuffer.removeListener(logListener)
-        if (bridgeRunning) {
-            logcatReader.stop()
-        }
+        if (bridgeRunning) logcatReader.stop()
         super.onDestroy()
     }
 
@@ -526,11 +473,7 @@ class MainActivity : AppCompatActivity() {
             LogBuffer.i("CWBridge", "bridge stopped")
         } else {
             if (!logcatReader.start()) {
-                Toast.makeText(
-                    this,
-                    "logcat failed — grant READ_LOGS via helper/ADB",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this, "logcat failed — grant READ_LOGS via helper/ADB", Toast.LENGTH_LONG).show()
                 return
             }
             bridgeRunning = true
@@ -543,20 +486,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartStop.text = if (bridgeRunning) "Stop bridge" else "Start bridge"
         val a11y = isAccessibilityEnabled()
         binding.chipA11y.text = if (a11y) "A11y ON" else "A11y OFF"
-        binding.chipA11y.setTextColor(
-            ContextCompat.getColor(this, if (a11y) R.color.ok else R.color.warn)
-        )
+        binding.chipA11y.setTextColor(ContextCompat.getColor(this, if (a11y) R.color.ok else R.color.warn))
         binding.chipBridge.text = if (bridgeRunning) "Bridge ON" else "Bridge OFF"
-        binding.chipBridge.setTextColor(
-            ContextCompat.getColor(this, if (bridgeRunning) R.color.ok else R.color.warn)
-        )
+        binding.chipBridge.setTextColor(ContextCompat.getColor(this, if (bridgeRunning) R.color.ok else R.color.warn))
     }
 
     private fun isAccessibilityEnabled(): Boolean {
         val cn = ComponentName(this, TapService::class.java)
         val enabled = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         val splitter = TextUtils.SimpleStringSplitter(':')
         splitter.setString(enabled)
@@ -573,10 +511,7 @@ class MainActivity : AppCompatActivity() {
     private fun showAdbGrantHint() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Grant READ_LOGS")
-            .setMessage(
-                "adb shell pm grant ${packageName} android.permission.READ_LOGS\n\n" +
-                    "Or use CWBridge Helper over OTG."
-            )
+            .setMessage("adb shell pm grant ${packageName} android.permission.READ_LOGS\n\nOr use CWBridge Helper over OTG.")
             .setPositiveButton("OK", null)
             .show()
     }
@@ -589,11 +524,7 @@ class MainActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             val ok = TapService.instance?.tapText(text) == true
-            Toast.makeText(
-                this@MainActivity,
-                if (ok) "Tapped $text" else "Tap failed / a11y off",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this@MainActivity, if (ok) "Tapped $text" else "Tap failed / a11y off", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -606,11 +537,7 @@ class MainActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             val ok = TapService.instance?.tapPercent(x, y) == true
-            Toast.makeText(
-                this@MainActivity,
-                if (ok) "Tapped $x% $y%" else "Tap failed / a11y off",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this@MainActivity, if (ok) "Tapped $x% $y%" else "Tap failed / a11y off", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -623,20 +550,11 @@ class MainActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             val ok = TapService.instance?.tapPx(x, y) == true
-            Toast.makeText(
-                this@MainActivity,
-                if (ok) "Tapped $x,$y" else "Tap failed / a11y off",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this@MainActivity, if (ok) "Tapped $x,$y" else "Tap failed / a11y off", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun appendLog(line: LogBuffer.Line) {
-        val color = when (line.level) {
-            "E" -> 0xFFFF6B6B.toInt()
-            "W" -> 0xFFFFD166.toInt()
-            else -> 0xFFE8E6E3.toInt()
-        }
         binding.logView.append("${line.tag}: ${line.message}\n")
     }
 
