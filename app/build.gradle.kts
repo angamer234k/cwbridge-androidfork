@@ -12,8 +12,8 @@ android {
         applicationId = "com.cwbridge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.9.2-android"
+        versionCode = 8
+        versionName = "2.9.3-android"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -52,12 +52,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        viewBinding = true
-    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { viewBinding = true }
 }
 
 dependencies {
