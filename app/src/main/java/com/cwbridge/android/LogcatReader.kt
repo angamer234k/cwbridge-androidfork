@@ -14,7 +14,8 @@ import java.io.InputStreamReader
 
 /**
  * Attaches to system logcat when READ_LOGS is granted so Roblox FLog
- * `invoke|…` lines reach [InvokeEngine].
+ * `invoke|…` lines reach [InvokeEngine], and `[FLog::CreatorOutput]`
+ * lines fill [RobloxLogBuffer] for the overlay.
  */
 class LogcatReader(
     private val context: Context,
@@ -46,15 +47,24 @@ class LogcatReader(
         }
         job = scope.launch(Dispatchers.IO) {
             try {
-                // Clear is optional; -v raw keeps body easy to scan for invoke|
                 val proc = ProcessBuilder("logcat", "-v", "time", "*:I")
                     .redirectErrorStream(true)
                     .start()
-                LogBuffer.i("Logcat", "attached to system logcat (watching invoke|)")
+                LogBuffer.i("Logcat", "attached (invoke| + FLog::CreatorOutput)")
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
                         val line = reader.readLine() ?: break
                         when {
+                            line.contains("FLog::CreatorOutput") -> {
+                                RobloxLogBuffer.add(line)
+                                if (BridgeStatus.state == OverlayState.WAITING) {
+                                    BridgeStatus.set(OverlayState.ACTIVE, "Listening")
+                                }
+                                if (line.contains("invoke|")) {
+                                    LogBuffer.d("sys", line.take(300))
+                                    invokeSink?.invoke(line)
+                                }
+                            }
                             line.contains("invoke|") -> {
                                 LogBuffer.d("sys", line.take(300))
                                 invokeSink?.invoke(line)
@@ -68,6 +78,7 @@ class LogcatReader(
                 }
             } catch (t: Throwable) {
                 LogBuffer.e("Logcat", "failed to attach: ${t.message}")
+                BridgeStatus.set(OverlayState.ERROR, "Logcat failed")
             }
         }
     }
