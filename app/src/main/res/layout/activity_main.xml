@@ -19,6 +19,7 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@color/surface"
+            android:paddingTop="8dp"
             app:title="CWBridge"
             app:titleTextColor="@android:color/white" />
 
