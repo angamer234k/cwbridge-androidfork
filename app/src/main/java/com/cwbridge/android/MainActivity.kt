@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         drawerToggle = ActionBarDrawerToggle(
             this, binding.drawerLayout, binding.toolbar, R.string.app_name, R.string.app_name
         )
+        drawerToggle.isDrawerIndicatorEnabled = true
         binding.drawerLayout.addDrawerListener(drawerToggle)
         drawerToggle.syncState()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
