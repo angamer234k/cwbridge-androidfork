@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.room.Room
 import com.cwbridge.android.databinding.ActivityMainBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
@@ -22,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var logcatReader: LogcatReader
     private lateinit var invokeEngine: InvokeEngine
+    private lateinit var executionEngine: ExecutionEngine
     private lateinit var drawerToggle: ActionBarDrawerToggle
     private var bridgeRunning = false
     private lateinit var serviceAdapter: ServiceAdapter
@@ -38,8 +40,11 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         setupDrawer()
 
+        ServiceRepository.init(applicationContext, lifecycleScope)
         invokeEngine = InvokeEngine(applicationContext, lifecycleScope)
         logcatReader = LogcatReader(this) { raw -> invokeEngine.onExternalLog(raw) }
+        executionEngine = ExecutionEngine(applicationContext, lifecycleScope, invokeEngine, logcatReader)
+        executionEngine.start()
 
         binding.btnStartStop.setOnClickListener { toggleBridge() }
         binding.btnA11y.setOnClickListener { openAccessibilitySettings() }
@@ -74,6 +79,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         invokeEngine.stop()
+        executionEngine.stop()
         LogBuffer.removeListener(logListener)
         super.onDestroy()
     }
@@ -133,6 +139,9 @@ class MainActivity : AppCompatActivity() {
             onToggle = { toggleService(it) },
         )
         binding.servicesRecyclerView.adapter = serviceAdapter
+        // Restart triggers for all services
+        executionEngine.stop()
+        executionEngine.start()
     }
 
     private fun showAddServiceDialog() {
@@ -173,12 +182,12 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Save") { _, _ ->
                 val name = nameEdit.text.toString().trim()
                 if (name.isEmpty()) return@setPositiveButton
-                ServiceRepository.updateService(
-                    service.copy(
-                        name = name,
-                        description = descEdit.text.toString().trim(),
-                    )
+                val updatedService = service.copy(
+                    name = name,
+                    description = descEdit.text.toString().trim(),
                 )
+                ServiceRepository.updateService(updatedService)
+                executionEngine.updateServiceTriggers(updatedService)
                 refreshServices()
             }
             .setNeutralButton("Actions") { _, _ -> showServiceActionsDialog(service) }
@@ -401,8 +410,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Add Log Trigger")
             .setView(view)
             .setPositiveButton("Add") { _, _ ->
-                service.triggers.add(Trigger.LogTrigger(pattern = patternEdit.text.toString()))
+                val trigger = Trigger.LogTrigger(pattern = patternEdit.text.toString())
+                service.triggers.add(trigger)
                 ServiceRepository.updateService(service)
+                executionEngine.updateServiceTriggers(service)
                 refreshServices()
             }
             .setNegativeButton("Cancel", null)
@@ -416,12 +427,12 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Add Time Trigger")
             .setView(view)
             .setPositiveButton("Add") { _, _ ->
-                service.triggers.add(
-                    Trigger.TimeTrigger(
-                        intervalMs = intervalEdit.text.toString().toLongOrNull() ?: 1000
-                    )
+                val trigger = Trigger.TimeTrigger(
+                    intervalMs = intervalEdit.text.toString().toLongOrNull() ?: 1000
                 )
+                service.triggers.add(trigger)
                 ServiceRepository.updateService(service)
+                executionEngine.updateServiceTriggers(service)
                 refreshServices()
             }
             .setNegativeButton("Cancel", null)
@@ -435,10 +446,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Add Accessibility Trigger")
             .setView(view)
             .setPositiveButton("Add") { _, _ ->
-                service.triggers.add(
-                    Trigger.AccessibilityTrigger(textPattern = patternEdit.text.toString())
-                )
+                val trigger = Trigger.AccessibilityTrigger(textPattern = patternEdit.text.toString())
+                service.triggers.add(trigger)
                 ServiceRepository.updateService(service)
+                executionEngine.updateServiceTriggers(service)
                 refreshServices()
             }
             .setNegativeButton("Cancel", null)
@@ -450,6 +461,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Delete Service")
             .setMessage("Delete ${service.name}?")
             .setPositiveButton("Delete") { _, _ ->
+                executionEngine.removeServiceTriggers(service.id)
                 ServiceRepository.deleteService(service.id)
                 refreshServices()
             }
@@ -465,8 +477,9 @@ class MainActivity : AppCompatActivity() {
     private fun toggleBridge() {
         if (bridgeRunning) {
             bridgeRunning = false
-            invokeEngine.stop()
-            LogBuffer.i("CWBridge", "bridge stopped")
+        invokeEngine.stop()
+        executionEngine.stop()
+        LogBuffer.i("CWBridge", "bridge stopped")
         } else {
             if (!TapService.isConnected()) {
                 LogBuffer.e("CWBridge", "refusing start: Accessibility service is off")
@@ -481,6 +494,7 @@ class MainActivity : AppCompatActivity() {
             invokeEngine.focusYPct = 50f
             invokeEngine.submitXPx = 730f
             invokeEngine.submitYPx = 1028f
+            executionEngine.start()
             LogBuffer.i(
                 "CWBridge",
                 "bridge running invoke=on logcat=${logcatReader.hasPermission()}",
