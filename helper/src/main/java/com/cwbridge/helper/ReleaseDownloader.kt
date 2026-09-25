@@ -7,7 +7,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/** Pulls the latest CWBridge debug APK from GitHub Releases. */
+/** Pulls the latest CWBridge debug APK from GitHub Releases (cached). */
 object ReleaseDownloader {
 
     private const val OWNER = "angamer234k"
@@ -21,9 +21,12 @@ object ReleaseDownloader {
 
     data class Result(val file: File, val tag: String, val assetName: String)
 
-    fun downloadLatestCwbridge(destDir: File, log: (String) -> Unit): Result {
-        destDir.mkdirs()
-        log("Fetching $API")
+    /**
+     * @param cacheDir e.g. context.cacheDir/apk-cache — reused across pushes
+     */
+    fun downloadLatestCwbridge(cacheDir: File, log: (String) -> Unit): Result {
+        cacheDir.mkdirs()
+        log("Fetching release metadata…")
         val metaReq = Request.Builder()
             .url(API)
             .header("Accept", "application/vnd.github+json")
@@ -41,8 +44,27 @@ object ReleaseDownloader {
                 ?: throw IllegalStateException("No cwbridge APK asset on release $tag")
             val name = asset.getString("name")
             val url = asset.getString("browser_download_url")
-            log("Release $tag → $name")
-            val out = File(destDir, name)
+            val remoteSize = asset.optLong("size", -1L)
+
+            val out = File(cacheDir, name)
+            val meta = File(cacheDir, "$name.meta")
+
+            if (out.isFile && out.length() > 0) {
+                val cachedTag = meta.takeIf { it.isFile }?.readText()?.trim().orEmpty()
+                val sizeOk = remoteSize <= 0 || out.length() == remoteSize
+                if (sizeOk && (cachedTag == tag || cachedTag.isEmpty())) {
+                    // refresh meta if missing
+                    if (!meta.isFile) meta.writeText(tag)
+                    log("Cache hit — skip download ($tag, ${out.length()} bytes)")
+                    log("  ${out.absolutePath}")
+                    return Result(out, tag, name)
+                }
+                log("Cache stale (tag=$cachedTag size=${out.length()} vs remote=$remoteSize) — re-download")
+            }
+
+            log("Release $tag → $name ($remoteSize bytes)")
+            val tmp = File(cacheDir, "$name.part")
+            if (tmp.exists()) tmp.delete()
             val apkReq = Request.Builder()
                 .url(url)
                 .header("User-Agent", "CWBridge-Helper")
@@ -50,10 +72,24 @@ object ReleaseDownloader {
             client.newCall(apkReq).execute().use { apkResp ->
                 if (!apkResp.isSuccessful) throw IllegalStateException("download HTTP ${apkResp.code}")
                 apkResp.body?.byteStream()?.use { input ->
-                    out.outputStream().use { input.copyTo(it) }
+                    tmp.outputStream().use { input.copyTo(it) }
                 } ?: throw IllegalStateException("empty apk body")
             }
-            log("Saved ${out.absolutePath} (${out.length()} bytes)")
+            if (out.exists()) out.delete()
+            if (!tmp.renameTo(out)) {
+                tmp.copyTo(out, overwrite = true)
+                tmp.delete()
+            }
+            meta.writeText(tag)
+            // purge other old apks in cache (keep current only)
+            cacheDir.listFiles()?.forEach { f ->
+                if (f.name != name && f.name != "$name.meta" &&
+                    (f.name.endsWith(".apk") || f.name.endsWith(".apk.meta") || f.name.endsWith(".part"))
+                ) {
+                    f.delete()
+                }
+            }
+            log("Cached ${out.absolutePath} (${out.length()} bytes)")
             return Result(out, tag, name)
         }
     }

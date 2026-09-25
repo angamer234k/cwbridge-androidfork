@@ -18,18 +18,25 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
-/** OTG ADB host using flashbot UsbChannel (UsbRequest reads + bulk writes). */
+/** OTG ADB host using flashbot UsbChannel. */
 class OtgAdbPusher(private val context: Context) {
+
+    class StallException(msg: String) : Exception(msg)
 
     companion object {
         const val ACTION_USB_PERMISSION = "com.cwbridge.helper.USB_PERMISSION"
         const val TARGET_PKG = "com.cwbridge.android.debug"
         const val PERM_LOGS = "android.permission.READ_LOGS"
         private const val CONNECT_TIMEOUT_SEC = 25L
-        /** ADB CNXN default maxData is 4096; never send larger payloads per WRITE. */
         private const val ADB_CHUNK = 4096
-        private const val INSTALL_TIMEOUT_SEC = 180L
+        /** No bytes forwarded for this long → stall. */
+        private const val PROGRESS_STALL_MS = 30_000L
+        /** Countdown before force reconnect. */
+        private const val RECONNECT_COUNTDOWN_SEC = 10
+        private const val MAX_PUSH_ATTEMPTS = 2
     }
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -57,11 +64,43 @@ class OtgAdbPusher(private val context: Context) {
         if (!usb.hasPermission(device)) {
             throw IllegalStateException("No USB permission — grant and retry")
         }
+        var last: Throwable? = null
+        for (attempt in 1..MAX_PUSH_ATTEMPTS) {
+            log("—— attempt $attempt/$MAX_PUSH_ATTEMPTS ——")
+            try {
+                pushOnce(apk, device, log)
+                return
+            } catch (e: StallException) {
+                last = e
+                log("STALL: ${e.message}")
+                if (attempt < MAX_PUSH_ATTEMPTS) {
+                    log("Reconnecting in ${RECONNECT_COUNTDOWN_SEC}s…")
+                    for (s in RECONNECT_COUNTDOWN_SEC downTo 1) {
+                        log("  $s…")
+                        Thread.sleep(1000)
+                    }
+                    log("Force reconnect…")
+                }
+            } catch (e: Exception) {
+                last = e
+                log("FAIL attempt $attempt: ${e.message}")
+                if (attempt < MAX_PUSH_ATTEMPTS) {
+                    log("Retry after ${RECONNECT_COUNTDOWN_SEC}s…")
+                    for (s in RECONNECT_COUNTDOWN_SEC downTo 1) {
+                        log("  $s…")
+                        Thread.sleep(1000)
+                    }
+                }
+            }
+        }
+        throw last ?: IllegalStateException("push failed")
+    }
 
+    private fun pushOnce(apk: File, device: UsbDevice, log: (String) -> Unit) {
         val connection = usb.openDevice(device)
             ?: throw IllegalStateException("openDevice failed")
         val iface = findAdbInterface(device)
-            ?: throw IllegalStateException("No ADB interface (class 0xFF/0x42/0x01) — USB debugging on?")
+            ?: throw IllegalStateException("No ADB interface — USB debugging on?")
 
         if (!connection.claimInterface(iface, true)) {
             connection.close()
@@ -72,16 +111,16 @@ class OtgAdbPusher(private val context: Context) {
         val channel = UsbChannel(connection, iface)
         try {
             val crypto = loadOrCreateCrypto(log)
-            log("ADB connect via UsbChannel (max ${CONNECT_TIMEOUT_SEC}s)…")
-            log("Watch tablet for Allow USB debugging prompt")
+            log("ADB connect (max ${CONNECT_TIMEOUT_SEC}s)…")
             val conn = connectWithTimeout(channel, crypto)
             log("ADB connected")
 
             val installed = shell(conn, "pm path $TARGET_PKG", log).contains("package:")
             log(if (installed) "CWBridge present → update" else "CWBridge missing → install")
 
-            log("Streaming APK (${apk.length()} bytes, ${ADB_CHUNK}-byte ADB chunks)…")
-            val installOut = execInstallWithTimeout(conn, apk, log)
+            log("Streaming APK (${apk.length()} bytes, ${ADB_CHUNK}B chunks)…")
+            log("Stall watchdog: ${PROGRESS_STALL_MS / 1000}s no progress → reconnect")
+            val installOut = execInstall(conn, apk, log)
             log("install: ${installOut.take(400)}")
             if (!installOut.contains("Success", ignoreCase = true) &&
                 !installOut.contains("success", ignoreCase = true)
@@ -122,37 +161,10 @@ class OtgAdbPusher(private val context: Context) {
                 future.get(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
             } catch (e: TimeoutException) {
                 future.cancel(true)
-                throw IllegalStateException(
-                    "ADB handshake timed out — retry after Reset ADB keys + revoke on tablet.",
-                )
+                throw IllegalStateException("ADB handshake timed out")
             } catch (e: Exception) {
                 val cause = e.cause ?: e
                 throw IllegalStateException("ADB connect failed: ${cause.message}", cause)
-            }
-        } finally {
-            pool.shutdownNow()
-        }
-    }
-
-    private fun execInstallWithTimeout(
-        conn: AdbConnection,
-        apk: File,
-        log: (String) -> Unit,
-    ): String {
-        val pool = Executors.newSingleThreadExecutor()
-        try {
-            val future = pool.submit(Callable { execInstall(conn, apk, log) })
-            return try {
-                future.get(INSTALL_TIMEOUT_SEC, TimeUnit.SECONDS)
-            } catch (e: TimeoutException) {
-                future.cancel(true)
-                throw IllegalStateException(
-                    "APK stream timed out after ${INSTALL_TIMEOUT_SEC}s — " +
-                        "try again or install once via Bugjaeger then use helper for updates.",
-                )
-            } catch (e: Exception) {
-                val cause = e.cause ?: e
-                throw IllegalStateException("Install stream failed: ${cause.message}", cause)
             }
         } finally {
             pool.shutdownNow()
@@ -163,36 +175,74 @@ class OtgAdbPusher(private val context: Context) {
         val size = apk.length()
         val stream = conn.open("exec:cmd package install -r -t -S $size")
         val buf = ByteArray(ADB_CHUNK)
-        var sent = 0L
-        var lastPct = -1
-        apk.inputStream().use { input ->
-            while (true) {
-                val n = input.read(buf)
-                if (n <= 0) break
-                val chunk = if (n == buf.size) buf else buf.copyOf(n)
-                stream.write(chunk)
-                sent += n
-                val pct = if (size > 0) ((sent * 100) / size).toInt() else 100
-                if (pct != lastPct && (pct % 10 == 0 || pct == 100)) {
-                    lastPct = pct
-                    log("  … $pct% ($sent / $size)")
+        val sent = AtomicLong(0)
+        val lastProgress = AtomicLong(System.currentTimeMillis())
+        val abort = AtomicBoolean(false)
+        val done = AtomicBoolean(false)
+
+        val watchdog = Thread({
+            try {
+                while (!done.get() && !abort.get()) {
+                    Thread.sleep(1000)
+                    val idle = System.currentTimeMillis() - lastProgress.get()
+                    if (idle >= PROGRESS_STALL_MS) {
+                        log("No progress for ${idle / 1000}s — stall detected")
+                        for (s in RECONNECT_COUNTDOWN_SEC downTo 1) {
+                            if (done.get()) return@Thread
+                            log("  reconnect in $s…")
+                            Thread.sleep(1000)
+                        }
+                        abort.set(true)
+                        return@Thread
+                    }
+                }
+            } catch (_: InterruptedException) {
+            }
+        }, "install-watchdog").also { it.isDaemon = true; it.start() }
+
+        try {
+            var lastPct = -1
+            apk.inputStream().use { input ->
+                while (true) {
+                    if (abort.get()) {
+                        throw StallException("install stalled — forcing reconnect")
+                    }
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    val chunk = if (n == buf.size) buf else buf.copyOf(n)
+                    stream.write(chunk)
+                    val total = sent.addAndGet(n.toLong())
+                    lastProgress.set(System.currentTimeMillis())
+                    val pct = if (size > 0) ((total * 100) / size).toInt() else 100
+                    if (pct != lastPct && (pct % 5 == 0 || pct == 100)) {
+                        lastPct = pct
+                        log("  … $pct% ($total / $size)")
+                    }
                 }
             }
-        }
-        log("  stream write done, waiting for pm…")
-        val out = StringBuilder()
-        try {
-            while (!stream.isClosed) {
-                val chunk = stream.read() ?: break
-                out.append(String(chunk, StandardCharsets.UTF_8))
+            log("  write done, waiting for pm…")
+            lastProgress.set(System.currentTimeMillis())
+            val out = StringBuilder()
+            try {
+                while (!stream.isClosed) {
+                    if (abort.get()) throw StallException("install stalled waiting for pm")
+                    val chunk = stream.read() ?: break
+                    out.append(String(chunk, StandardCharsets.UTF_8))
+                    lastProgress.set(System.currentTimeMillis())
+                }
+            } catch (e: StallException) {
+                throw e
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
+            try {
+                stream.close()
+            } catch (_: Exception) {
+            }
+            return out.toString()
+        } finally {
+            done.set(true)
+            watchdog.interrupt()
         }
-        try {
-            stream.close()
-        } catch (_: Exception) {
-        }
-        return out.toString()
     }
 
     private fun shell(conn: AdbConnection, cmd: String, log: (String) -> Unit): String {

@@ -15,6 +15,7 @@ import com.cwbridge.helper.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -70,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.0.1 — if stuck on ADB connect, Reset keys + revoke on tablet")
+        log("Helper 1.0.4 — APK cache + stall reconnect")
     }
 
     override fun onDestroy() {
@@ -117,8 +118,9 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 log("—— push start ——")
+                val apkCache = File(cacheDir, "apk-cache")
                 val apk = withContext(Dispatchers.IO) {
-                    ReleaseDownloader.downloadLatestCwbridge(cacheDir) { msg ->
+                    ReleaseDownloader.downloadLatestCwbridge(apkCache) { msg ->
                         runOnUiThread { log(msg) }
                     }.file
                 }
