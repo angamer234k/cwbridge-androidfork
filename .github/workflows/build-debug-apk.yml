@@ -2,9 +2,9 @@ name: Build Debug APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, vibe/nav-drawer-services-9e96d4]
   pull_request:
-    branches: [main]
+    branches: [main, vibe/nav-drawer-services-9e96d4]
   workflow_dispatch:
 
 jobs:

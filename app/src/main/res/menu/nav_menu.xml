@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_bridge"
+            android:icon="@drawable/ic_bridge"
+            android:title="Bridge" />
+        <item
+            android:id="@+id/nav_permissions"
+            android:icon="@drawable/ic_permissions"
+            android:title="Permissions" />
+        <item
+            android:id="@+id/nav_actions"
+            android:icon="@drawable/ic_actions"
+            android:title="Actions" />
+        <item
+            android:id="@+id/nav_services"
+            android:icon="@drawable/ic_services"
+            android:title="Services" />
+        <item
+            android:id="@+id/nav_logs"
+            android:icon="@drawable/ic_logs"
+            android:title="Logs" />
+    </group>
+</menu>
