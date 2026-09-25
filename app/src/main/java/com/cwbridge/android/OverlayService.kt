@@ -1,13 +1,19 @@
 package com.cwbridge.android
 
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -15,9 +21,8 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import kotlin.math.abs
 
-/** Floating status dot. Tap shows last 10 [FLog::CreatorOutput] lines. */
+/** Floating status dot. Tap shows last 25 console lines colored by level. */
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
@@ -26,34 +31,44 @@ class OverlayService : Service() {
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var logsVisible = false
 
-    private val statusListener: (OverlayState, String) -> Unit = { state, _ -> applyColor(state) }
+    private val statusListener: (OverlayState, String) -> Unit = { state, _ ->
+        applyColor(state)
+        if (logsVisible) refreshLogsText()
+    }
+
+    private val stopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_STOP -> stopSelf()
+                ACTION_REFRESH -> {
+                    applyColor(BridgeStatus.state)
+                    if (logsVisible) refreshLogsText()
+                }
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        if (!canDrawOverlays(this)) {
-            stopSelf()
-            return
-        }
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        showBubble()
+        ContextCompat.registerReceiver(
+            this,
+            stopReceiver,
+            IntentFilter().apply {
+                addAction(ACTION_STOP)
+                addAction(ACTION_REFRESH)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         BridgeStatus.addListener(statusListener)
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            ACTION_REFRESH -> applyColor(BridgeStatus.state)
-        }
-        return START_STICKY
+        showBubble()
     }
 
     override fun onDestroy() {
         BridgeStatus.removeListener(statusListener)
+        try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
         hideLogs()
         bubbleView?.let {
             try { windowManager?.removeView(it) } catch (_: Exception) {}
@@ -65,12 +80,12 @@ class OverlayService : Service() {
     private fun overlayType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else {
+        else
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
-        }
 
     private fun showBubble() {
+        if (bubbleView != null) return
         val view = LayoutInflater.from(this).inflate(R.layout.overlay_bubble, null)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -85,30 +100,28 @@ class OverlayService : Service() {
             y = 200
         }
         bubbleParams = params
-        bubbleView = view
 
         var downX = 0f
         var downY = 0f
-        var originX = 0
-        var originY = 0
+        var startX = 0
+        var startY = 0
         var moved = false
-
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.rawX
                     downY = event.rawY
-                    originX = params.x
-                    originY = params.y
+                    startX = params.x
+                    startY = params.y
                     moved = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - downX).toInt()
                     val dy = (event.rawY - downY).toInt()
-                    if (abs(dx) > 8 || abs(dy) > 8) moved = true
-                    params.x = originX + dx
-                    params.y = originY + dy
+                    if (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8) moved = true
+                    params.x = startX + dx
+                    params.y = startY + dy
                     try { windowManager?.updateViewLayout(view, params) } catch (_: Exception) {}
                     true
                 }
@@ -121,6 +134,7 @@ class OverlayService : Service() {
         }
 
         windowManager?.addView(view, params)
+        bubbleView = view
         applyColor(BridgeStatus.state)
     }
 
@@ -156,13 +170,29 @@ class OverlayService : Service() {
 
     private fun refreshLogsText() {
         val tv = logsView?.findViewById<TextView>(R.id.overlayLogsText) ?: return
-        val last = RobloxLogBuffer.last(10)
-        tv.text = if (last.isEmpty()) {
-            "(no [FLog::CreatorOutput] yet)\n\nStart Roblox + CatWeb so console lines appear here."
-        } else {
-            last.joinToString("\n\n") { "\u2022 $it" }
+        val last = RobloxLogBuffer.last(25)
+        if (last.isEmpty()) {
+            tv.text = "(no console lines yet)"
+            return
         }
-        tv.movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
+        val sb = SpannableStringBuilder()
+        last.forEachIndexed { i, line ->
+            if (i > 0) sb.append("\n\n")
+            val color = when (line.level) {
+                ConsoleLevel.ERROR -> Color.parseColor("#F07178")
+                ConsoleLevel.WARN -> Color.parseColor("#E6C07B")
+                ConsoleLevel.INFO -> Color.parseColor("#7FD4FF")
+            }
+            val start = sb.length
+            sb.append(line.text)
+            sb.setSpan(
+                ForegroundColorSpan(color),
+                start,
+                sb.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        tv.text = sb
     }
 
     private fun hideLogs() {
@@ -200,29 +230,16 @@ class OverlayService : Service() {
 
         fun start(context: Context) {
             if (!canDrawOverlays(context)) return
-            try {
-                context.startService(Intent(context, OverlayService::class.java))
-            } catch (t: Throwable) {
-                LogBuffer.e("Overlay", "start failed: ${t.message}")
-            }
+            context.startService(Intent(context, OverlayService::class.java))
         }
 
         fun stop(context: Context) {
-            try {
-                context.startService(
-                    Intent(context, OverlayService::class.java).apply { action = ACTION_STOP }
-                )
-            } catch (_: Exception) {}
+            context.sendBroadcast(Intent(ACTION_STOP).setPackage(context.packageName))
             context.stopService(Intent(context, OverlayService::class.java))
         }
 
         fun refresh(context: Context) {
-            if (!canDrawOverlays(context)) return
-            try {
-                context.startService(
-                    Intent(context, OverlayService::class.java).apply { action = ACTION_REFRESH }
-                )
-            } catch (_: Exception) {}
+            context.sendBroadcast(Intent(ACTION_REFRESH).setPackage(context.packageName))
         }
     }
 }
