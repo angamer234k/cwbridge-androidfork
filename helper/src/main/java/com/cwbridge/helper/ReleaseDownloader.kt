@@ -106,4 +106,49 @@ object ReleaseDownloader {
         }
         return fallback
     }
+
+    data class GitHubRelease(
+        val tag_name: String,
+        val assets: List<GitHubAsset>
+    )
+
+    data class GitHubAsset(
+        val name: String,
+        val browser_download_url: String
+    )
+
+    fun getLatestRelease(): GitHubRelease? {
+        return try {
+            val req = Request.Builder()
+                .url(API)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "CWBridge-Helper")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val body = resp.body?.string() ?: return null
+                val json = JSONObject(body)
+                val tag = json.optString("tag_name", "unknown")
+                val assets = json.getJSONArray("assets")
+                val assetList = mutableListOf<GitHubAsset>()
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    assetList.add(GitHubAsset(
+                        name = a.getString("name"),
+                        browser_download_url = a.getString("browser_download_url")
+                    ))
+                }
+                GitHubRelease(tag_name = tag, assets = assetList)
+            }
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    fun findApkAsset(release: GitHubRelease): GitHubAsset? {
+        return release.assets.find { asset ->
+            asset.name.endsWith(".apk") && !asset.name.contains("helper", ignoreCase = true)
+        }
+    }
+
 }
