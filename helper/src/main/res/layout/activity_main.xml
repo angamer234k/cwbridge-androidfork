@@ -1,101 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0A0B0D"
-    android:fillViewport="true">
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.45"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CWBRIDGE HELPER"
+                android:textAllCaps="true"
+                android:textColor="#8B909A"
+                android:textSize="11sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Push main app to another device over USB"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/usbState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="USB: checking\u2026"
+                android:textColor="#C4A574"
+                android:textSize="14sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRefreshUsb"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Refresh USB" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPush"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Push update"
+                app:backgroundTint="#9BB8E8" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnGrantLogs"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Grant READ_LOGS only" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLaunchTarget"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Launch main app on target" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDiagnostics"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Run diagnostics" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnResetKeys"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Reset ADB keys" />
+        </LinearLayout>
+    </ScrollView>
+
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:layout_marginTop="8dp"
+        android:text="Log (scrollable)"
+        android:textColor="@android:color/white"
+        android:textStyle="bold" />
 
-        <TextView
+    <ScrollView
+        android:id="@+id/logScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="6dp"
+        android:layout_weight="0.55"
+        android:background="#14161B"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="CWBRIDGE HELPER"
-            android:textAllCaps="true"
-            android:textColor="#8B909A"
-            android:textSize="11sp" />
+            android:scrollbars="horizontal">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Phone → tablet OTG push"
-            android:textColor="@android:color/white"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="1. Tablet: USB debugging ON\n2. OTG: phone host ↔ tablet\n3. Allow USB debugging on tablet when asked\n4. Tap Push update\n\nStuck with no prompt? Revoke USB debugging authorizations on tablet, set USB to File transfer, Reset ADB keys, unplug/replug."
-            android:textColor="#8B909A"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/usbState"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="USB: waiting…"
-            android:textColor="#C4A574"
-            android:textSize="14sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRefreshUsb"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Refresh USB" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnResetKeys"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Reset ADB keys" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnDiagnostics"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Run Diagnostics" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnPush"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Push update"
-            app:backgroundTint="#9BB8E8" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Log"
-            android:textColor="@android:color/white"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/logView"
-            android:layout_width="match_parent"
-            android:layout_height="320dp"
-            android:layout_marginTop="8dp"
-            android:background="#14161B"
-            android:fontFamily="monospace"
-            android:padding="10dp"
-            android:textSize="11sp"
-            android:textColor="#9BB8E8"
-            android:text="Ready.\n" />
-    </LinearLayout>
-</ScrollView>
+            <TextView
+                android:id="@+id/logView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:padding="10dp"
+                android:text="Ready.\n"
+                android:textColor="#9BB8E8"
+                android:textIsSelectable="true"
+                android:textSize="11sp" />
+        </HorizontalScrollView>
+    </ScrollView>
+</LinearLayout>
