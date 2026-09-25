@@ -523,12 +523,21 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/versionText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="Version 2.8.0-android · com.cwbridge.android"
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCheckUpdate"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Check for updates" />
         </LinearLayout>
     </ScrollView>
 

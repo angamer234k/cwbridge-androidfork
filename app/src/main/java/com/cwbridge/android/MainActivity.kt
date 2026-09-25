@@ -610,4 +610,30 @@ class MainActivity : AppCompatActivity() {
             super.onBackPressed()
         }
     }
+
+
+    private fun checkForUpdates() {
+        val updateChecker = UpdateChecker(this)
+        val currentVersion = updateChecker.getCurrentVersion()
+        binding.versionText.text = "Version $currentVersion · com.cwbridge.android"
+        lifecycleScope.launch(Dispatchers.IO) {
+            val release = updateChecker.checkForUpdate(currentVersion)
+            if (release != null) {
+                val apkAsset = updateChecker.findApkAsset(release)
+                if (apkAsset != null) {
+                    withContext(Dispatchers.Main) {
+                        updateChecker.showUpdateDialog(release, apkAsset)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "No APK found in release", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "You have the latest version", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 }
