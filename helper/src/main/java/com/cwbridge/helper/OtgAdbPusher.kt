@@ -27,6 +27,9 @@ class OtgAdbPusher(private val context: Context) {
         const val TARGET_PKG = "com.cwbridge.android.debug"
         const val PERM_LOGS = "android.permission.READ_LOGS"
         private const val CONNECT_TIMEOUT_SEC = 25L
+        /** ADB CNXN default maxData is 4096; never send larger payloads per WRITE. */
+        private const val ADB_CHUNK = 4096
+        private const val INSTALL_TIMEOUT_SEC = 180L
     }
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -77,9 +80,9 @@ class OtgAdbPusher(private val context: Context) {
             val installed = shell(conn, "pm path $TARGET_PKG", log).contains("package:")
             log(if (installed) "CWBridge present → update" else "CWBridge missing → install")
 
-            log("Streaming APK (${apk.length()} bytes)…")
-            val installOut = execInstall(conn, apk)
-            log("install: ${installOut.take(300)}")
+            log("Streaming APK (${apk.length()} bytes, ${ADB_CHUNK}-byte ADB chunks)…")
+            val installOut = execInstallWithTimeout(conn, apk, log)
+            log("install: ${installOut.take(400)}")
             if (!installOut.contains("Success", ignoreCase = true) &&
                 !installOut.contains("success", ignoreCase = true)
             ) {
@@ -131,19 +134,52 @@ class OtgAdbPusher(private val context: Context) {
         }
     }
 
-    private fun execInstall(conn: AdbConnection, apk: File): String {
+    private fun execInstallWithTimeout(
+        conn: AdbConnection,
+        apk: File,
+        log: (String) -> Unit,
+    ): String {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val future = pool.submit(Callable { execInstall(conn, apk, log) })
+            return try {
+                future.get(INSTALL_TIMEOUT_SEC, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                future.cancel(true)
+                throw IllegalStateException(
+                    "APK stream timed out after ${INSTALL_TIMEOUT_SEC}s — " +
+                        "try again or install once via Bugjaeger then use helper for updates.",
+                )
+            } catch (e: Exception) {
+                val cause = e.cause ?: e
+                throw IllegalStateException("Install stream failed: ${cause.message}", cause)
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    private fun execInstall(conn: AdbConnection, apk: File, log: (String) -> Unit): String {
         val size = apk.length()
         val stream = conn.open("exec:cmd package install -r -t -S $size")
+        val buf = ByteArray(ADB_CHUNK)
+        var sent = 0L
+        var lastPct = -1
         apk.inputStream().use { input ->
-            val buf = ByteArray(256 * 1024)
             while (true) {
                 val n = input.read(buf)
                 if (n <= 0) break
                 val chunk = if (n == buf.size) buf else buf.copyOf(n)
-                // flashbot AdbStream: write(byte[]) only
                 stream.write(chunk)
+                sent += n
+                val pct = if (size > 0) ((sent * 100) / size).toInt() else 100
+                if (pct != lastPct && (pct % 10 == 0 || pct == 100)) {
+                    lastPct = pct
+                    log("  … $pct% ($sent / $size)")
+                }
             }
         }
+        log("  stream write done, waiting for pm…")
         val out = StringBuilder()
         try {
             while (!stream.isClosed) {
