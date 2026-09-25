@@ -40,7 +40,51 @@ jobs:
         run: |
           mkdir -p keystore
           base64 -d keystore/cwbridge-debug.p12.b64 > keystore/cwbridge-debug.p12
-          ls -la keystore/
+
+      - name: Vendor AdbLib (BSD-3-Clause) for helper OTG ADB
+        run: |
+          set -e
+          DEST=helper/src/main/java/com/cgutman/adblib
+          mkdir -p "$DEST"
+          BASE=https://raw.githubusercontent.com/cgutman/AdbLib/master/src/com/cgutman/adblib
+          for f in AdbBase64.java AdbConnection.java AdbCrypto.java AdbProtocol.java AdbStream.java; do
+            curl -fsSL "$BASE/$f" -o "$DEST/$f"
+          done
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("helper/src/main/java/com/cgutman/adblib/AdbConnection.java")
+          text = p.read_text()
+          needle = "\t\treturn newConn;\n\t}\n\t\n\t/**\n\t * Creates a new connection thread.\n"
+          insert = (
+              "\t\treturn newConn;\n\t}\n\n"
+              "\t/** Creates an AdbConnection over arbitrary streams (USB bulk). */\n"
+              "\tpublic static AdbConnection create(InputStream input, OutputStream output, AdbCrypto crypto) throws IOException\n"
+              "\t{\n"
+              "\t\tAdbConnection newConn = new AdbConnection();\n"
+              "\t\tnewConn.crypto = crypto;\n"
+              "\t\tnewConn.socket = null;\n"
+              "\t\tnewConn.inputStream = input;\n"
+              "\t\tnewConn.outputStream = output;\n"
+              "\t\treturn newConn;\n"
+              "\t}\n\t\n"
+              "\t/**\n\t * Creates a new connection thread.\n"
+          )
+          if needle not in text:
+              raise SystemExit("AdbConnection patch needle missing")
+          text = text.replace(needle, insert, 1)
+          old = "\t\t/* Closing the socket will kick the connection thread */\n\t\tsocket.close();"
+          new = (
+              "\t\t/* Closing the socket will kick the connection thread */\n"
+              "\t\tif (socket != null) {\n\t\t\tsocket.close();\n\t\t} else {\n"
+              "\t\t\ttry { inputStream.close(); } catch (IOException ignored) {}\n"
+              "\t\t\ttry { outputStream.close(); } catch (IOException ignored) {}\n\t\t}"
+          )
+          if old in text:
+              text = text.replace(old, new, 1)
+          p.write_text(text)
+          print("AdbLib vendored + patched")
+          PY
+          ls -la "$DEST"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -91,7 +135,7 @@ jobs:
             4. Allow USB debugging prompt on tablet
             5. Open helper → **Push update**
 
-            Signed with the fixed debug keystore (updates without uninstall after first install of that key).
+            Signed with the fixed debug keystore.
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
