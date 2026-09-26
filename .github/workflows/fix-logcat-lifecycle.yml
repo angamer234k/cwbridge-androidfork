@@ -1,0 +1,113 @@
+name: Fix logcat lifecycle
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch MainActivity logcat lifecycle
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+
+          old_pause = '''    override fun onPause() {
+        logcatReader.stop()
+        super.onPause()
+    }'''
+          new_pause = '''    override fun onPause() {
+        // Keep logcat running while bridge is on so Roblox/CatWeb lines still arrive in background
+        if (!bridgeRunning) logcatReader.stop()
+        super.onPause()
+    }'''
+          if old_pause not in t:
+              raise SystemExit("onPause block not found")
+          t = t.replace(old_pause, new_pause, 1)
+
+          old_toggle_start = '''            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()'''
+          new_toggle_start = '''            bridgeRunning = true
+            CatWebTracker.reset()
+            logcatReader.start(lifecycleScope)
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()'''
+          if old_toggle_start not in t:
+              raise SystemExit("toggle start block not found")
+          t = t.replace(old_toggle_start, new_toggle_start, 1)
+
+          old_toggle_stop = '''            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")'''
+          new_toggle_stop = '''            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            logcatReader.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")'''
+          if old_toggle_stop not in t:
+              raise SystemExit("toggle stop block not found")
+          t = t.replace(old_toggle_stop, new_toggle_stop, 1)
+
+          t = t.replace(
+              'session start version=2.9.4-android ctrl-t-test',
+              'session start version=2.9.5-android logcat-bg',
+              1,
+          )
+
+          p.write_text(t)
+          print("MainActivity patched")
+          PY
+
+      - name: Patch LogcatReader to mark ACTIVE on Roblox FLog
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/LogcatReader.kt")
+          t = p.read_text()
+
+          old = '''                        when {
+                            hasBullet || isFlog || looksLikeSiteLog -> {
+                                RobloxLogBuffer.add(line)
+                                if (isInvoke) {
+                                    AntiDisconnect.noteActivity()
+                                    invokeSink?.invoke(line)
+                                }
+                            }'''
+          new = '''                        when {
+                            hasBullet || isFlog || looksLikeSiteLog -> {
+                                RobloxLogBuffer.add(line)
+                                // Any Roblox console / FLog while waiting → green (bridge is listening)
+                                if (isFlog || hasBullet) {
+                                    val st = BridgeStatus.state
+                                    if (st == OverlayState.WAITING || st == OverlayState.IDLE) {
+                                        BridgeStatus.set(OverlayState.ACTIVE, "Roblox console")
+                                    }
+                                }
+                                if (isInvoke) {
+                                    AntiDisconnect.noteActivity()
+                                    invokeSink?.invoke(line)
+                                }
+                            }'''
+          if old not in t:
+              raise SystemExit("LogcatReader when-block not found")
+          p.write_text(t.replace(old, new, 1))
+          print("LogcatReader patched")
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add -A
+          git commit -m "fix: keep logcat alive while bridge on; green on FLog" || echo "no changes"
+          git push
