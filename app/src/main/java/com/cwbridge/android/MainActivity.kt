@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private var bridgeRunning = false
     private lateinit var serviceAdapter: ServiceAdapter
     private var localServer: LocalHttpServer? = null
+    private lateinit var updateChecker: UpdateChecker
 
     private val logListener: (LogBuffer.Line) -> Unit = { line ->
         runOnUiThread {
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
         ServiceRepository.init(applicationContext, lifecycleScope)
         invokeEngine = InvokeEngine(applicationContext, lifecycleScope)
         logcatReader = LogcatReader(this) { raw -> invokeEngine.onExternalLog(raw) }
+        updateChecker = UpdateChecker(this)
         ensureOverlayPermission()
         OverlayService.start(this)
         executionEngine = ExecutionEngine(applicationContext, lifecycleScope, invokeEngine, logcatReader)
@@ -67,6 +69,7 @@ class MainActivity : AppCompatActivity() {
             binding.logView.text = ""
         }
         binding.btnAddService.setOnClickListener { showAddServiceDialog() }
+        binding.btnCheckUpdate.setOnClickListener { checkForUpdates() }
         try {
             binding.root.findViewById<View>(resources.getIdentifier("btnServerToggle", "id", packageName))?.setOnClickListener { toggleLocalServer() }
         } catch (_: Exception) {}
@@ -138,11 +141,8 @@ class MainActivity : AppCompatActivity() {
         binding.categoryPermissions.visibility = if (category == "permissions") View.VISIBLE else View.GONE
         binding.categoryActions.visibility = if (category == "actions") View.VISIBLE else View.GONE
         binding.categoryServices.visibility = if (category == "services") View.VISIBLE else View.GONE
+        binding.categoryServer.visibility = if (category == "server") View.VISIBLE else View.GONE
         binding.categoryLogs.visibility = if (category == "logs") View.VISIBLE else View.GONE
-        try {
-            binding.root.findViewById<View>(resources.getIdentifier("categoryServer", "id", packageName))?.visibility =
-                if (category == "server") View.VISIBLE else View.GONE
-        } catch (_: Exception) {}
     }
 
     private fun setupServicesRecyclerView() {
@@ -631,27 +631,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private lateinit var updateChecker: UpdateChecker
+
+    private fun checkForUpdates() {
+        val currentVersion = updateChecker.getCurrentVersion()
+        lifecycleScope.launch {
+            try {
+                val release = withContext(Dispatchers.IO) {
+                    updateChecker.checkForUpdate(currentVersion)
+                }
+                if (release != null) {
+                    val apkAsset = updateChecker.findApkAsset(release)
+                    if (apkAsset != null) {
+                        runOnUiThread {
+                            updateChecker.showUpdateDialog(release, apkAsset)
+                        }
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this, "No APK asset found in release", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, "You have the latest version ($currentVersion)", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Update check failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     private fun toggleLocalServer() {
         val srv = localServer
         if (srv != null && srv.isRunning()) {
             srv.stop()
             localServer = null
-            try {
-                binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))?.text = "Start server"
-                binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))?.text = "Server off"
-            } catch (_: Exception) {}
+            binding.btnServerToggle.text = "Start server"
+            binding.serverState.text = "Server off"
             LogBuffer.i("Server", "stopped")
             Toast.makeText(this, "Server stopped", Toast.LENGTH_SHORT).show()
         } else {
             val server = LocalHttpServer(8765) { raw -> invokeEngine.onExternalLog(raw) }
             localServer = server
             server.start()
-            try {
-                binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))?.text = "Stop server"
-                binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))?.text =
-                    "Listening on http://127.0.0.1:8765"
-            } catch (_: Exception) {}
-            Toast.makeText(this, "Server on :8765", Toast.LENGTH_SHORT).show()
+            binding.btnServerToggle.text = "Stop server"
+            binding.serverState.text = "Listening on http://127.0.0.1:${server.port()}"
+            Toast.makeText(this, "Server on :${server.port()}", Toast.LENGTH_SHORT).show()
         }
     }
 }
