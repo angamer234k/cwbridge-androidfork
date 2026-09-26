@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnTap.setOnClickListener { performTapByText() }
         binding.btnTapPercent.setOnClickListener { performTapPercent() }
         binding.btnTapPx.setOnClickListener { performTapPx() }
+        binding.btnCtrlT.setOnClickListener { performCtrlT() }
         binding.btnClearLogs.setOnClickListener {
             LogBuffer.clear()
             binding.logView.text = ""
@@ -72,7 +73,7 @@ class MainActivity : AppCompatActivity() {
         setupServicesRecyclerView()
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
-        LogBuffer.i("CWBridge", "session start version=2.9.3-android")
+        LogBuffer.i("CWBridge", "session start version=2.9.4-android ctrl-t-test")
         showCategory("bridge")
         refreshUi()
     }
@@ -498,10 +499,7 @@ class MainActivity : AppCompatActivity() {
             invokeEngine.submitXPx = 730f
             invokeEngine.submitYPx = 1028f
             executionEngine.start()
-            LogBuffer.i("CWBridge", "bridge running invoke=on logcat=${logcatReader.hasPermission()}")
-            if (!logcatReader.hasPermission()) {
-                LogBuffer.w("CWBridge", "without READ_LOGS, only in-app test invokes work")
-            }
+            LogBuffer.i("CWBridge", "bridge running")
         }
         refreshUi()
     }
@@ -534,11 +532,7 @@ class MainActivity : AppCompatActivity() {
         if (OverlayService.canDrawOverlays(this)) return
         MaterialAlertDialogBuilder(this)
             .setTitle("Floating status overlay")
-            .setMessage(
-                "Allow CWBridge to draw over other apps.\n\n" +
-                    "\u2022 Green = CatWeb finished\n\u2022 Yellow = loading / waiting\n\u2022 Red = error\n\n" +
-                    "Tap the dot for last 25 console lines."
-            )
+            .setMessage("Allow draw over other apps for the status dot.")
             .setPositiveButton("Grant") { _, _ ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     startActivity(
@@ -595,6 +589,17 @@ class MainActivity : AppCompatActivity() {
         val service = requireService() ?: return
         val ok = service.clickAtPercent(x, y)
         Toast.makeText(this, if (ok) "Tapped $x% $y%" else "Tap failed", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun performCtrlT() {
+        val service = requireService() ?: return
+        val ok = service.pressCtrlT()
+        Toast.makeText(
+            this,
+            if (ok) "Ctrl+T injected" else "Ctrl+T inject failed (OEM may block key injection)",
+            Toast.LENGTH_LONG,
+        ).show()
+        LogBuffer.i("Test", "Ctrl+T ok=$ok")
     }
 
     private fun performTapPx() {
