@@ -1,0 +1,61 @@
+name: Fix logcat stays alive
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore + patch MainActivity
+        run: |
+          set -e
+          F=app/src/main/java/com/cwbridge/android/MainActivity.kt
+          if ! grep -q "class MainActivity" "$F" 2>/dev/null; then
+            echo "MainActivity broken — restoring from known good commit"
+            git show 81ebb3cdcb70b99f4f0638f56d9d9223d209bdf2:"$F" > "$F"
+          fi
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          text = p.read_text()
+          if "ensureLogcatRunning" in text:
+              print("already patched")
+              raise SystemExit(0)
+          if "import kotlinx.coroutines.SupervisorJob" not in text:
+              text = text.replace(
+                  "import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext",
+                  "import kotlinx.coroutines.CoroutineScope\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.SupervisorJob\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext",
+              )
+          old = """    private var bridgeRunning = false\n    private lateinit var serviceAdapter: ServiceAdapter\n    private var localServer: LocalHttpServer? = null"""
+          new = """    private var bridgeRunning = false\n    private val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)\n    private lateinit var serviceAdapter: ServiceAdapter\n    private var localServer: LocalHttpServer? = null"""
+          if old in text:
+              text = text.replace(old, new)
+          text = text.replace(
+              "logcatReader = LogcatReader(this) { raw -> invokeEngine.onExternalLog(raw) }",
+              "logcatReader = LogcatReader(applicationContext) { raw -> invokeEngine.onExternalLog(raw) }",
+          )
+          old_r = """    override fun onResume() {\n        super.onResume()\n        refreshUi()\n        logcatReader.start(lifecycleScope)\n        if (OverlayService.canDrawOverlays(this)) OverlayService.start(this)\n        AntiDisconnect.noteActivity()\n    }\n\n    override fun onPause() {\n        logcatReader.stop()\n        super.onPause()\n    }\n\n    override fun onDestroy() {\n        AntiDisconnect.stop()\n        localServer?.stop()\n        invokeEngine.stop()\n        executionEngine.stop()\n        LogBuffer.removeListener(logListener)\n        super.onDestroy()\n    }"""
+          new_r = """    override fun onResume() {\n        super.onResume()\n        refreshUi()\n        ensureLogcatRunning()\n        if (OverlayService.canDrawOverlays(this)) OverlayService.start(this)\n        AntiDisconnect.noteActivity()\n    }\n\n    override fun onPause() {\n        if (!bridgeRunning) {\n            logcatReader.stop()\n        }\n        super.onPause()\n    }\n\n    override fun onDestroy() {\n        if (!bridgeRunning) {\n            logcatReader.stop()\n        }\n        AntiDisconnect.stop()\n        localServer?.stop()\n        invokeEngine.stop()\n        executionEngine.stop()\n        LogBuffer.removeListener(logListener)\n        super.onDestroy()\n    }\n\n    private fun ensureLogcatRunning() {\n        if (!logcatReader.hasPermission()) {\n            LogBuffer.w("Logcat", "READ_LOGS not granted")\n            return\n        }\n        val scope = if (bridgeRunning) bridgeScope else lifecycleScope\n        logcatReader.start(scope)\n    }"""
+          if old_r not in text:
+              raise SystemExit("resume block not found")
+          text = text.replace(old_r, new_r)
+          old_t = """    private fun toggleBridge() {\n        if (bridgeRunning) {\n            bridgeRunning = false\n            invokeEngine.stop()\n            executionEngine.stop()\n            AntiDisconnect.stop()\n            LogBuffer.i("CWBridge", "bridge stopped")\n        } else {\n            if (!TapService.isConnected()) {\n                LogBuffer.e("CWBridge", "refusing start: Accessibility service is off")\n                Toast.makeText(this, "Enable CWBridge Tap first", Toast.LENGTH_SHORT).show()\n                openAccessibilitySettings()\n                refreshUi()\n                return\n            }\n            bridgeRunning = true\n            CatWebTracker.reset()\n            AntiDisconnect.start(lifecycleScope)\n            invokeEngine.start()\n            invokeEngine.focusXPct = 50f\n            invokeEngine.focusYPct = 50f\n            invokeEngine.submitXPx = 730f\n            invokeEngine.submitYPx = 1028f\n            executionEngine.start()\n            LogBuffer.i("CWBridge", "bridge running")\n        }\n        refreshUi()\n    }"""
+          new_t = """    private fun toggleBridge() {\n        if (bridgeRunning) {\n            bridgeRunning = false\n            logcatReader.stop()\n            invokeEngine.stop()\n            executionEngine.stop()\n            AntiDisconnect.stop()\n            LogBuffer.i("CWBridge", "bridge stopped")\n        } else {\n            if (!TapService.isConnected()) {\n                LogBuffer.e("CWBridge", "refusing start: Accessibility service is off")\n                Toast.makeText(this, "Enable CWBridge Tap first", Toast.LENGTH_SHORT).show()\n                openAccessibilitySettings()\n                refreshUi()\n                return\n            }\n            if (!logcatReader.hasPermission()) {\n                LogBuffer.e("CWBridge", "refusing start: READ_LOGS not granted")\n                Toast.makeText(this, "Grant READ_LOGS via Helper first", Toast.LENGTH_LONG).show()\n                showAdbGrantHint()\n                refreshUi()\n                return\n            }\n            bridgeRunning = true\n            CatWebTracker.reset()\n            AntiDisconnect.start(bridgeScope)\n            ensureLogcatRunning()\n            invokeEngine.start()\n            invokeEngine.focusXPct = 50f\n            invokeEngine.focusYPct = 50f\n            invokeEngine.submitXPx = 730f\n            invokeEngine.submitYPx = 1028f\n            executionEngine.start()\n            LogBuffer.i("CWBridge", "bridge running — logcat stays on while you use Roblox")\n        }\n        refreshUi()\n    }"""
+          if old_t not in text:
+              raise SystemExit("toggle block not found")
+          text = text.replace(old_t, new_t)
+          p.write_text(text)
+          print("patched", len(text))
+          PY
+          grep -n ensureLogcatRunning "$F" | head
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "fix: keep logcat alive while bridge is on (onPause)" || exit 0
+          git push
