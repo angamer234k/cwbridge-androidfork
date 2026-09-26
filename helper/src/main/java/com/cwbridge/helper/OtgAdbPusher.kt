@@ -26,10 +26,19 @@ class OtgAdbPusher(private val context: Context) {
 
     class StallException(msg: String) : Exception(msg)
 
+    /** Thrown when Shizuku is not installed on the target device. */
+    class ShizukuNotInstalledException : Exception(
+        "Shizuku is not installed on the target. Install Shizuku, open it once, then try again.",
+    )
+
     companion object {
         const val ACTION_USB_PERMISSION = "com.cwbridge.helper.USB_PERMISSION"
         const val TARGET_PKG = "com.cwbridge.android.debug"
         const val PERM_LOGS = "android.permission.READ_LOGS"
+        const val SHIZUKU_PKG = "moe.shizuku.privileged.api"
+        /** Official start command (Shizuku v11.2.0+). */
+        const val SHIZUKU_START_CMD =
+            "sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh"
         private const val CONNECT_TIMEOUT_SEC = 25L
         private const val ADB_CHUNK = 4096
         private const val PROGRESS_STALL_MS = 30_000L
@@ -107,7 +116,7 @@ class OtgAdbPusher(private val context: Context) {
             }
             log("Granting READ_LOGS…")
             val grant = shell(conn, "pm grant $TARGET_PKG $PERM_LOGS", log)
-            log("grant: ${grant.ifBlank { \"ok\" }}")
+            log("grant: ${grant.ifBlank { "ok" }}")
             log("Done. ${shell(conn, "pm path $TARGET_PKG", log).trim()}")
             try { conn.close() } catch (_: Exception) {}
         } finally {
@@ -262,4 +271,37 @@ class OtgAdbPusher(private val context: Context) {
 
     fun launchTarget(device: UsbDevice, log: (String) -> Unit): String =
         shellOnDevice(device, "monkey -p $TARGET_PKG -c android.intent.category.LAUNCHER 1", log)
+
+    /**
+     * Check Shizuku is installed on the target, then run the official start.sh over ADB.
+     * User should open Shizuku once after install so start.sh exists under Android/data.
+     */
+    fun startShizuku(device: UsbDevice, log: (String) -> Unit): String {
+        log("Checking Shizuku ($SHIZUKU_PKG)…")
+        val pathOut = shellOnDevice(device, "pm path $SHIZUKU_PKG", log)
+        if (!pathOut.contains("package:")) {
+            log("Shizuku not installed on target")
+            throw ShizukuNotInstalledException()
+        }
+        log("Shizuku installed — starting server…")
+        // Prefer /sdcard path (docs); fall back to /storage/emulated/0 if needed
+        var out = shellOnDevice(device, SHIZUKU_START_CMD, log)
+        if (out.contains("No such file", ignoreCase = true) || out.contains("not found", ignoreCase = true)) {
+            log("start.sh missing at /sdcard path — trying /storage/emulated/0…")
+            out = shellOnDevice(
+                device,
+                "sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh",
+                log,
+            )
+        }
+        log("start.sh output: ${out.trim().ifBlank { "(empty)" }.take(500)}")
+        // Soft probe — service may take a moment
+        val probe = shellOnDevice(
+            device,
+            "dumpsys activity services moe.shizuku.privileged.api 2>/dev/null | head -5 || true",
+            log,
+        )
+        log("service probe: ${probe.trim().ifBlank { "(no line)" }.take(200)}")
+        return out
+    }
 }
