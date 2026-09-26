@@ -8,24 +8,27 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Keep-alive + disconnect recovery while the bridge is running.
- * - Log line mentions disconnect \u2192 soft recover + keep-alive tap
- * - No console/invoke activity for 5 minutes \u2192 tap at ~90% x, 1% y
+ * Keep-alive while the bridge is running.
+ *
+ * IMPORTANT: must NOT react to historical logcat dump or spam taps.
+ * - Ignore all signals for GRACE_MS after start
+ * - Disconnect match only on CatWeb/FLog-ish lines (not every system log)
+ * - Idle keep-alive at most once per IDLE_MS, with long min interval
+ * - Tap mid-screen (not status-bar / gesture edge)
  */
 object AntiDisconnect {
     private const val IDLE_MS = 5 * 60 * 1000L
-    private const val TICK_MS = 15_000L
-    private const val KEEP_ALIVE_X = 90f
-    private const val KEEP_ALIVE_Y = 1f
-    private var lastTapTime: Long = 0L
-    private const val MIN_TAP_INTERVAL_MS = 3000L
+    private const val TICK_MS = 30_000L
+    private const val GRACE_MS = 20_000L
+    private const val MIN_TAP_INTERVAL_MS = 60_000L
+    /** Safe-ish dead zone: right side, mid height — avoid top chrome / gesture bar. */
+    private const val KEEP_ALIVE_X = 92f
+    private const val KEEP_ALIVE_Y = 48f
 
-    @Volatile
-    private var lastActivityMs: Long = System.currentTimeMillis()
-
-    @Volatile
-    private var enabled: Boolean = false
-
+    @Volatile private var lastActivityMs: Long = System.currentTimeMillis()
+    @Volatile private var startedAtMs: Long = 0L
+    @Volatile private var enabled: Boolean = false
+    @Volatile private var lastTapTime: Long = 0L
     private var job: Job? = null
 
     fun noteActivity() {
@@ -33,34 +36,53 @@ object AntiDisconnect {
     }
 
     fun onLogLine(raw: String) {
+        if (!enabled) return
+        if (System.currentTimeMillis() - startedAtMs < GRACE_MS) return
+
         val lower = raw.lowercase()
+        // Only treat as live Roblox/CatWeb signal — not random system "disconnect"
+        val isConsole =
+            lower.contains("flog::") ||
+                raw.contains('\u2022') ||
+                raw.contains('\u00B7') ||
+                lower.contains("catweb") ||
+                lower.contains("invoke|")
+        if (!isConsole) return
+
         if (lower.contains("disconnect") || lower.contains("disconnected") ||
-            lower.contains("connection lost") || lower.contains("reconnecting")
+            lower.contains("connection lost")
         ) {
-            LogBuffer.w("AntiDC", "disconnect signal \u2014 soft recover")
+            LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
             noteActivity()
             if (BridgeStatus.state != OverlayState.ERROR) {
-                BridgeStatus.set(OverlayState.WAITING, "Reconnecting\u2026")
+                BridgeStatus.set(OverlayState.WAITING, "Reconnecting…")
             }
-            tryKeepAliveTap("disconnect")
+            // Do NOT tap on every disconnect line — that caused continuous edge taps
+            // after logcat buffer replay. Idle watchdog still handles long silence.
+        } else if (
+            lower.contains("flog::") || raw.contains('\u2022') || lower.contains("invoke|")
+        ) {
+            noteActivity()
         }
     }
 
     fun start(scope: CoroutineScope) {
         stop()
         enabled = true
+        startedAtMs = System.currentTimeMillis()
         noteActivity()
         job = scope.launch(Dispatchers.IO) {
             LogBuffer.i(
                 "AntiDC",
-                "watchdog on (idle ${IDLE_MS / 60000}m \u2192 tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}%)",
+                "watchdog on (grace ${GRACE_MS / 1000}s, idle ${IDLE_MS / 60000}m → tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}%)",
             )
             while (isActive && enabled) {
                 delay(TICK_MS)
                 if (!enabled) break
+                if (System.currentTimeMillis() - startedAtMs < GRACE_MS) continue
                 val idle = System.currentTimeMillis() - lastActivityMs
                 if (idle >= IDLE_MS) {
-                    LogBuffer.i("AntiDC", "idle ${idle / 1000}s \u2014 keep-alive tap")
+                    LogBuffer.i("AntiDC", "idle ${idle / 1000}s — keep-alive tap")
                     tryKeepAliveTap("idle")
                     noteActivity()
                 }
@@ -78,12 +100,12 @@ object AntiDisconnect {
     private fun tryKeepAliveTap(reason: String) {
         val svc = TapService.instance
         if (svc == null) {
-            LogBuffer.w("AntiDC", "no accessibility \u2014 cannot tap ($reason)")
+            LogBuffer.w("AntiDC", "no accessibility — cannot tap ($reason)")
             return
         }
         val now = System.currentTimeMillis()
         if (now - lastTapTime < MIN_TAP_INTERVAL_MS) {
-            LogBuffer.i("AntiDC", "skipping keep-alive tap: too soon (${now - lastTapTime}ms < ${MIN_TAP_INTERVAL_MS}ms)")
+            LogBuffer.i("AntiDC", "skip tap: cooldown ${now - lastTapTime}ms")
             return
         }
         lastTapTime = now
