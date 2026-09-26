@@ -1,0 +1,55 @@
+name: Fix addSendTextAction
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Insert addSendTextAction
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+          if "fun addSendTextAction" in t:
+              print("already present")
+          else:
+              marker = "    private fun showReorderActionsDialog"
+              if marker not in t:
+                  raise SystemExit("marker missing")
+              insert = '''    private fun addSendTextAction(service: Service) {
+        val input = android.widget.EditText(this).apply {
+            hint = "Text to paste (no Enter)"
+            setPadding(48, 32, 48, 32)
+            minLines = 2
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Send Text")
+            .setMessage("Pastes into the focused field. Does not press Enter.")
+            .setView(input)
+            .setPositiveButton("Add") { _, _ ->
+                ServiceRepository.addActionToService(
+                    service.id,
+                    Action.SendTextAction(text = input.text?.toString().orEmpty()),
+                )
+                refreshServices()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+'''
+              t = t.replace(marker, insert + marker, 1)
+              p.write_text(t)
+              print("inserted", len(t))
+          PY
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "Fix: insert addSendTextAction for Send Text service action" || echo nochange
+          git push origin main
