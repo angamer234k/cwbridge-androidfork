@@ -83,6 +83,7 @@ class MainActivity : AppCompatActivity() {
         refreshUi()
         logcatReader.start(lifecycleScope)
         if (OverlayService.canDrawOverlays(this)) OverlayService.start(this)
+        AntiDisconnect.noteActivity()
     }
 
     override fun onPause() {

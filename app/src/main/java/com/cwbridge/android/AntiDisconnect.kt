@@ -17,6 +17,8 @@ object AntiDisconnect {
     private const val TICK_MS = 15_000L
     private const val KEEP_ALIVE_X = 90f
     private const val KEEP_ALIVE_Y = 1f
+    private var lastTapTime: Long = 0L
+    private const val MIN_TAP_INTERVAL_MS = 3000L
 
     @Volatile
     private var lastActivityMs: Long = System.currentTimeMillis()
@@ -70,6 +72,7 @@ object AntiDisconnect {
         enabled = false
         job?.cancel()
         job = null
+        lastTapTime = 0L
     }
 
     private fun tryKeepAliveTap(reason: String) {
@@ -78,6 +81,12 @@ object AntiDisconnect {
             LogBuffer.w("AntiDC", "no accessibility \u2014 cannot tap ($reason)")
             return
         }
+        val now = System.currentTimeMillis()
+        if (now - lastTapTime < MIN_TAP_INTERVAL_MS) {
+            LogBuffer.i("AntiDC", "skipping keep-alive tap: too soon (${now - lastTapTime}ms < ${MIN_TAP_INTERVAL_MS}ms)")
+            return
+        }
+        lastTapTime = now
         val ok = svc.clickAtPercent(KEEP_ALIVE_X, KEEP_ALIVE_Y)
         LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) ok=$ok")
     }
