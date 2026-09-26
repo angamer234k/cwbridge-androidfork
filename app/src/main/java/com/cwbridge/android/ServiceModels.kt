@@ -135,10 +135,43 @@ sealed class Action {
     ) : Action() {
         override val type: ActionType = ActionType.SEND_TEXT
     }
+
+    data class EnterTextAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "EnterText",
+        val text: String = ""
+    ) : Action() {
+        override val type: ActionType = ActionType.ENTER_TEXT
+    }
+
+    data class TextManAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "TextMan",
+        val source: String = "\$lastMatch",
+        val mode: String = "regex",
+        val pattern: String = "",
+        val group: Int = 1,
+        val replaceWith: String = "",
+        val saveTo: String = "result",
+    ) : Action() {
+        override val type: ActionType = ActionType.TEXT_MAN
+    }
+
+    data class SetVarAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "SetVar",
+        val key: String = "",
+        val value: String = "",
+    ) : Action() {
+        override val type: ActionType = ActionType.SET_VAR
+    }
 }
 
 enum class TriggerType { LOG, TIME, ACCESSIBILITY }
-enum class ActionType { TAP, GET_INFO, HTTP_REQUEST, AI, DELAY, RUN_SERVICE, CTRL_T, PRESS_ENTER, SEND_TEXT }
+enum class ActionType {
+    TAP, GET_INFO, HTTP_REQUEST, AI, DELAY, RUN_SERVICE,
+    CTRL_T, PRESS_ENTER, SEND_TEXT, ENTER_TEXT, TEXT_MAN, SET_VAR
+}
 enum class InfoType { SCREEN_TEXT, NODE_TEXT, NODE_BOUNDS, CURRENT_APP, TIMESTAMP, CLIPBOARD }
 
 object ServiceRepository {
@@ -240,12 +273,11 @@ object ServiceRepository {
     }
 
     fun ensureDefaultServices() {
-        if (inMemoryServices.isNotEmpty()) return
-        addService(
+        upsertDefault(
             Service(
                 id = "default-save-keys",
                 name = "Save keys",
-                description = "Fires on invoke|save… lines. Add more actions as needed.",
+                description = "Trigger: invoke|save — InvokeEngine does keystore save; extras run here.",
                 isEnabled = true,
                 triggers = mutableListOf(
                     Trigger.LogTrigger(
@@ -256,15 +288,22 @@ object ServiceRepository {
                     )
                 ),
                 actions = mutableListOf(
-                    Action.DelayAction(id = "default-save-delay", name = "Ack", milliseconds = 50),
+                    Action.TextManAction(
+                        id = "default-save-textman",
+                        name = "Capture save line",
+                        source = "\$lastMatch",
+                        mode = "full",
+                        saveTo = "lastSaveLine",
+                    ),
+                    Action.DelayAction(id = "default-save-delay", name = "Ack delay", milliseconds = 50),
                 ),
             )
         )
-        addService(
+        upsertDefault(
             Service(
                 id = "default-load-keys",
                 name = "Load keys",
-                description = "Fires on invoke|load… lines. Add more actions as needed.",
+                description = "Trigger: invoke|load — InvokeEngine does keystore load; extras run here.",
                 isEnabled = true,
                 triggers = mutableListOf(
                     Trigger.LogTrigger(
@@ -275,10 +314,37 @@ object ServiceRepository {
                     )
                 ),
                 actions = mutableListOf(
-                    Action.DelayAction(id = "default-load-delay", name = "Ack", milliseconds = 50),
+                    Action.TextManAction(
+                        id = "default-load-textman",
+                        name = "Capture load line",
+                        source = "\$lastMatch",
+                        mode = "full",
+                        saveTo = "lastLoadLine",
+                    ),
+                    Action.DelayAction(id = "default-load-delay", name = "Ack delay", milliseconds = 50),
                 ),
             )
         )
-        LogBuffer.i("Services", "seeded default Save keys / Load keys")
+    }
+
+    private fun upsertDefault(template: Service) {
+        val existing = inMemoryServices.find { it.id == template.id }
+        if (existing == null) {
+            addService(template)
+            LogBuffer.i("Services", "seeded ${template.name}")
+            return
+        }
+        if (existing.actions.isEmpty() || existing.triggers.isEmpty()) {
+            updateService(
+                existing.copy(
+                    name = template.name,
+                    description = template.description,
+                    triggers = template.triggers.toMutableList(),
+                    actions = template.actions.toMutableList(),
+                    isEnabled = true,
+                ),
+            )
+            LogBuffer.i("Services", "repaired ${template.name} (empty triggers/actions)")
+        }
     }
 }
