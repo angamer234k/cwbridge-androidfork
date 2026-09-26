@@ -9,13 +9,7 @@ import java.io.InputStreamReader
 
 /**
  * Privileged shell via Shizuku (ADB/shell uid).
- * Used for Ctrl+T and other key combos OEMs block for normal apps.
- *
- * Flow:
- * 1. Install Shizuku on this device
- * 2. Helper (OTG) → Start Shizuku  OR  start from Shizuku app
- * 3. CWBridge → grant Shizuku permission when prompted
- * 4. Ctrl+T / openTab via: input keycombination
+ * Ctrl+T tries several input strategies because OEMs differ.
  */
 object ShizukuShell {
 
@@ -60,9 +54,9 @@ object ShizukuShell {
     fun isReady(): Boolean = hasPermission()
 
     fun statusLine(): String = when {
-        !isServiceRunning() -> "Shizuku: not running (Helper → Start Shizuku)"
-        !hasPermission() -> "Shizuku: running, need permission"
-        else -> "Shizuku: ready (privileged shell)"
+        !isServiceRunning() -> "Shizuku: OFF — Helper→Start Shizuku or open Shizuku app"
+        !hasPermission() -> "Shizuku: ON but CWBridge not allowed — open Shizuku → Apps"
+        else -> "Shizuku: ready"
     }
 
     fun requestPermissionIfNeeded(activity: Activity? = null) {
@@ -90,30 +84,39 @@ object ShizukuShell {
         }
         return try {
             val process = newProcess(arrayOf("sh", "-c", command))
-                ?: return -1 to "newProcess returned null"
+                ?: return -1 to "newProcess null — Shizuku API blocked?"
             val out = StringBuilder()
-            try {
-                BufferedReader(InputStreamReader(process.inputStream)).use { r ->
-                    var line: String?
-                    while (r.readLine().also { line = it } != null) {
-                        out.appendLine(line)
+            val readerThread = Thread {
+                try {
+                    BufferedReader(InputStreamReader(process.inputStream)).use { r ->
+                        var line: String?
+                        while (r.readLine().also { line = it } != null) {
+                            out.appendLine(line)
+                        }
                     }
+                } catch (_: Throwable) {
                 }
-            } catch (_: Throwable) {
-            }
-            try {
-                BufferedReader(InputStreamReader(process.errorStream)).use { r ->
-                    var line: String?
-                    while (r.readLine().also { line = it } != null) {
-                        out.appendLine(line)
+            }.also { it.isDaemon = true; it.start() }
+            val errThread = Thread {
+                try {
+                    BufferedReader(InputStreamReader(process.errorStream)).use { r ->
+                        var line: String?
+                        while (r.readLine().also { line = it } != null) {
+                            out.appendLine(line)
+                        }
                     }
+                } catch (_: Throwable) {
                 }
-            } catch (_: Throwable) {
-            }
+            }.also { it.isDaemon = true; it.start() }
             val code = try {
                 process.waitFor()
             } catch (_: Throwable) {
                 -1
+            }
+            try {
+                readerThread.join(2000)
+                errThread.join(500)
+            } catch (_: Throwable) {
             }
             try {
                 process.destroy()
@@ -126,24 +129,38 @@ object ShizukuShell {
     }
 
     fun pressCtrlT(): Boolean {
-        val primary = exec("input keycombination ${KeyEvent.KEYCODE_CTRL_LEFT} ${KeyEvent.KEYCODE_T}")
-        if (primary.first == 0) {
-            LogBuffer.i("Shizuku", "Ctrl+T keycombination ok")
-            return true
-        }
-        LogBuffer.w("Shizuku", "keycombination failed (${primary.first}): ${primary.second.take(120)}")
-        val fallback = exec(
-            "input keyevent ${KeyEvent.KEYCODE_CTRL_LEFT} ${KeyEvent.KEYCODE_T}",
+        val ctrl = KeyEvent.KEYCODE_CTRL_LEFT
+        val t = KeyEvent.KEYCODE_T
+        val attempts = listOf(
+            "input keycombination $ctrl $t",
+            "cmd input keycombination $ctrl $t",
+            "input keyevent $ctrl $t",
         )
-        val ok = fallback.first == 0
-        LogBuffer.i("Shizuku", "Ctrl+T keyevent fallback ok=$ok out=${fallback.second.take(80)}")
-        return ok
+        for (cmd in attempts) {
+            LogBuffer.i("Shizuku", "try: $cmd")
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(100).ifBlank { "(empty)" }}")
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Ctrl+T OK via: $cmd")
+                return true
+            }
+        }
+        LogBuffer.w("Shizuku", "all Ctrl+T strategies failed — ${statusLine()}")
+        return false
     }
 
     fun pressEnter(): Boolean {
-        val r = exec("input keyevent ${KeyEvent.KEYCODE_ENTER}")
-        LogBuffer.i("Shizuku", "Enter ok=${r.first == 0}")
-        return r.first == 0
+        for (cmd in listOf(
+            "input keyevent ${KeyEvent.KEYCODE_ENTER}",
+            "cmd input keyevent ${KeyEvent.KEYCODE_ENTER}",
+        )) {
+            val (code, _) = exec(cmd)
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Enter OK via $cmd")
+                return true
+            }
+        }
+        return false
     }
 
     fun inputText(text: String): Boolean {
@@ -152,23 +169,23 @@ object ShizukuShell {
             .replace("\"", "\\\"")
             .replace(" ", "%s")
             .replace("'", "\\'")
-        val r = exec("input text \"$escaped\"")
-        return r.first == 0
+        val (code, out) = exec("input text \"$escaped\"")
+        LogBuffer.i("Shizuku", "input text exit=$code ${out.take(80)}")
+        return code == 0
     }
 
     private fun newProcess(cmd: Array<String>): Process? {
         return try {
-            Shizuku::class.java
-                .getDeclaredMethod(
-                    "newProcess",
-                    Array<String>::class.java,
-                    Array<String>::class.java,
-                    String::class.java,
-                )
-                .apply { isAccessible = true }
-                .invoke(null, cmd, null, null) as? Process
+            val m = Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java,
+            )
+            m.isAccessible = true
+            m.invoke(null, cmd, null, null) as? Process
         } catch (t: Throwable) {
-            LogBuffer.w("Shizuku", "newProcess: ${t.message}")
+            LogBuffer.w("Shizuku", "newProcess: ${t.javaClass.simpleName}: ${t.message}")
             null
         }
     }
