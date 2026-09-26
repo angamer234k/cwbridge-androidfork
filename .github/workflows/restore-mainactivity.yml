@@ -1,0 +1,46 @@
+name: Restore MainActivity
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore and fix MainActivity
+        run: |
+          git checkout deb697e0aeaf34cb19f4922e561aa3d58afa08a0 -- app/src/main/java/com/cwbridge/android/MainActivity.kt
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+          t = t.replace(
+              "binding.root.findViewById<View>(R.id.btnServerToggle)",
+              'binding.root.findViewById<View>(resources.getIdentifier("btnServerToggle", "id", packageName))'
+          )
+          t = t.replace(
+              "binding.root.findViewById<View>(R.id.categoryServer)",
+              'binding.root.findViewById<View>(resources.getIdentifier("categoryServer", "id", packageName))'
+          )
+          t = t.replace(
+              "binding.root.findViewById<android.widget.Button>(R.id.btnServerToggle)",
+              'binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))'
+          )
+          t = t.replace(
+              "binding.root.findViewById<android.widget.TextView>(R.id.serverState)",
+              'binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))'
+          )
+          p.write_text(t)
+          print("patched", len(t))
+          assert "R.id.btnServerToggle" not in t
+          assert "fun performCtrlT" in t
+          PY
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "Restore MainActivity + getIdentifier fix for Ctrl+T" || echo "no change"
+          git push origin HEAD:main
