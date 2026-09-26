@@ -67,4 +67,12 @@ object BridgeStatus {
             else -> set(OverlayState.ACTIVE, "Listening")
         }
     }
+
+    fun setLogcatIssue(reason: String) {
+        set(OverlayState.WAITING, "Logcat: $reason")
+    }
+
+    fun setWaitingForRoblox() {
+        set(OverlayState.WAITING, "Open Roblox+CatWeb")
+    }
 }

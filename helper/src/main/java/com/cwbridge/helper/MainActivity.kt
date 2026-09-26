@@ -37,22 +37,30 @@ class MainActivity : AppCompatActivity() {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val ok = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                     if (ok && device != null) {
-                        log("USB permission granted for ${device.deviceName}")
                         selected = device
-                        refreshUsb()
+                        runOnUiThread {
+                            log("USB permission granted for ${device.deviceName}")
+                            refreshUsb()
+                        }
                     } else {
-                        log("USB permission denied")
-                        logTip("On this phone: allow USB access when prompted. Unplug/replug if no prompt.")
+                        runOnUiThread {
+                            log("USB permission denied")
+                            logTip("On this phone: allow USB access when prompted. Unplug/replug if no prompt.")
+                        }
                     }
                 }
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                    log("USB device attached")
-                    refreshUsb()
+                    runOnUiThread {
+                        log("USB device attached")
+                        refreshUsb()
+                    }
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    log("USB device detached")
                     selected = null
-                    refreshUsb()
+                    runOnUiThread {
+                        log("USB device detached")
+                        refreshUsb()
+                    }
                 }
             }
         }
@@ -536,9 +544,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun log(msg: String) {
-        binding.logView.append(msg + "\n")
-        binding.logScroll.post {
-            binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+        runOnUiThread {
+            binding.logView.append(msg + "\n")
+            binding.logScroll.post {
+                binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+            }
         }
     }
 }
+

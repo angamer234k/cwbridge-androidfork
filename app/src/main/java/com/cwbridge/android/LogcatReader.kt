@@ -35,6 +35,7 @@ class LogcatReader(
         stop()
         if (!hasPermission()) {
             LogBuffer.w("Logcat", "READ_LOGS not granted")
+            BridgeStatus.setLogcatIssue("Permission denied")
             return
         }
         job = scope.launch(Dispatchers.IO) {
@@ -44,6 +45,7 @@ class LogcatReader(
                 ).redirectErrorStream(true).start()
                 process = proc
                 LogBuffer.i("Logcat", "attached \u2014 watching CatWeb + console + invoke")
+                BridgeStatus.set(OverlayState.WAITING, "Logcat running")
                 val myPkg = context.packageName
                 BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                     while (isActive) {
@@ -88,7 +90,7 @@ class LogcatReader(
             } catch (t: Throwable) {
                 if (isActive) {
                     LogBuffer.e("Logcat", "failed: ${t.message}")
-                    BridgeStatus.set(OverlayState.ERROR, "Logcat failed")
+                    BridgeStatus.setLogcatIssue("Error: ${t.message}")
                 }
             } finally {
                 process = null

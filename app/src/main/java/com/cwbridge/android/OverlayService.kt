@@ -37,8 +37,9 @@ class OverlayService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var ctrlTCountdown: Runnable? = null
 
-    private val statusListener: (OverlayState, String) -> Unit = { state, _ ->
+    private val statusListener: (OverlayState, String) -> Unit = { state, detail ->
         applyColor(state)
+        updateStatusText(detail)
         if (logsVisible) refreshLogsText()
     }
 
@@ -241,6 +242,13 @@ class OverlayService : Service() {
         bubbleView?.contentDescription = "CWBridge ${state.name}: ${BridgeStatus.detail}"
     }
 
+    private fun updateStatusText(detail: String) {
+        val statusText = bubbleView?.findViewById<TextView>(R.id.overlayStatusText) ?: return
+        val shortDetail = if (detail.length > 20) detail.take(18) + ".." else detail
+        statusText.text = shortDetail
+        statusText.visibility = if (shortDetail.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
     companion object {
         const val ACTION_STOP = "com.cwbridge.android.OVERLAY_STOP"
         const val ACTION_REFRESH = "com.cwbridge.android.OVERLAY_REFRESH"
@@ -256,6 +264,13 @@ class OverlayService : Service() {
         }
         fun refresh(context: Context) {
             context.sendBroadcast(Intent(ACTION_REFRESH).setPackage(context.packageName))
+        }
+        fun showStatus(context: Context, detail: String, duration: Int = 3000) {
+            val intent = Intent(context, OverlayService::class.java).apply {
+                action = ACTION_REFRESH
+                putExtra("status_detail", detail)
+            }
+            context.startService(intent)
         }
     }
 }
