@@ -38,9 +38,9 @@ class OverlayService : Service() {
     private var ctrlTCountdown: Runnable? = null
     private var logRefreshPending = false
 
-    private val robloxLogListener: () -> Unit = {
-        if (!logsVisible) return@robloxLogListener
-        if (logRefreshPending) return@robloxLogListener
+    private val robloxLogListener: () -> Unit = logListener@{
+        if (!logsVisible) return@logListener
+        if (logRefreshPending) return@logListener
         logRefreshPending = true
         mainHandler.postDelayed({
             logRefreshPending = false
