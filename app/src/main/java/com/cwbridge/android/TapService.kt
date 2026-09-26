@@ -15,7 +15,7 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
-/** Accessibility: taps, paste, send text, Enter, Ctrl+T. */
+/** Accessibility: taps, paste, send text, Enter, Ctrl+T (Shizuku-backed). */
 class TapService : AccessibilityService() {
 
     override fun onServiceConnected() {
@@ -83,18 +83,29 @@ class TapService : AccessibilityService() {
 
     fun pressEnter(): Boolean {
         LogBuffer.i("A11y", "pressEnter")
-        return injectKey(KeyEvent.KEYCODE_ENTER).also { LogBuffer.i("A11y", "pressEnter result=$it") }
+        if (ShizukuShell.isReady()) {
+            val ok = ShizukuShell.pressEnter()
+            LogBuffer.i("A11y", "pressEnter via Shizuku ok=$ok")
+            if (ok) return true
+        }
+        return injectKey(KeyEvent.KEYCODE_ENTER).also { LogBuffer.i("A11y", "pressEnter inject=$it") }
     }
 
     fun pressCtrlT(): Boolean {
         LogBuffer.i("A11y", "pressCtrlT")
-        // Most OEMs block InputManager.injectInputEvent for non-system apps.
+        if (ShizukuShell.isReady()) {
+            val ok = ShizukuShell.pressCtrlT()
+            LogBuffer.i("A11y", "pressCtrlT via Shizuku ok=$ok")
+            if (ok) return true
+        } else {
+            LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
+        }
         val ok = injectCtrlChord(KeyEvent.KEYCODE_T)
         if (ok) {
             LogBuffer.i("A11y", "pressCtrlT inject ok=true")
             return true
         }
-        LogBuffer.w("A11y", "pressCtrlT inject blocked — OEM restriction (need privileged shell/Shizuku)")
+        LogBuffer.w("A11y", "pressCtrlT failed — start Shizuku + grant CWBridge in Shizuku app")
         return false
     }
 
