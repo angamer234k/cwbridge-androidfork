@@ -26,7 +26,6 @@ class OtgAdbPusher(private val context: Context) {
 
     class StallException(msg: String) : Exception(msg)
 
-    /** Thrown when Shizuku is not installed on the target device. */
     class ShizukuNotInstalledException : Exception(
         "Shizuku is not installed on the target. Install Shizuku, open it once, then try again.",
     )
@@ -36,26 +35,77 @@ class OtgAdbPusher(private val context: Context) {
         const val TARGET_PKG = "com.cwbridge.android.debug"
         const val PERM_LOGS = "android.permission.READ_LOGS"
         const val SHIZUKU_PKG = "moe.shizuku.privileged.api"
-        /** Official start command (Shizuku v11.2.0+). */
-        const val SHIZUKU_START_CMD =
-            "sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh"
         private const val CONNECT_TIMEOUT_SEC = 25L
         private const val ADB_CHUNK = 4096
         private const val PROGRESS_STALL_MS = 30_000L
         private const val RECONNECT_COUNTDOWN_SEC = 10
         private const val MAX_PUSH_ATTEMPTS = 2
+
+        /**
+         * Modern Shizuku start (what the app shows under “View command”):
+         * resolve pm path → run libshizuku.so under lib/arm64|arm|…
+         * Fallback: classic start.sh under Android/data.
+         */
+        private val SHIZUKU_START_SCRIPT = """
+path=$(pm path $SHIZUKU_PKG 2>/dev/null | head -1 | sed 's/package://')
+if [ -z "$path" ]; then echo "ERR: Shizuku not installed"; exit 1; fi
+dir=$(dirname "$path")
+echo "apk=$path"
+for abi in arm64 arm64-v8a arm armeabi-v7a x86_64 x86; do
+  so="$dir/lib/$abi/libshizuku.so"
+  if [ -f "$so" ]; then
+    echo "starting $so"
+    "$so"
+    echo "libshizuku exit=$?"
+    exit 0
+  fi
+done
+for so in "$dir"/lib/*/libshizuku.so; do
+  if [ -f "$so" ]; then
+    echo "starting $so"
+    "$so"
+    echo "libshizuku exit=$?"
+    exit 0
+  fi
+done
+echo "libshizuku.so not found under $dir/lib — trying start.sh"
+if [ -f /sdcard/Android/data/$SHIZUKU_PKG/start.sh ]; then
+  sh /sdcard/Android/data/$SHIZUKU_PKG/start.sh
+elif [ -f /storage/emulated/0/Android/data/$SHIZUKU_PKG/start.sh ]; then
+  sh /storage/emulated/0/Android/data/$SHIZUKU_PKG/start.sh
+else
+  echo "ERR: no libshizuku.so and no start.sh"
+  exit 1
+fi
+""".trimIndent()
     }
+
+    /** Only one ADB session at a time — concurrent claimInterface crashes some devices. */
+    private val adbLock = Any()
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
-    fun listDevices(): List<UsbDevice> = usb.deviceList.values.toList()
-    fun hasPermission(device: UsbDevice): Boolean = usb.hasPermission(device)
+    fun listDevices(): List<UsbDevice> = try {
+        usb.deviceList.values.toList()
+    } catch (t: Throwable) {
+        emptyList()
+    }
+
+    fun hasPermission(device: UsbDevice): Boolean = try {
+        usb.hasPermission(device)
+    } catch (_: Throwable) {
+        false
+    }
 
     fun requestPermission(device: UsbDevice) {
-        val pi = PendingIntent.getBroadcast(
-            context, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_MUTABLE,
-        )
-        usb.requestPermission(device, pi)
+        try {
+            val pi = PendingIntent.getBroadcast(
+                context, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_MUTABLE,
+            )
+            usb.requestPermission(device, pi)
+        } catch (t: Throwable) {
+            // ignore — UI will show tip
+        }
     }
 
     fun resetAdbKeys(log: (String) -> Unit) {
@@ -67,12 +117,12 @@ class OtgAdbPusher(private val context: Context) {
     }
 
     fun push(apk: File, device: UsbDevice, log: (String) -> Unit) {
-        if (!usb.hasPermission(device)) throw IllegalStateException("No USB permission — grant and retry")
+        if (!hasPermission(device)) throw IllegalStateException("No USB permission — grant and retry")
         var last: Throwable? = null
         for (attempt in 1..MAX_PUSH_ATTEMPTS) {
             log("—— attempt $attempt/$MAX_PUSH_ATTEMPTS ——")
             try {
-                pushOnce(apk, device, log)
+                synchronized(adbLock) { pushOnce(apk, device, log) }
                 return
             } catch (e: StallException) {
                 last = e
@@ -80,11 +130,10 @@ class OtgAdbPusher(private val context: Context) {
                 if (attempt < MAX_PUSH_ATTEMPTS) {
                     log("Reconnecting in ${RECONNECT_COUNTDOWN_SEC}s…")
                     for (s in RECONNECT_COUNTDOWN_SEC downTo 1) { log("  $s…"); Thread.sleep(1000) }
-                    log("Force reconnect…")
                 }
-            } catch (e: Exception) {
-                last = e
-                log("FAIL attempt $attempt: ${e.message}")
+            } catch (t: Throwable) {
+                last = t
+                log("FAIL attempt $attempt: ${t.javaClass.simpleName}: ${t.message}")
                 if (attempt < MAX_PUSH_ATTEMPTS) {
                     log("Retry after ${RECONNECT_COUNTDOWN_SEC}s…")
                     for (s in RECONNECT_COUNTDOWN_SEC downTo 1) { log("  $s…"); Thread.sleep(1000) }
@@ -97,7 +146,10 @@ class OtgAdbPusher(private val context: Context) {
     private fun pushOnce(apk: File, device: UsbDevice, log: (String) -> Unit) {
         val connection = usb.openDevice(device) ?: throw IllegalStateException("openDevice failed")
         val iface = findAdbInterface(device) ?: throw IllegalStateException("No ADB interface — USB debugging on?")
-        if (!connection.claimInterface(iface, true)) { connection.close(); throw IllegalStateException("claimInterface failed") }
+        if (!connection.claimInterface(iface, true)) {
+            connection.close()
+            throw IllegalStateException("claimInterface failed")
+        }
         log("Claimed ADB iface=${iface.id} eps=${iface.endpointCount}")
         val channel = UsbChannel(connection, iface)
         try {
@@ -121,6 +173,7 @@ class OtgAdbPusher(private val context: Context) {
             try { conn.close() } catch (_: Exception) {}
         } finally {
             try { channel.close() } catch (_: Exception) {}
+            try { connection.close() } catch (_: Exception) {}
         }
     }
 
@@ -136,12 +189,14 @@ class OtgAdbPusher(private val context: Context) {
                 future.get(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
             } catch (e: TimeoutException) {
                 future.cancel(true)
-                throw IllegalStateException("ADB handshake timed out")
+                throw IllegalStateException("ADB handshake timed out — unlock target & accept RSA prompt")
             } catch (e: Exception) {
                 val cause = e.cause ?: e
                 throw IllegalStateException("ADB connect failed: ${cause.message}", cause)
             }
-        } finally { pool.shutdownNow() }
+        } finally {
+            pool.shutdownNow()
+        }
     }
 
     private fun execInstall(conn: AdbConnection, apk: File, log: (String) -> Unit): String {
@@ -195,14 +250,18 @@ class OtgAdbPusher(private val context: Context) {
                     out.append(String(chunk, StandardCharsets.UTF_8))
                     lastProgress.set(System.currentTimeMillis())
                 }
-            } catch (e: StallException) { throw e } catch (_: Exception) {}
+            } catch (e: StallException) {
+                throw e
+            } catch (_: Exception) {}
             try { stream.close() } catch (_: Exception) {}
             return out.toString()
-        } finally { done.set(true); watchdog.interrupt() }
+        } finally {
+            done.set(true); watchdog.interrupt()
+        }
     }
 
     private fun shell(conn: AdbConnection, cmd: String, log: (String) -> Unit): String {
-        log("\$ $cmd")
+        log("\$ ${cmd.take(120)}${if (cmd.length > 120) "…" else ""}")
         val stream = conn.open("shell:$cmd")
         val out = StringBuilder()
         try {
@@ -251,16 +310,29 @@ class OtgAdbPusher(private val context: Context) {
     }
 
     fun shellOnDevice(device: UsbDevice, cmd: String, log: (String) -> Unit): String {
-        val connection = usb.openDevice(device) ?: throw IllegalStateException("openDevice failed")
-        val iface = findAdbInterface(device) ?: throw IllegalStateException("No ADB interface — is USB debugging on?")
-        if (!connection.claimInterface(iface, true)) { connection.close(); throw IllegalStateException("claimInterface failed") }
-        val channel = UsbChannel(connection, iface)
-        try {
-            val crypto = loadOrCreateCrypto(log)
-            val conn = connectWithTimeout(channel, crypto)
-            try { return shell(conn, cmd, log) }
-            finally { try { conn.close() } catch (_: Exception) {} }
-        } finally { try { channel.close() } catch (_: Exception) {} }
+        synchronized(adbLock) {
+            val connection = usb.openDevice(device)
+                ?: throw IllegalStateException("openDevice failed — unplug/replug OTG")
+            val iface = findAdbInterface(device)
+                ?: throw IllegalStateException("No ADB interface — enable USB debugging on target")
+            if (!connection.claimInterface(iface, true)) {
+                try { connection.close() } catch (_: Exception) {}
+                throw IllegalStateException("claimInterface failed — another app may be using ADB")
+            }
+            val channel = UsbChannel(connection, iface)
+            try {
+                val crypto = loadOrCreateCrypto(log)
+                val conn = connectWithTimeout(channel, crypto)
+                try {
+                    return shell(conn, cmd, log)
+                } finally {
+                    try { conn.close() } catch (_: Exception) {}
+                }
+            } finally {
+                try { channel.close() } catch (_: Exception) {}
+                try { connection.close() } catch (_: Exception) {}
+            }
+        }
     }
 
     fun isTargetInstalled(device: UsbDevice, log: (String) -> Unit): Boolean =
@@ -273,8 +345,8 @@ class OtgAdbPusher(private val context: Context) {
         shellOnDevice(device, "monkey -p $TARGET_PKG -c android.intent.category.LAUNCHER 1", log)
 
     /**
-     * Check Shizuku is installed on the target, then run the official start.sh over ADB.
-     * User should open Shizuku once after install so start.sh exists under Android/data.
+     * Start Shizuku on target the same way the Shizuku app’s “View command” does:
+     * run libshizuku.so from the installed APK’s lib folder (path hash is normal).
      */
     fun startShizuku(device: UsbDevice, log: (String) -> Unit): String {
         log("Checking Shizuku ($SHIZUKU_PKG)…")
@@ -283,25 +355,19 @@ class OtgAdbPusher(private val context: Context) {
             log("Shizuku not installed on target")
             throw ShizukuNotInstalledException()
         }
-        log("Shizuku installed — starting server…")
-        // Prefer /sdcard path (docs); fall back to /storage/emulated/0 if needed
-        var out = shellOnDevice(device, SHIZUKU_START_CMD, log)
-        if (out.contains("No such file", ignoreCase = true) || out.contains("not found", ignoreCase = true)) {
-            log("start.sh missing at /sdcard path — trying /storage/emulated/0…")
-            out = shellOnDevice(
-                device,
-                "sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh",
-                log,
-            )
+        log("Shizuku installed — starting via libshizuku.so (official method)…")
+        // One shell session: script resolves path + execs native starter
+        val out = shellOnDevice(device, SHIZUKU_START_SCRIPT.replace("\n", "; "), log)
+        log("start output: ${out.trim().ifBlank { "(empty)" }.take(600)}")
+        if (out.contains("ERR: Shizuku not installed", ignoreCase = true)) {
+            throw ShizukuNotInstalledException()
         }
-        log("start.sh output: ${out.trim().ifBlank { "(empty)" }.take(500)}")
-        // Soft probe — service may take a moment
         val probe = shellOnDevice(
             device,
-            "dumpsys activity services moe.shizuku.privileged.api 2>/dev/null | head -5 || true",
+            "dumpsys activity services $SHIZUKU_PKG 2>/dev/null | head -8 || true",
             log,
         )
-        log("service probe: ${probe.trim().ifBlank { "(no line)" }.take(200)}")
+        log("service probe: ${probe.trim().ifBlank { "(no line)" }.take(250)}")
         return out
     }
 }
