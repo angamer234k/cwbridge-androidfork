@@ -1,0 +1,27 @@
+name: Restore Good Sources
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 40
+      - name: Restore files
+        run: |
+          set -eux
+          GOOD=83cc37a965b157329daef4a1655195a80b15ea8c
+          git show ${GOOD}:app/src/main/java/com/cwbridge/android/MainActivity.kt > app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git show ${GOOD}:app/src/main/java/com/cwbridge/android/ServiceModels.kt > app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          head -2 app/src/main/java/com/cwbridge/android/MainActivity.kt
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git commit -m "restore: MainActivity + ServiceModels from good commit" || echo nochange
+          git push
