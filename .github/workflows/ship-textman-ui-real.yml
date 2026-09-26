@@ -18,4 +18,14 @@ jobs:
           git show "$GOOD:app/src/main/java/com/cwbridge/android/MainActivity.kt" > app/src/main/java/com/cwbridge/android/MainActivity.kt
           git show "$GOOD:app/src/main/java/com/cwbridge/android/ServiceModels.kt" > app/src/main/java/com/cwbridge/android/ServiceModels.kt
           wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
-          python3 -c "import base64; open('/tmp/patch.py','wb').write(base64.b64decode('$(cat /tmp/ship_real.yml | python3 -c "import sys; print('NEED_B64')")'))"
+          python3 -c "import base64; open('/tmp/patch.py','wb').write(base64.b64decode(open('.github/workflows/patch_textman.b64').read().strip()))"
+          python3 /tmp/patch.py
+          grep -n "addTextManAction\|seedOrReplaceDefault\|2.10.7" app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt || true
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git status
+          git commit -m "feat: TextMan EnterText SetVar UI + force-seed defaults (v2.10.7)" || echo nochange
+          git push
