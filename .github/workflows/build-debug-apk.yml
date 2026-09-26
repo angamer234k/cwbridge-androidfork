@@ -15,25 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Ensure MainActivity logcat-bg + SendText
-        run: |
-          set -e
-          git show 89937f5a793b933642818532e1ac2a8bcc4679f7:app/src/main/java/com/cwbridge/android/MainActivity.kt > /tmp/MA.kt
-          python3 -c '
-from pathlib import Path
-t = Path("/tmp/MA.kt").read_text()
-t = t.replace("logcatReader.stop()\n        super.onPause()", "if (!bridgeRunning) logcatReader.stop()\n        super.onPause()", 1)
-t = t.replace("CatWebTracker.reset()\n            AntiDisconnect.start", "CatWebTracker.reset()\n            logcatReader.start(lifecycleScope)\n            AntiDisconnect.start", 1)
-t = t.replace("AntiDisconnect.stop()\n            LogBuffer.i(\"CWBridge\", \"bridge stopped\")", "AntiDisconnect.stop()\n            logcatReader.stop()\n            LogBuffer.i(\"CWBridge\", \"bridge stopped\")", 1)
-t = t.replace("version=2.9.4-android ctrl-t-test", "version=2.9.5-android logcat-bg", 1)
-assert "if (!bridgeRunning) logcatReader.stop()" in t
-assert "Send Text" in t
-Path("app/src/main/java/com/cwbridge/android/MainActivity.kt").write_text(t)
-print("MainActivity ready", len(t))
-'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
