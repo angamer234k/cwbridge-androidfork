@@ -223,7 +223,10 @@ class MainActivity : AppCompatActivity() {
     private fun showAddActionDialog(service: Service) {
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Action")
-            .setItems(arrayOf("Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service")) { _, which ->
+            .setItems(arrayOf(
+                "Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service",
+                "Ctrl+T", "Press Enter", "Send Text",
+            )) { _, which ->
                 when (which) {
                     0 -> addTapAction(service)
                     1 -> addGetInfoAction(service)
@@ -231,6 +234,15 @@ class MainActivity : AppCompatActivity() {
                     3 -> addAiAction(service)
                     4 -> addDelayAction(service)
                     5 -> addRunServiceAction(service)
+                    6 -> {
+                        ServiceRepository.addActionToService(service.id, Action.CtrlTAction())
+                        refreshServices()
+                    }
+                    7 -> {
+                        ServiceRepository.addActionToService(service.id, Action.PressEnterAction())
+                        refreshServices()
+                    }
+                    8 -> addSendTextAction(service)
                 }
             }
             .setNegativeButton("Cancel", null)
