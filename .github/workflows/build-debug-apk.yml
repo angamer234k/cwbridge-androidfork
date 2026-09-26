@@ -36,23 +36,36 @@ jobs:
           base64 -d keystore/cwbridge-debug.p12.b64 > keystore/cwbridge-debug.p12
           ls -la keystore/
 
+      - name: Vendor flashbot AdbLib (USB-aware, BSD)
+        run: |
+          set -e
+          DEST=helper/src/main/java/com/cgutman/adblib
+          mkdir -p "$DEST"
+          BASE=https://raw.githubusercontent.com/wuxudong/flashbot/master/adblib/src/main/java/com/cgutman/adblib
+          for f in AdbBase64.java AdbChannel.java AdbConnection.java AdbCrypto.java AdbMessage.java AdbProtocol.java AdbStream.java TcpChannel.java UsbChannel.java package-info.java; do
+            curl -fsSL "$BASE/$f" -o "$DEST/$f"
+          done
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build debug APKs (app + helper)
+        run: gradle :app:assembleDebug :helper:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload debug APK
+      - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:
-          name: cwbridge-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: cwbridge-debug-apks
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            helper/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Summarize
         if: always()
         run: |
-          echo "## CWBridge debug APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "## CWBridge debug APKs" >> "$GITHUB_STEP_SUMMARY"
           ls -lh app/build/outputs/apk/debug/ >> "$GITHUB_STEP_SUMMARY" || true
+          ls -lh helper/build/outputs/apk/debug/ >> "$GITHUB_STEP_SUMMARY" || true

@@ -45,9 +45,7 @@ class OtgAdbPusher(private val context: Context) {
         )
     }
 
-    /** Only one ADB session at a time — concurrent claimInterface crashes some devices. */
     private val adbLock = Any()
-
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
     fun listDevices(): List<UsbDevice> = try {
@@ -309,9 +307,9 @@ class OtgAdbPusher(private val context: Context) {
         shellOnDevice(device, "monkey -p $TARGET_PKG -c android.intent.category.LAUNCHER 1", log)
 
     /**
-     * Same idea as Shizuku “View command”:
+     * Same as Shizuku “View command”:
      *   adb shell /data/app/moe.shizuku…-HASH=/lib/arm/libshizuku.so
-     * The HASH is normal (Android install path), not garbage.
+     * HASH is normal Android install path, not garbage.
      */
     fun startShizuku(device: UsbDevice, log: (String) -> Unit): String {
         log("Checking Shizuku ($SHIZUKU_PKG)…")
@@ -325,7 +323,6 @@ class OtgAdbPusher(private val context: Context) {
             log("Shizuku not installed on target")
             throw ShizukuNotInstalledException()
         }
-        // /data/app/.../base.apk → parent dir holds lib/<abi>/libshizuku.so
         val dir = apkPath.substringBeforeLast('/', missingDelimiterValue = apkPath)
         log("apk=$apkPath")
         log("Looking for libshizuku.so under $dir/lib/…")
@@ -346,13 +343,13 @@ class OtgAdbPusher(private val context: Context) {
                 log,
             )
             log("lib listing: ${findOut.trim().take(300)}")
-            val match = Regex("(/\S+/libshizuku\.so)").find(findOut)?.groupValues?.getOrNull(1)
+            // raw string so \S / \. are valid regex, not illegal Kotlin escapes
+            val match = Regex("""(/\S+/libshizuku\.so)""").find(findOut)?.groupValues?.getOrNull(1)
             soPath = match
         }
 
         val out = if (soPath != null) {
             log("Starting (same as Shizuku UI): $soPath")
-            // Run native starter — this is what “View command” shows
             shellOnDevice(device, "\"$soPath\"", log)
         } else {
             log("libshizuku.so not found — fallback start.sh")
