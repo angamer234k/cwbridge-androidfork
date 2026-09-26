@@ -101,7 +101,7 @@ class UpdateChecker(
     }
 
     /**
-     * Show update dialog to user and request permission to download
+     * Show update dialog to user - if yes, download and install directly
      */
     fun showUpdateDialog(release: GitHubRelease, apkAsset: GitHubAsset) {
         val versionName = release.tag_name
@@ -110,24 +110,10 @@ class UpdateChecker(
         android.app.AlertDialog.Builder(context)
             .setTitle("Update Available")
             .setMessage("Version $versionName is available.\n\n$releaseNotes")
-            .setPositiveButton("Download") { _, _ ->
-                requestDownloadPermission(apkAsset)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /**
-     * Request explicit permission before downloading
-     */
-    private fun requestDownloadPermission(apkAsset: GitHubAsset) {
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Download Update")
-            .setMessage("Download ${apkAsset.name}? This will use your mobile data.")
-            .setPositiveButton("Confirm Download") { _, _ ->
+            .setPositiveButton("Update Now") { _, _ ->
                 downloadAndInstall(apkAsset)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Not Now", null)
             .show()
     }
 
