@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v2.8.2)"
+        description: "Release tag (e.g. v2.10.0)"
         required: true
-        default: "v2.8.2"
+        default: "v2.10.0"
   push:
     tags:
       - "v*"
@@ -46,7 +46,6 @@ jobs:
           set -e
           DEST=helper/src/main/java/com/cgutman/adblib
           mkdir -p "$DEST"
-          # flashbot fork of AdbLib — UsbChannel uses UsbRequest (what Bugjaeger/ADB-OTG use)
           BASE=https://raw.githubusercontent.com/wuxudong/flashbot/master/adblib/src/main/java/com/cgutman/adblib
           for f in AdbBase64.java AdbChannel.java AdbConnection.java AdbCrypto.java AdbMessage.java AdbProtocol.java AdbStream.java TcpChannel.java UsbChannel.java package-info.java; do
             curl -fsSL "$BASE/$f" -o "$DEST/$f"
@@ -88,7 +87,23 @@ jobs:
           tag_name: ${{ steps.collect.outputs.tag }}
           name: CWBridge ${{ steps.collect.outputs.tag }}
           body: |
-            ## CWBridge Android + Helper (new overlay)
+            ## CWBridge Android + Helper
+
+            | APK | Purpose |
+            |-----|---------|
+            | `cwbridge-android-debug.apk` | Main app — bridge, services, overlay |
+            | `cwbridge-helper-debug.apk` | OTG host — push install, grants, Shizuku start, diagnostics |
+
+            ### Helper 1.1
+            - **Start Shizuku** over OTG ADB (checks install first)
+            - **Help / common fixes** (USB, ADB, install, logcat, Shizuku)
+            - Smart **→ TIP** lines after failures
+            - **Copy / Share / Clear** logs
+            - Richer **diagnostics** (target model, packages, GitHub)
+
+            ### Main app
+            - Service actions: Ctrl+T, Press Enter, Send Text
+            - Overlay Ctrl+T test (3s delay)
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
