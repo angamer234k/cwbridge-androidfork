@@ -40,44 +40,9 @@ class OtgAdbPusher(private val context: Context) {
         private const val PROGRESS_STALL_MS = 30_000L
         private const val RECONNECT_COUNTDOWN_SEC = 10
         private const val MAX_PUSH_ATTEMPTS = 2
-
-        /**
-         * Modern Shizuku start (what the app shows under “View command”):
-         * resolve pm path → run libshizuku.so under lib/arm64|arm|…
-         * Fallback: classic start.sh under Android/data.
-         */
-        private val SHIZUKU_START_SCRIPT = """
-path=$(pm path $SHIZUKU_PKG 2>/dev/null | head -1 | sed 's/package://')
-if [ -z "$path" ]; then echo "ERR: Shizuku not installed"; exit 1; fi
-dir=$(dirname "$path")
-echo "apk=$path"
-for abi in arm64 arm64-v8a arm armeabi-v7a x86_64 x86; do
-  so="$dir/lib/$abi/libshizuku.so"
-  if [ -f "$so" ]; then
-    echo "starting $so"
-    "$so"
-    echo "libshizuku exit=$?"
-    exit 0
-  fi
-done
-for so in "$dir"/lib/*/libshizuku.so; do
-  if [ -f "$so" ]; then
-    echo "starting $so"
-    "$so"
-    echo "libshizuku exit=$?"
-    exit 0
-  fi
-done
-echo "libshizuku.so not found under $dir/lib — trying start.sh"
-if [ -f /sdcard/Android/data/$SHIZUKU_PKG/start.sh ]; then
-  sh /sdcard/Android/data/$SHIZUKU_PKG/start.sh
-elif [ -f /storage/emulated/0/Android/data/$SHIZUKU_PKG/start.sh ]; then
-  sh /storage/emulated/0/Android/data/$SHIZUKU_PKG/start.sh
-else
-  echo "ERR: no libshizuku.so and no start.sh"
-  exit 1
-fi
-""".trimIndent()
+        private val SHIZUKU_ABIS = listOf(
+            "arm64", "arm64-v8a", "arm", "armeabi-v7a", "x86_64", "x86",
+        )
     }
 
     /** Only one ADB session at a time — concurrent claimInterface crashes some devices. */
@@ -87,7 +52,7 @@ fi
 
     fun listDevices(): List<UsbDevice> = try {
         usb.deviceList.values.toList()
-    } catch (t: Throwable) {
+    } catch (_: Throwable) {
         emptyList()
     }
 
@@ -103,8 +68,7 @@ fi
                 context, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_MUTABLE,
             )
             usb.requestPermission(device, pi)
-        } catch (t: Throwable) {
-            // ignore — UI will show tip
+        } catch (_: Throwable) {
         }
     }
 
@@ -345,23 +309,71 @@ fi
         shellOnDevice(device, "monkey -p $TARGET_PKG -c android.intent.category.LAUNCHER 1", log)
 
     /**
-     * Start Shizuku on target the same way the Shizuku app’s “View command” does:
-     * run libshizuku.so from the installed APK’s lib folder (path hash is normal).
+     * Same idea as Shizuku “View command”:
+     *   adb shell /data/app/moe.shizuku…-HASH=/lib/arm/libshizuku.so
+     * The HASH is normal (Android install path), not garbage.
      */
     fun startShizuku(device: UsbDevice, log: (String) -> Unit): String {
         log("Checking Shizuku ($SHIZUKU_PKG)…")
         val pathOut = shellOnDevice(device, "pm path $SHIZUKU_PKG", log)
-        if (!pathOut.contains("package:")) {
+        val apkPath = pathOut.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("package:") }
+            ?.removePrefix("package:")
+            ?.trim()
+        if (apkPath.isNullOrEmpty()) {
             log("Shizuku not installed on target")
             throw ShizukuNotInstalledException()
         }
-        log("Shizuku installed — starting via libshizuku.so (official method)…")
-        // One shell session: script resolves path + execs native starter
-        val out = shellOnDevice(device, SHIZUKU_START_SCRIPT.replace("\n", "; "), log)
-        log("start output: ${out.trim().ifBlank { "(empty)" }.take(600)}")
-        if (out.contains("ERR: Shizuku not installed", ignoreCase = true)) {
-            throw ShizukuNotInstalledException()
+        // /data/app/.../base.apk → parent dir holds lib/<abi>/libshizuku.so
+        val dir = apkPath.substringBeforeLast('/', missingDelimiterValue = apkPath)
+        log("apk=$apkPath")
+        log("Looking for libshizuku.so under $dir/lib/…")
+
+        var soPath: String? = null
+        for (abi in SHIZUKU_ABIS) {
+            val candidate = "$dir/lib/$abi/libshizuku.so"
+            val ls = shellOnDevice(device, "ls \"$candidate\" 2>/dev/null || true", log)
+            if (ls.contains("libshizuku.so") && !ls.contains("No such", ignoreCase = true)) {
+                soPath = candidate
+                break
+            }
         }
+        if (soPath == null) {
+            val findOut = shellOnDevice(
+                device,
+                "ls \"$dir/lib\" 2>/dev/null; ls \"$dir\"/lib/*/libshizuku.so 2>/dev/null || true",
+                log,
+            )
+            log("lib listing: ${findOut.trim().take(300)}")
+            val match = Regex("(/\S+/libshizuku\.so)").find(findOut)?.groupValues?.getOrNull(1)
+            soPath = match
+        }
+
+        val out = if (soPath != null) {
+            log("Starting (same as Shizuku UI): $soPath")
+            // Run native starter — this is what “View command” shows
+            shellOnDevice(device, "\"$soPath\"", log)
+        } else {
+            log("libshizuku.so not found — fallback start.sh")
+            var fallback = shellOnDevice(
+                device,
+                "sh /sdcard/Android/data/$SHIZUKU_PKG/start.sh",
+                log,
+            )
+            if (fallback.contains("No such file", ignoreCase = true) ||
+                fallback.contains("not found", ignoreCase = true)
+            ) {
+                fallback = shellOnDevice(
+                    device,
+                    "sh /storage/emulated/0/Android/data/$SHIZUKU_PKG/start.sh",
+                    log,
+                )
+            }
+            fallback
+        }
+
+        log("start output: ${out.trim().ifBlank { "(empty)" }.take(600)}")
         val probe = shellOnDevice(
             device,
             "dumpsys activity services $SHIZUKU_PKG 2>/dev/null | head -8 || true",
