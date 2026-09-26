@@ -66,6 +66,7 @@ class LogcatReader(
                             if (line.contains("attached —") || line.contains("re-attached")) continue
                             if (line.contains("I/Logcat") && line.contains("attached")) continue
 
+                            RecentLogLines.add(line)
                             CatWebTracker.onLogLine(line)
                             AntiDisconnect.onLogLine(line)
 
