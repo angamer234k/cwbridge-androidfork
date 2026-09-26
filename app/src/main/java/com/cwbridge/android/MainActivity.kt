@@ -90,6 +90,12 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Don't restart the activity on orientation change
+        // Bridge and services continue running
+    }
+
     override fun onDestroy() {
         AntiDisconnect.stop()
         localServer?.stop()
