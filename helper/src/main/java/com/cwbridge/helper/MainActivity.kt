@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.net.Uri
 import android.os.Bundle
 import android.widget.ScrollView
 import android.widget.Toast
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.cwbridge.helper.databinding.ActivityMainBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnDiagnostics.setOnClickListener { runDiagnostics() }
         binding.btnGrantLogs.setOnClickListener { grantLogsOnly() }
         binding.btnLaunchTarget.setOnClickListener { launchTarget() }
+        binding.btnStartShizuku.setOnClickListener { startShizuku() }
 
         val filter = IntentFilter().apply {
             addAction(OtgAdbPusher.ACTION_USB_PERMISSION)
@@ -76,7 +79,7 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.0.6 — scrollable logs + target diagnostics")
+        log("Helper 1.0.7 — Start Shizuku over OTG ADB")
     }
 
     override fun onDestroy() {
@@ -113,7 +116,7 @@ class MainActivity : AppCompatActivity() {
         if (!pusher.hasPermission(device)) {
             binding.usbState.text = "USB: ${device.deviceName} (need permission)"
             binding.usbState.setTextColor(0xFFC4A574.toInt())
-            log("Requesting USB permission\u2026")
+            log("Requesting USB permission…")
             pusher.requestPermission(device)
         } else {
             binding.usbState.text = "USB: ${device.deviceName} ready"
@@ -153,13 +156,79 @@ class MainActivity : AppCompatActivity() {
             try {
                 val out = pusher.grantReadLogs(device) { msg -> runOnUiThread { log(msg) } }
                 withContext(Dispatchers.Main) {
-                    log("grant result: ${out.ifBlank { \"ok\" }}")
+                    log("grant result: ${out.ifBlank { "ok" }}")
                     Toast.makeText(this@MainActivity, "READ_LOGS grant sent", Toast.LENGTH_SHORT).show()
                 }
             } catch (t: Throwable) {
                 withContext(Dispatchers.Main) { log("grant FAIL: ${t.message}") }
             }
         }
+    }
+
+    private fun startShizuku() {
+        val device = requireTarget() ?: return
+        binding.btnStartShizuku.isEnabled = false
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.Main) { log("—— Start Shizuku ——") }
+                val out = pusher.startShizuku(device) { msg -> runOnUiThread { log(msg) } }
+                withContext(Dispatchers.Main) {
+                    log("Shizuku start finished")
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Shizuku start sent — check Shizuku app on target",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    if (out.isNotBlank()) log("raw: ${out.take(300)}")
+                }
+            } catch (e: OtgAdbPusher.ShizukuNotInstalledException) {
+                withContext(Dispatchers.Main) {
+                    log("FAIL: ${e.message}")
+                    showShizukuInstallHelp()
+                }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) {
+                    log("Shizuku FAIL: ${t.message}")
+                    Toast.makeText(this@MainActivity, "Failed: ${t.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) { binding.btnStartShizuku.isEnabled = true }
+            }
+        }
+    }
+
+    private fun showShizukuInstallHelp() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Shizuku not installed")
+            .setMessage(
+                "Install Shizuku on the *target* device, open it once (so start.sh is created), " +
+                    "then come back and tap Start Shizuku.\n\n" +
+                    "Play Store / GitHub: package moe.shizuku.privileged.api",
+            )
+            .setPositiveButton("Open Play Store") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://play.google.com/store/apps/details?id=${OtgAdbPusher.SHIZUKU_PKG}"),
+                        ),
+                    )
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Open Play Store and search Shizuku", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("GitHub releases") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/RikkaApps/Shizuku/releases"),
+                        ),
+                    )
+                } catch (_: Exception) {}
+            }
+            .setNegativeButton("OK", null)
+            .show()
     }
 
     private fun launchTarget() {
@@ -176,7 +245,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun runDiagnostics() {
         lifecycleScope.launch(Dispatchers.IO) {
-            log("\u2014\u2014 DIAGNOSTICS \u2014\u2014")
+            log("—— DIAGNOSTICS ——")
             log("(Install check runs on the USB *target* device, not this phone)")
 
             val device = selected
@@ -201,7 +270,18 @@ class MainActivity : AppCompatActivity() {
                         "dumpsys package ${OtgAdbPusher.TARGET_PKG} | grep -i READ_LOGS || true",
                     ) { msg -> runOnUiThread { log(msg) } }
                     withContext(Dispatchers.Main) {
-                        log("READ_LOGS probe: ${grantProbe.trim().ifBlank { \"(no line)\" }.take(200)}")
+                        log("READ_LOGS probe: ${grantProbe.trim().ifBlank { "(no line)" }.take(200)}")
+                    }
+                    val shizukuPath = pusher.shellOnDevice(
+                        device,
+                        "pm path ${OtgAdbPusher.SHIZUKU_PKG}",
+                    ) { msg -> runOnUiThread { log(msg) } }
+                    withContext(Dispatchers.Main) {
+                        if (shizukuPath.contains("package:")) {
+                            log("[OK] Shizuku installed on target")
+                        } else {
+                            log("[WARN] Shizuku NOT installed on target")
+                        }
                     }
                 } catch (t: Throwable) {
                     withContext(Dispatchers.Main) {
@@ -254,7 +334,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             withContext(Dispatchers.Main) {
-                log("\u2014\u2014 DIAGNOSTICS COMPLETE \u2014\u2014")
+                log("—— DIAGNOSTICS COMPLETE ——")
             }
         }
     }
