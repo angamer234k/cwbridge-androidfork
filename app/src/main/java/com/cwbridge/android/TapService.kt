@@ -4,14 +4,16 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.hardware.input.InputManager
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.KeyCharacterMap
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Accessibility service: click-by-text, coordinate taps, and best-effort paste.
- *
- * Roblox (and most game engines) draw to a surface with an empty accessibility tree,
- * so clickByText usually finds nothing. Use clickAt / clickAtPercent instead.
+ * Accessibility service: taps, paste, and best-effort key chords (Ctrl+T test).
  */
 class TapService : AccessibilityService() {
 
@@ -20,9 +22,7 @@ class TapService : AccessibilityService() {
         LogBuffer.i("A11y", "service connected: CWBridge Tap")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Window tree is pulled on demand via rootInActiveWindow.
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {
         LogBuffer.w("A11y", "service interrupted")
@@ -34,7 +34,6 @@ class TapService : AccessibilityService() {
         super.onDestroy()
     }
 
-    /** Click the first clickable node whose text or contentDescription contains [query]. */
     fun clickByText(query: String): Boolean {
         val root = rootInActiveWindow ?: run {
             LogBuffer.w("A11y", "no active window")
@@ -42,23 +41,19 @@ class TapService : AccessibilityService() {
         }
         val q = query.trim().lowercase()
         if (q.isEmpty()) return false
-
         val target = findClickable(root, q)
         if (target == null) {
             LogBuffer.w("A11y", "no clickable node matching \"$query\"")
             return false
         }
-
         val label = (target.text ?: target.contentDescription)?.toString() ?: query
         val bounds = Rect()
         target.getBoundsInScreen(bounds)
-
         val clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         if (clicked) {
             LogBuffer.i("A11y", "ACTION_CLICK text=\"$label\" bounds=$bounds")
             return true
         }
-
         return gestureTap(bounds.centerX().toFloat(), bounds.centerY().toFloat(), "text=\"$label\"")
     }
 
@@ -70,27 +65,21 @@ class TapService : AccessibilityService() {
         val y = (yPercent.coerceIn(0f, 100f) / 100f) * dm.heightPixels
         LogBuffer.i(
             "A11y",
-            "percent (${xPercent}%, ${yPercent}%) → px (${x.toInt()}, ${y.toInt()}) " +
-                "screen=${dm.widthPixels}x${dm.heightPixels}",
+            "percent (${xPercent}%, ${yPercent}%) \u2192 px (${x.toInt()}, ${y.toInt()}) " +
+                "${dm.widthPixels}x${dm.heightPixels}",
         )
         return gestureTap(x, y, "percent")
     }
 
-    /**
-     * Best-effort paste into the focused node. Games often ignore ACTION_PASTE;
-     * clipboard is still set by InvokeEngine so a long-press paste may work.
-     */
     fun pasteClipboard(): Boolean {
         val root = rootInActiveWindow
         if (root != null) {
             val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-                ?: root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
             if (focused != null) {
                 val ok = focused.performAction(AccessibilityNodeInfo.ACTION_PASTE)
                 LogBuffer.i("A11y", "ACTION_PASTE focused ok=$ok")
                 if (ok) return true
             }
-            // Try paste on any editable node
             val editable = findEditable(root)
             if (editable != null) {
                 val ok = editable.performAction(AccessibilityNodeInfo.ACTION_PASTE)
@@ -98,8 +87,49 @@ class TapService : AccessibilityService() {
                 if (ok) return true
             }
         }
-        LogBuffer.w("A11y", "ACTION_PASTE unavailable — clipboard is set; game may need long-press")
+        LogBuffer.w("A11y", "ACTION_PASTE unavailable")
         return false
+    }
+
+    /** Test chord: Ctrl+T via InputManager inject (best-effort). */
+    fun pressCtrlT(): Boolean {
+        LogBuffer.i("A11y", "pressCtrlT \u2014 injecting CTRL+T chord")
+        val ok = injectCtrlChord(KeyEvent.KEYCODE_T)
+        LogBuffer.i("A11y", "pressCtrlT result=$ok")
+        return ok
+    }
+
+    fun injectCtrlChord(keyCode: Int): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        val events = listOf(
+            KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
+            KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
+            KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
+            KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
+        )
+        for (e in events) {
+            if (!injectKeyEvent(e)) return false
+            try { Thread.sleep(8) } catch (_: InterruptedException) {}
+        }
+        return true
+    }
+
+    private fun injectKeyEvent(event: KeyEvent): Boolean {
+        return try {
+            val im = getSystemService(INPUT_SERVICE) as InputManager
+            val method = InputManager::class.java.getDeclaredMethod(
+                "injectInputEvent",
+                android.view.InputEvent::class.java,
+                Int::class.javaPrimitiveType,
+            )
+            method.isAccessible = true
+            val result = method.invoke(im, event, 0)
+            result as? Boolean ?: true
+        } catch (t: Throwable) {
+            LogBuffer.w("A11y", "injectKeyEvent failed: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
     }
 
     private fun gestureTap(x: Float, y: Float, tag: String): Boolean {
@@ -113,9 +143,7 @@ class TapService : AccessibilityService() {
 
     private fun findClickable(node: AccessibilityNodeInfo, query: String): AccessibilityNodeInfo? {
         val text = (node.text?.toString() ?: "") + " " + (node.contentDescription?.toString() ?: "")
-        if (node.isClickable && text.lowercase().contains(query)) {
-            return node
-        }
+        if (node.isClickable && text.lowercase().contains(query)) return node
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val hit = findClickable(child, query)
