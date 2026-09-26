@@ -29,18 +29,27 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:fontFamily="monospace"
-        android:maxHeight="320dp"
+        android:maxHeight="280dp"
         android:scrollbars="vertical"
         android:text="(no console lines yet)"
         android:textColor="#E0E0E0"
         android:textSize="10sp" />
 
+    <Button
+        android:id="@+id/btnOverlayCtrlT"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Ctrl+T in 3s (focus Roblox)"
+        android:textAllCaps="false"
+        android:textSize="12sp" />
+
     <TextView
         android:id="@+id/overlayLogsHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Tap outside or bubble to close"
+        android:layout_marginTop="6dp"
+        android:text="Long-press bubble = same. Tap bubble to close."
         android:textColor="#8B909A"
         android:textSize="10sp" />
 </LinearLayout>
