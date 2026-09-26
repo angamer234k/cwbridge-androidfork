@@ -36,6 +36,17 @@ class OverlayService : Service() {
     private var logsVisible = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var ctrlTCountdown: Runnable? = null
+    private var logRefreshPending = false
+
+    private val robloxLogListener: () -> Unit = {
+        if (!logsVisible) return@robloxLogListener
+        if (logRefreshPending) return@robloxLogListener
+        logRefreshPending = true
+        mainHandler.postDelayed({
+            logRefreshPending = false
+            if (logsVisible) refreshLogsText()
+        }, 120)
+    }
 
     private val statusListener: (OverlayState, String) -> Unit = { state, _ ->
         applyColor(state)
@@ -68,12 +79,14 @@ class OverlayService : Service() {
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         BridgeStatus.addListener(statusListener)
+        RobloxLogBuffer.addListener(robloxLogListener)
         showBubble()
     }
 
     override fun onDestroy() {
         cancelCtrlTCountdown()
         BridgeStatus.removeListener(statusListener)
+        RobloxLogBuffer.removeListener(robloxLogListener)
         try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
         hideLogs()
         bubbleView?.let { try { windowManager?.removeView(it) } catch (_: Exception) {} }
@@ -139,11 +152,10 @@ class OverlayService : Service() {
 
     private fun onBubbleTap() { if (logsVisible) hideLogs() else showLogs() }
 
-    /** Focus Roblox first — fires Ctrl+T after 3 seconds. */
     fun scheduleCtrlTIn3s() {
         cancelCtrlTCountdown()
-        Toast.makeText(this, "Ctrl+T in 3s — focus Roblox now", Toast.LENGTH_SHORT).show()
-        LogBuffer.i("Overlay", "Ctrl+T scheduled in 3s")
+        Toast.makeText(this, "Ctrl+T in 3s — focus the target app now", Toast.LENGTH_SHORT).show()
+        LogBuffer.i("Overlay", "Ctrl+T scheduled in 3s — ${ShizukuShell.statusLine()}")
         var left = 3
         val tick = object : Runnable {
             override fun run() {
@@ -153,19 +165,21 @@ class OverlayService : Service() {
                     mainHandler.postDelayed(this, 1000)
                 } else {
                     ctrlTCountdown = null
-                    val tap = TapService.instance
-                    if (tap == null) {
-                        Toast.makeText(this@OverlayService, "Tap service off — enable CWBridge Tap", Toast.LENGTH_LONG).show()
-                        LogBuffer.w("Overlay", "Ctrl+T aborted: no TapService")
-                    } else {
-                        val ok = tap.pressCtrlT()
-                        Toast.makeText(
-                            this@OverlayService,
-                            if (ok) "Ctrl+T sent" else "Ctrl+T failed (OEM may block)",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        LogBuffer.i("Overlay", "Ctrl+T result=$ok")
+                    val ok = when {
+                        ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                        TapService.instance != null -> TapService.instance!!.pressCtrlT()
+                        else -> {
+                            LogBuffer.w("Overlay", "Ctrl+T: no Shizuku and no TapService")
+                            false
+                        }
                     }
+                    Toast.makeText(
+                        this@OverlayService,
+                        if (ok) "Ctrl+T sent"
+                        else "Ctrl+T failed — ${ShizukuShell.statusLine()}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    LogBuffer.i("Overlay", "Ctrl+T result=$ok ${ShizukuShell.statusLine()}")
                 }
             }
         }
