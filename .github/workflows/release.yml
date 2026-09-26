@@ -87,23 +87,7 @@ jobs:
           tag_name: ${{ steps.collect.outputs.tag }}
           name: CWBridge ${{ steps.collect.outputs.tag }}
           body: |
-            ## CWBridge Android + Helper
-
-            | APK | Purpose |
-            |-----|---------|
-            | `cwbridge-android-debug.apk` | Main app — bridge, services, overlay |
-            | `cwbridge-helper-debug.apk` | OTG host — push install, grants, Shizuku start, diagnostics |
-
-            ### Helper 1.1
-            - **Start Shizuku** over OTG ADB (checks install first)
-            - **Help / common fixes** (USB, ADB, install, logcat, Shizuku)
-            - Smart **→ TIP** lines after failures
-            - **Copy / Share / Clear** logs
-            - Richer **diagnostics** (target model, packages, GitHub)
-
-            ### Main app
-            - Service actions: Ctrl+T, Press Enter, Send Text
-            - Overlay Ctrl+T test (3s delay)
+            ## version 2.10.2 wow
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
