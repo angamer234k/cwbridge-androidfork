@@ -15,6 +15,57 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure MainActivity logcat-bg + SendText
+        run: |
+          set -e
+          git show 89937f5a793b933642818532e1ac2a8bcc4679f7:app/src/main/java/com/cwbridge/android/MainActivity.kt > app/src/main/java/com/cwbridge/android/MainActivity.kt
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+          t = t.replace(
+          """    override fun onPause() {
+        logcatReader.stop()
+        super.onPause()
+    }""",
+          """    override fun onPause() {
+        if (!bridgeRunning) logcatReader.stop()
+        super.onPause()
+    }""",
+          1)
+          t = t.replace(
+          """            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()""",
+          """            bridgeRunning = true
+            CatWebTracker.reset()
+            logcatReader.start(lifecycleScope)
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()""",
+          1)
+          t = t.replace(
+          """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")""",
+          """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            logcatReader.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")""",
+          1)
+          t = t.replace("version=2.9.4-android ctrl-t-test", "version=2.9.5-android logcat-bg", 1)
+          p.write_text(t)
+          assert "if (!bridgeRunning) logcatReader.stop()" in t
+          assert "Send Text" in t
+          print("MainActivity ready", len(t))
+          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
