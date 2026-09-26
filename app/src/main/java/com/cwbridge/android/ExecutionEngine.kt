@@ -10,9 +10,8 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
 
-/** Executes Action blocks — keys via TapService, network on IO, rest via InvokeEngine. */
+/** Executes Action blocks — keys via TapService/Shizuku, TextMan → vars, rest via InvokeEngine. */
 class ExecutionEngine(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -62,19 +61,55 @@ class ExecutionEngine(
     private suspend fun executeActionInternal(action: Action) {
         when (action) {
             is Action.CtrlTAction -> {
-                val tap = TapService.instance
-                if (tap == null) LogBuffer.w("ExecutionEngine", "Ctrl+T: TapService not connected")
-                else LogBuffer.i("ExecutionEngine", "Ctrl+T ok=${tap.pressCtrlT()}")
+                val ok = when {
+                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                    TapService.instance != null -> TapService.instance!!.pressCtrlT()
+                    else -> false
+                }
+                LogBuffer.i("ExecutionEngine", "Ctrl+T ok=$ok")
             }
             is Action.PressEnterAction -> {
-                val tap = TapService.instance
-                if (tap == null) LogBuffer.w("ExecutionEngine", "Enter: TapService not connected")
-                else LogBuffer.i("ExecutionEngine", "Enter ok=${tap.pressEnter()}")
+                val ok = when {
+                    ShizukuShell.isReady() -> ShizukuShell.pressEnter()
+                    TapService.instance != null -> TapService.instance!!.pressEnter()
+                    else -> false
+                }
+                LogBuffer.i("ExecutionEngine", "Enter ok=$ok")
             }
             is Action.SendTextAction -> {
+                val body = VarStore.expand(action.text)
                 val tap = TapService.instance
-                if (tap == null) LogBuffer.w("ExecutionEngine", "SendText: TapService not connected")
-                else LogBuffer.i("ExecutionEngine", "SendText len=${action.text.length} ok=${tap.sendText(action.text)}")
+                val ok = when {
+                    tap != null -> tap.sendText(body)
+                    ShizukuShell.isReady() -> ShizukuShell.inputText(body)
+                    else -> false
+                }
+                LogBuffer.i("ExecutionEngine", "SendText len=${body.length} ok=$ok")
+            }
+            is Action.EnterTextAction -> {
+                val body = VarStore.expand(action.text)
+                LogBuffer.i("ExecutionEngine", "EnterText len=${body.length}")
+                val tap = TapService.instance
+                var okPaste = false
+                var okEnter = false
+                if (tap != null) {
+                    okPaste = tap.sendText(body)
+                    delay(120)
+                    okEnter = tap.pressEnter()
+                } else if (ShizukuShell.isReady()) {
+                    okPaste = ShizukuShell.inputText(body)
+                    delay(120)
+                    okEnter = ShizukuShell.pressEnter()
+                } else {
+                    LogBuffer.w("ExecutionEngine", "EnterText: need TapService or Shizuku")
+                }
+                LogBuffer.i("ExecutionEngine", "EnterText paste=$okPaste enter=$okEnter")
+            }
+            is Action.TextManAction -> runTextMan(action)
+            is Action.SetVarAction -> {
+                val key = VarStore.expand(action.key).ifBlank { action.key }
+                val value = VarStore.expand(action.value)
+                VarStore.set(key, value)
             }
             is Action.HttpRequestAction -> executeHttpRequest(action)
             is Action.RunServiceAction -> {
@@ -89,6 +124,52 @@ class ExecutionEngine(
                 }
             }
         }
+    }
+
+    private fun runTextMan(action: Action.TextManAction) {
+        val srcRaw = action.source.trim().ifEmpty { "\$lastMatch" }
+        val sourceText = when {
+            srcRaw.equals("\$lastMatch", ignoreCase = true) ||
+                srcRaw.equals("lastMatch", ignoreCase = true) ->
+                VarStore.getOrEmpty("lastMatch")
+            srcRaw.startsWith("$") -> VarStore.expand(srcRaw)
+            else -> VarStore.expand(srcRaw)
+        }
+        val mode = action.mode.lowercase().trim()
+        val result = try {
+            when (mode) {
+                "full", "copy", "" -> sourceText
+                "trim" -> sourceText.trim()
+                "after" -> {
+                    val p = action.pattern
+                    val i = sourceText.indexOf(p)
+                    if (i >= 0) sourceText.substring(i + p.length) else ""
+                }
+                "before" -> {
+                    val p = action.pattern
+                    val i = sourceText.indexOf(p)
+                    if (i >= 0) sourceText.substring(0, i) else sourceText
+                }
+                "replace" -> sourceText.replace(action.pattern, action.replaceWith)
+                "regex" -> {
+                    val re = Regex(action.pattern)
+                    val m = re.find(sourceText)
+                    if (m == null) ""
+                    else {
+                        val g = action.group
+                        if (g >= 0 && g <= m.groupValues.lastIndex) m.groupValues[g]
+                        else m.value
+                    }
+                }
+                else -> sourceText
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("ExecutionEngine", "TextMan error: ${t.message}")
+            ""
+        }
+        val dest = action.saveTo.ifBlank { "result" }
+        VarStore.set(dest, result)
+        LogBuffer.i("ExecutionEngine", "TextMan mode=$mode → \$$dest (${result.length} chars)")
     }
 
     private fun actionToInvokeCommand(action: Action): String = when (action) {
@@ -143,22 +224,24 @@ class ExecutionEngine(
         val jobId = "${service.id}-${trigger.id}"
         logTriggerJobs[jobId]?.cancel()
         logTriggerJobs[jobId] = scope.launch(Dispatchers.IO) {
-            var last = 0L
+            var afterMs = System.currentTimeMillis()
             while (isActive) {
-                for (line in LogBuffer.snapshot()) {
-                    val matches = if (trigger.useRegex)
-                        line.msg.contains(Regex(trigger.pattern))
-                    else line.msg.contains(trigger.pattern, ignoreCase = !trigger.matchCase)
+                val batch = RecentLogLines.since(afterMs)
+                for (line in batch) {
+                    if (line.atMs > afterMs) afterMs = line.atMs
+                    val matches = try {
+                        if (trigger.useRegex) line.text.contains(Regex(trigger.pattern))
+                        else line.text.contains(trigger.pattern, ignoreCase = !trigger.matchCase)
+                    } catch (_: Throwable) {
+                        false
+                    }
                     if (matches) {
-                        val now = System.currentTimeMillis()
-                        if (now - last > 1000) {
-                            last = now
-                            LogBuffer.i("ExecutionEngine", "Log trigger: ${trigger.pattern}")
-                            executeService(service)
-                        }
+                        VarStore.set("lastMatch", line.text)
+                        LogBuffer.i("ExecutionEngine", "Log trigger '${trigger.pattern}' → ${service.name}")
+                        executeService(service)
                     }
                 }
-                delay(500)
+                delay(250)
             }
         }
     }
