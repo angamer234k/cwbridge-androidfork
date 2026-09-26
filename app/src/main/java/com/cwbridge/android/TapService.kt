@@ -88,7 +88,14 @@ class TapService : AccessibilityService() {
 
     fun pressCtrlT(): Boolean {
         LogBuffer.i("A11y", "pressCtrlT")
-        return injectCtrlChord(KeyEvent.KEYCODE_T).also { LogBuffer.i("A11y", "pressCtrlT result=$it") }
+        // Most OEMs block InputManager.injectInputEvent for non-system apps.
+        val ok = injectCtrlChord(KeyEvent.KEYCODE_T)
+        if (ok) {
+            LogBuffer.i("A11y", "pressCtrlT inject ok=true")
+            return true
+        }
+        LogBuffer.w("A11y", "pressCtrlT inject blocked — OEM restriction (need privileged shell/Shizuku)")
+        return false
     }
 
     fun injectCtrlChord(keyCode: Int): Boolean {
