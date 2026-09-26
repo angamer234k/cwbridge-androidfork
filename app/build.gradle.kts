@@ -12,8 +12,8 @@ android {
         applicationId = "com.cwbridge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.9.3-android"
+        versionCode = 9
+        versionName = "2.10.5-android"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -73,4 +73,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Shizuku — privileged shell for Ctrl+T / keyinjection
+    val shizukuVersion = "13.1.5"
+    implementation("dev.rikka.shizuku:api:$shizukuVersion")
+    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 }
