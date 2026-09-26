@@ -1,0 +1,21 @@
+name: Ship TextMan UI Real
+on:
+  workflow_dispatch:
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 40
+      - name: Restore + patch
+        run: |
+          set -e
+          GOOD=83cc37a965b157329daef4a1655195a80b15ea8c
+          git show "$GOOD:app/src/main/java/com/cwbridge/android/MainActivity.kt" > app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git show "$GOOD:app/src/main/java/com/cwbridge/android/ServiceModels.kt" > app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          python3 -c "import base64; open('/tmp/patch.py','wb').write(base64.b64decode('$(cat /tmp/ship_real.yml | python3 -c "import sys; print('NEED_B64')")'))"
