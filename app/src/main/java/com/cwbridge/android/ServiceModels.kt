@@ -273,7 +273,7 @@ object ServiceRepository {
     }
 
     fun ensureDefaultServices() {
-        upsertDefault(
+        seedOrReplaceDefault(
             Service(
                 id = "default-save-keys",
                 name = "Save keys",
@@ -299,7 +299,7 @@ object ServiceRepository {
                 ),
             )
         )
-        upsertDefault(
+        seedOrReplaceDefault(
             Service(
                 id = "default-load-keys",
                 name = "Load keys",
@@ -327,24 +327,19 @@ object ServiceRepository {
         )
     }
 
-    private fun upsertDefault(template: Service) {
-        val existing = inMemoryServices.find { it.id == template.id }
-        if (existing == null) {
-            addService(template)
-            LogBuffer.i("Services", "seeded ${template.name}")
-            return
+    private fun seedOrReplaceDefault(template: Service) {
+        val idx = inMemoryServices.indexOfFirst { it.id == template.id }
+        if (idx >= 0) inMemoryServices[idx] = template else inMemoryServices.add(template)
+        saveToDatabase(template)
+        LogBuffer.i("Services", "default ${template.name}: ${template.triggers.size} triggers, ${template.actions.size} actions")
+    }
+
+    fun forceRepairDefaults() {
+        listOf("default-save-keys", "default-load-keys").forEach { id ->
+            inMemoryServices.removeAll { it.id == id }
+            deleteFromDatabase(id)
         }
-        if (existing.actions.isEmpty() || existing.triggers.isEmpty()) {
-            updateService(
-                existing.copy(
-                    name = template.name,
-                    description = template.description,
-                    triggers = template.triggers.toMutableList(),
-                    actions = template.actions.toMutableList(),
-                    isEnabled = true,
-                ),
-            )
-            LogBuffer.i("Services", "repaired ${template.name} (empty triggers/actions)")
-        }
+        ensureDefaultServices()
+        LogBuffer.i("Services", "force-repaired default Save/Load keys")
     }
 }

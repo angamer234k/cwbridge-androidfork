@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
         setupServicesRecyclerView()
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
-        LogBuffer.i("CWBridge", "session start version=2.9.4-android ctrl-t-test")
+        LogBuffer.i("CWBridge", "session start version=2.10.7-android textman-vars")
         showCategory("bridge")
         refreshUi()
     }
@@ -241,7 +241,22 @@ class MainActivity : AppCompatActivity() {
     private fun showAddActionDialog(service: Service) {
         MaterialAlertDialogBuilder(this)
             .setTitle("Add Action")
-            .setItems(arrayOf("Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service")) { _, which ->
+            .setItems(
+                arrayOf(
+                    "Tap",
+                    "Get Info",
+                    "HTTP Request",
+                    "AI Action",
+                    "Delay",
+                    "Run Service",
+                    "Ctrl+T",
+                    "Press Enter",
+                    "Send Text (no Enter)",
+                    "Enter Text (type + Enter)",
+                    "TextMan (extract to var)",
+                    "Set variable",
+                ),
+            ) { _, which ->
                 when (which) {
                     0 -> addTapAction(service)
                     1 -> addGetInfoAction(service)
@@ -249,7 +264,130 @@ class MainActivity : AppCompatActivity() {
                     3 -> addAiAction(service)
                     4 -> addDelayAction(service)
                     5 -> addRunServiceAction(service)
+                    6 -> {
+                        ServiceRepository.addActionToService(service.id, Action.CtrlTAction())
+                        refreshServices()
+                    }
+                    7 -> {
+                        ServiceRepository.addActionToService(service.id, Action.PressEnterAction())
+                        refreshServices()
+                    }
+                    8 -> addSendTextAction(service)
+                    9 -> addEnterTextAction(service)
+                    10 -> addTextManAction(service)
+                    11 -> addSetVarAction(service)
                 }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+
+    private fun addSendTextAction(service: Service) {
+        val input = android.widget.EditText(this).apply {
+            hint = "Text (supports \$var / \${var})"
+            minLines = 2
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Send Text")
+            .setView(input)
+            .setPositiveButton("Add") { _, _ ->
+                ServiceRepository.addActionToService(
+                    service.id,
+                    Action.SendTextAction(text = input.text?.toString().orEmpty()),
+                )
+                refreshServices()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun addEnterTextAction(service: Service) {
+        val input = android.widget.EditText(this).apply {
+            hint = "Type this, then Enter (\$var ok)"
+            minLines = 2
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Enter Text")
+            .setView(input)
+            .setPositiveButton("Add") { _, _ ->
+                ServiceRepository.addActionToService(
+                    service.id,
+                    Action.EnterTextAction(text = input.text?.toString().orEmpty()),
+                )
+                refreshServices()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun addTextManAction(service: Service) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        fun field(hint: String, single: Boolean = true) = android.widget.EditText(this).also {
+            it.hint = hint
+            it.setSingleLine(single)
+            layout.addView(it)
+        }
+        val source = field("Source (\$lastMatch or \$var or text)")
+        source.setText("\$lastMatch")
+        val mode = field("Mode: full | regex | after | before | replace | trim")
+        mode.setText("regex")
+        val pattern = field("Pattern / regex")
+        val group = field("Regex group (default 1)")
+        group.setText("1")
+        val replaceWith = field("Replace with (replace mode)")
+        val saveTo = field("Save to variable name")
+        saveTo.setText("result")
+        MaterialAlertDialogBuilder(this)
+            .setTitle("TextMan")
+            .setView(layout)
+            .setPositiveButton("Add") { _, _ ->
+                ServiceRepository.addActionToService(
+                    service.id,
+                    Action.TextManAction(
+                        source = source.text?.toString().orEmpty().ifBlank { "\$lastMatch" },
+                        mode = mode.text?.toString().orEmpty().ifBlank { "regex" },
+                        pattern = pattern.text?.toString().orEmpty(),
+                        group = group.text?.toString()?.toIntOrNull() ?: 1,
+                        replaceWith = replaceWith.text?.toString().orEmpty(),
+                        saveTo = saveTo.text?.toString().orEmpty().ifBlank { "result" },
+                    ),
+                )
+                refreshServices()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun addSetVarAction(service: Service) {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val key = android.widget.EditText(this).apply { hint = "Variable name" }
+        val value = android.widget.EditText(this).apply {
+            hint = "Value (can use \$other)"
+            minLines = 2
+        }
+        layout.addView(key)
+        layout.addView(value)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Set variable")
+            .setView(layout)
+            .setPositiveButton("Add") { _, _ ->
+                ServiceRepository.addActionToService(
+                    service.id,
+                    Action.SetVarAction(
+                        key = key.text?.toString().orEmpty(),
+                        value = value.text?.toString().orEmpty(),
+                    ),
+                )
+                refreshServices()
             }
             .setNegativeButton("Cancel", null)
             .show()
