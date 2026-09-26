@@ -9,7 +9,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -19,10 +21,12 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 
-/** Floating status dot. Tap shows last 25 console lines colored by level. */
+/** Floating status dot. Tap shows logs; long-press schedules Ctrl+T in 3s. */
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
@@ -30,6 +34,8 @@ class OverlayService : Service() {
     private var logsView: View? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var logsVisible = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var ctrlTCountdown: Runnable? = null
 
     private val statusListener: (OverlayState, String) -> Unit = { state, _ ->
         applyColor(state)
@@ -66,6 +72,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        cancelCtrlTCountdown()
         BridgeStatus.removeListener(statusListener)
         try { unregisterReceiver(stopReceiver) } catch (_: Exception) {}
         hideLogs()
@@ -94,18 +101,34 @@ class OverlayService : Service() {
         }
         bubbleParams = params
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
+        var longPressFired = false
+        val longPressRunnable = Runnable {
+            longPressFired = true
+            scheduleCtrlTIn3s()
+        }
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; moved = false; true
+                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y
+                    moved = false; longPressFired = false
+                    mainHandler.postDelayed(longPressRunnable, 500)
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - downX).toInt(); val dy = (event.rawY - downY).toInt()
-                    if (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8) moved = true
+                    if (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8) {
+                        moved = true
+                        mainHandler.removeCallbacks(longPressRunnable)
+                    }
                     params.x = startX + dx; params.y = startY + dy
-                    try { windowManager?.updateViewLayout(view, params) } catch (_: Exception) {}; true
+                    try { windowManager?.updateViewLayout(view, params) } catch (_: Exception) {}
+                    true
                 }
-                MotionEvent.ACTION_UP -> { if (!moved) onBubbleTap(); true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    mainHandler.removeCallbacks(longPressRunnable)
+                    if (!moved && !longPressFired) onBubbleTap()
+                    true
+                }
                 else -> false
             }
         }
@@ -115,6 +138,45 @@ class OverlayService : Service() {
     }
 
     private fun onBubbleTap() { if (logsVisible) hideLogs() else showLogs() }
+
+    /** Focus Roblox first — fires Ctrl+T after 3 seconds. */
+    fun scheduleCtrlTIn3s() {
+        cancelCtrlTCountdown()
+        Toast.makeText(this, "Ctrl+T in 3s — focus Roblox now", Toast.LENGTH_SHORT).show()
+        LogBuffer.i("Overlay", "Ctrl+T scheduled in 3s")
+        var left = 3
+        val tick = object : Runnable {
+            override fun run() {
+                if (left > 0) {
+                    Toast.makeText(this@OverlayService, "Ctrl+T in ${left}s…", Toast.LENGTH_SHORT).show()
+                    left--
+                    mainHandler.postDelayed(this, 1000)
+                } else {
+                    ctrlTCountdown = null
+                    val tap = TapService.instance
+                    if (tap == null) {
+                        Toast.makeText(this@OverlayService, "Tap service off — enable CWBridge Tap", Toast.LENGTH_LONG).show()
+                        LogBuffer.w("Overlay", "Ctrl+T aborted: no TapService")
+                    } else {
+                        val ok = tap.pressCtrlT()
+                        Toast.makeText(
+                            this@OverlayService,
+                            if (ok) "Ctrl+T sent" else "Ctrl+T failed (OEM may block)",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        LogBuffer.i("Overlay", "Ctrl+T result=$ok")
+                    }
+                }
+            }
+        }
+        ctrlTCountdown = tick
+        mainHandler.post(tick)
+    }
+
+    private fun cancelCtrlTCountdown() {
+        ctrlTCountdown?.let { mainHandler.removeCallbacks(it) }
+        ctrlTCountdown = null
+    }
 
     private fun showLogs() {
         if (logsView != null) { refreshLogsText(); return }
@@ -131,7 +193,7 @@ class OverlayService : Service() {
             x = (bp?.x ?: 24) + 56; y = bp?.y ?: 200
         }
         logsView = view
-        view.setOnClickListener { hideLogs() }
+        view.findViewById<Button>(R.id.btnOverlayCtrlT)?.setOnClickListener { scheduleCtrlTIn3s() }
         windowManager?.addView(view, params)
         logsVisible = true
         refreshLogsText()
