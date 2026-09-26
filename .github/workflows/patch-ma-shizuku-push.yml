@@ -1,0 +1,100 @@
+name: Auto patch MainActivity Shizuku
+on:
+  push:
+    paths:
+      - '.github/markers/patch-ma-shizuku'
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          text = p.read_text()
+          if "fun requestShizuku" in text:
+              print("already")
+              raise SystemExit(0)
+          text = text.replace(
+              "binding.btnCtrlT.setOnClickListener { performCtrlT() }",
+              "binding.btnCtrlT.setOnClickListener { performCtrlT() }\n        ShizukuShell.ensureListeners()",
+          )
+          idx = text.find("bridgeRunning = true")
+          if idx < 0:
+              raise SystemExit("bridgeRunning missing")
+          end = text.find("\n", idx)
+          insert = '''\n            LogBuffer.i("Shizuku", ShizukuShell.statusLine())\n            if (ShizukuShell.isServiceRunning() && !ShizukuShell.hasPermission()) {\n                ShizukuShell.requestPermissionIfNeeded(this)\n            }'''
+          text = text[:end] + insert + text[end:]
+          old = '''    private fun performCtrlT() {
+        val service = requireService() ?: return
+        val ok = service.pressCtrlT()
+        Toast.makeText(
+            this,
+            if (ok) "Ctrl+T injected" else "Ctrl+T inject failed (OEM may block key injection)",
+            Toast.LENGTH_LONG,
+        ).show()
+        LogBuffer.i("Test", "Ctrl+T ok=$ok")
+    }'''
+          new = '''    private fun requestShizuku() {
+        ShizukuShell.ensureListeners()
+        if (!ShizukuShell.isServiceRunning()) {
+            Toast.makeText(
+                this,
+                "Shizuku not running. Use Helper → Start Shizuku, or open Shizuku app on this device.",
+                Toast.LENGTH_LONG,
+            ).show()
+            LogBuffer.w("Shizuku", ShizukuShell.statusLine())
+            return
+        }
+        if (ShizukuShell.hasPermission()) {
+            Toast.makeText(this, "Shizuku already granted", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "Allow CWBridge in the Shizuku prompt…", Toast.LENGTH_SHORT).show()
+        ShizukuShell.requestPermissionIfNeeded(this)
+    }
+
+    private fun performCtrlT() {
+        ShizukuShell.ensureListeners()
+        if (!ShizukuShell.isReady()) {
+            if (ShizukuShell.isServiceRunning() && !ShizukuShell.hasPermission()) {
+                requestShizuku()
+                Toast.makeText(this, "Grant Shizuku, then tap Ctrl+T again", Toast.LENGTH_LONG).show()
+                return
+            }
+            if (!ShizukuShell.isServiceRunning()) {
+                Toast.makeText(
+                    this,
+                    "Start Shizuku first (Helper OTG or Shizuku app), then grant CWBridge",
+                    Toast.LENGTH_LONG,
+                ).show()
+                LogBuffer.w("Test", ShizukuShell.statusLine())
+                return
+            }
+        }
+        val service = TapService.instance
+        val ok = if (service != null) service.pressCtrlT() else ShizukuShell.pressCtrlT()
+        Toast.makeText(
+            this,
+            if (ok) "Ctrl+T sent (Shizuku)" else "Ctrl+T failed — ${ShizukuShell.statusLine()}",
+            Toast.LENGTH_LONG,
+        ).show()
+        LogBuffer.i("Test", "Ctrl+T ok=$ok shizuku=${ShizukuShell.isReady()}")
+    }'''
+          if old not in text:
+              raise SystemExit("old performCtrlT not found")
+          text = text.replace(old, new)
+          p.write_text(text)
+          print("ok")
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "feat: MainActivity Shizuku permission + Ctrl+T UX" || exit 0
+          git push
