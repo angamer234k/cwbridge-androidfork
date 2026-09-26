@@ -1,6 +1,7 @@
 package com.cwbridge.android
 
 import java.util.ArrayDeque
+import java.util.concurrent.CopyOnWriteArrayList
 
 enum class ConsoleLevel {
     CATWEB,
@@ -16,17 +17,26 @@ data class ConsoleLine(
 )
 
 /**
- * Ring buffer of console lines (max 25).
- * After FLog strip, lines that start with • are CatWeb → [CATWEB] tag + blueish-white.
+ * Ring buffer of console lines (max 40).
+ * Notifies listeners on every add so the overlay can stay live.
  */
 object RobloxLogBuffer {
-    private const val MAX = 25
+    private const val MAX = 40
     private val lines = ArrayDeque<ConsoleLine>(MAX)
     private val lock = Any()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     @Volatile
     var everReceived: Boolean = false
         private set
+
+    fun addListener(listener: () -> Unit) {
+        listeners.add(listener)
+    }
+
+    fun removeListener(listener: () -> Unit) {
+        listeners.remove(listener)
+    }
 
     fun add(rawLine: String) {
         val cleaned = clean(rawLine)
@@ -43,6 +53,12 @@ object RobloxLogBuffer {
             everReceived = true
         }
         AntiDisconnect.noteActivity()
+        for (l in listeners) {
+            try {
+                l.invoke()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     fun last(n: Int = 25): List<ConsoleLine> {
@@ -57,6 +73,12 @@ object RobloxLogBuffer {
         synchronized(lock) {
             lines.clear()
             everReceived = false
+        }
+        for (l in listeners) {
+            try {
+                l.invoke()
+            } catch (_: Throwable) {
+            }
         }
     }
 
@@ -82,7 +104,6 @@ object RobloxLogBuffer {
         }
     }
 
-    /** Strip FLog::CreatorOutput (any case). If result starts with • → CatWeb. */
     fun clean(raw: String): String {
         var body = raw.trim()
         val lower = body.lowercase()
