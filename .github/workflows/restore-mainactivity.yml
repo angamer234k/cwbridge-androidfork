@@ -11,36 +11,54 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Restore and fix MainActivity
+      - name: Restore SendText MainActivity + logcat-bg
         run: |
-          git checkout deb697e0aeaf34cb19f4922e561aa3d58afa08a0 -- app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git show 89937f5a793b933642818532e1ac2a8bcc4679f7:app/src/main/java/com/cwbridge/android/MainActivity.kt > app/src/main/java/com/cwbridge/android/MainActivity.kt
           python3 << 'PY'
           from pathlib import Path
           p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
           t = p.read_text()
           t = t.replace(
-              "binding.root.findViewById<View>(R.id.btnServerToggle)",
-              'binding.root.findViewById<View>(resources.getIdentifier("btnServerToggle", "id", packageName))'
-          )
+          """    override fun onPause() {
+        logcatReader.stop()
+        super.onPause()
+    }""",
+          """    override fun onPause() {
+        if (!bridgeRunning) logcatReader.stop()
+        super.onPause()
+    }""",
+          1)
           t = t.replace(
-              "binding.root.findViewById<View>(R.id.categoryServer)",
-              'binding.root.findViewById<View>(resources.getIdentifier("categoryServer", "id", packageName))'
-          )
+          """            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()""",
+          """            bridgeRunning = true
+            CatWebTracker.reset()
+            logcatReader.start(lifecycleScope)
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()""",
+          1)
           t = t.replace(
-              "binding.root.findViewById<android.widget.Button>(R.id.btnServerToggle)",
-              'binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))'
-          )
-          t = t.replace(
-              "binding.root.findViewById<android.widget.TextView>(R.id.serverState)",
-              'binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))'
-          )
+          """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")""",
+          """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            logcatReader.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")""",
+          1)
+          t = t.replace("version=2.9.4-android ctrl-t-test", "version=2.9.5-android logcat-bg", 1)
           p.write_text(t)
+          assert "if (!bridgeRunning) logcatReader.stop()" in t
           print("patched", len(t))
-          assert "R.id.btnServerToggle" not in t
-          assert "fun performCtrlT" in t
           PY
           git config user.name "cwbridge-bot"
           git config user.email "bot@cwbridge.local"
           git add app/src/main/java/com/cwbridge/android/MainActivity.kt
-          git commit -m "Restore MainActivity + getIdentifier fix for Ctrl+T" || echo "no change"
+          git commit -m "fix: MainActivity 2.9.5 logcat-bg + SendText" || echo nochange
           git push origin HEAD:main
