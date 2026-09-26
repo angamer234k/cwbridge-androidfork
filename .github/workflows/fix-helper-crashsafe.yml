@@ -1,0 +1,153 @@
+name: Fix helper crash-safe logging
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch helper MainActivity
+        run: |
+          set -e
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("helper/src/main/java/com/cwbridge/helper/MainActivity.kt")
+          text = p.read_text()
+          if "appendLogLine" in text:
+              print("already patched")
+              raise SystemExit(0)
+
+          if "import android.os.Looper" not in text:
+              text = text.replace(
+                  "import android.os.Build\nimport android.os.Bundle",
+                  "import android.os.Build\nimport android.os.Bundle\nimport android.os.Handler\nimport android.os.Looper",
+              )
+
+          old_log = '''    private fun log(msg: String) {
+        binding.logView.append(msg + "\\n")
+        binding.logScroll.post {
+            binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+        }
+    }
+}'''
+          # try without double escape
+          old_log = """    private fun log(msg: String) {
+        binding.logView.append(msg + "\n")
+        binding.logScroll.post {
+            binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+        }
+    }
+}"""
+          new_log = """    /** Always safe from any thread — never crash on view access. */
+    private fun log(msg: String) {
+        val line = msg
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            appendLogLine(line)
+        } else {
+            try {
+                runOnUiThread { appendLogLine(line) }
+            } catch (_: Throwable) {
+                Handler(Looper.getMainLooper()).post { appendLogLine(line) }
+            }
+        }
+    }
+
+    private fun appendLogLine(msg: String) {
+        try {
+            if (!::binding.isInitialized) return
+            if (isFinishing || isDestroyed) return
+            binding.logView.append(msg + "\n")
+            binding.logScroll.post {
+                try {
+                    binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+                } catch (_: Throwable) {}
+            }
+        } catch (_: Throwable) {
+            // never crash the helper over a log line
+        }
+    }
+}"""
+          if old_log not in text:
+              raise SystemExit("log block not found")
+          text = text.replace(old_log, new_log)
+
+          text = text.replace(
+              "Helper 1.1 — self-serve tools + smarter errors",
+              "Helper 1.1.2 — crash-safe logging + diagnostics",
+          )
+
+          old_diag = """    private fun runDiagnostics() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            log("—— DIAGNOSTICS ——")"""
+          new_diag = """    private fun runDiagnostics() {
+        try { binding.btnDiagnostics.isEnabled = false } catch (_: Throwable) {}
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+            log("—— DIAGNOSTICS ——")"""
+          if old_diag not in text:
+              raise SystemExit("diag start not found")
+          text = text.replace(old_diag, new_diag)
+
+          old_end = """            withContext(Dispatchers.Main) {
+                log("—— DIAGNOSTICS COMPLETE ——")
+                log("Still stuck? Copy/Share logs and open Help / common fixes.")
+            }
+        }
+    }"""
+          new_end = """            withContext(Dispatchers.Main) {
+                log("—— DIAGNOSTICS COMPLETE ——")
+                log("Still stuck? Copy/Share logs and open Help / common fixes.")
+            }
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) {
+                    handleFailure("Diagnostics", t)
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    try { binding.btnDiagnostics.isEnabled = true } catch (_: Throwable) {}
+                }
+            }
+        }
+    }"""
+          if old_end not in text:
+              raise SystemExit("diag end not found")
+          text = text.replace(old_end, new_end)
+
+          old_hf = """    private fun handleFailure(action: String, t: Throwable) {
+        val msg = t.message ?: t.javaClass.simpleName
+        log("FAIL ($action): $msg")
+        suggestForError(msg)
+        Toast.makeText(this, "$action failed — see log tips", Toast.LENGTH_LONG).show()
+    }"""
+          new_hf = """    private fun handleFailure(action: String, t: Throwable) {
+        val msg = t.message ?: t.javaClass.simpleName
+        log("FAIL ($action): $msg")
+        suggestForError(msg)
+        try {
+            if (!isFinishing && !isDestroyed) {
+                Toast.makeText(this, "$action failed — see log tips", Toast.LENGTH_LONG).show()
+            }
+        } catch (_: Throwable) {}
+    }"""
+          if old_hf in text:
+              text = text.replace(old_hf, new_hf)
+
+          p.write_text(text)
+          print("patched ok", len(text))
+          assert "appendLogLine" in text
+          PY
+      - name: Bump helper version
+        run: |
+          sed -i 's/versionCode = 8/versionCode = 9/' helper/build.gradle.kts || true
+          sed -i 's/versionName = "1.1.1"/versionName = "1.1.2"/' helper/build.gradle.kts || true
+          sed -i 's/versionName = "1.1.0"/versionName = "1.1.2"/' helper/build.gradle.kts || true
+          grep version helper/build.gradle.kts | head -5
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helper/src/main/java/com/cwbridge/helper/MainActivity.kt helper/build.gradle.kts
+          git commit -m "fix(helper): crash-safe log() + diagnostics try/catch (1.1.2)" || exit 0
+          git push
