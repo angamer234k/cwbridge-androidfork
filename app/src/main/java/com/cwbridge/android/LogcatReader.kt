@@ -67,6 +67,12 @@ class LogcatReader(
                         when {
                             hasBullet || isFlog || looksLikeSiteLog -> {
                                 RobloxLogBuffer.add(line)
+                                if (isFlog || hasBullet) {
+                                    val st = BridgeStatus.state
+                                    if (st == OverlayState.WAITING || st == OverlayState.IDLE) {
+                                        BridgeStatus.set(OverlayState.ACTIVE, "Roblox console")
+                                    }
+                                }
                                 if (isInvoke) {
                                     AntiDisconnect.noteActivity()
                                     invokeSink?.invoke(line)
