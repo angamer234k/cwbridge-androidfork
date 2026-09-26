@@ -45,24 +45,20 @@ class LogcatReader(
             while (isActive && wantRunning) {
                 attempt++
                 try {
-                    // -T 1 = only lines from ~now forward. Avoids replaying the whole
-                    // ring buffer (which spammed AntiDisconnect keep-alive taps).
                     val proc = ProcessBuilder(
                         "logcat",
-                        "-b", "main",
-                        "-b", "system",
                         "-v", "threadtime",
                         "-T", "1",
                         "*:V",
                     ).redirectErrorStream(true).start()
                     process = proc
                     if (attempt == 1) {
-                        LogBuffer.i("Logcat", "attached — live only (-T 1), CatWeb + invoke")
+                        LogBuffer.i("Logcat", "attached — live tail (-T 1)")
                     } else {
                         LogBuffer.i("Logcat", "re-attached (attempt $attempt)")
                     }
                     val myPkg = context.packageName
-                    delay(200)
+                    delay(50)
                     BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                         while (isActive && wantRunning) {
                             val line = reader.readLine() ?: break
@@ -113,7 +109,7 @@ class LogcatReader(
                     }
                 }
                 if (!isActive || !wantRunning) break
-                delay(800)
+                delay(500)
             }
         }
     }
