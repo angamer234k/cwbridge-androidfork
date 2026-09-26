@@ -73,7 +73,6 @@ class TapService : AccessibilityService() {
         LogBuffer.w("A11y", "ACTION_PASTE unavailable"); return false
     }
 
-    /** Clipboard + paste — does NOT press Enter. */
     fun sendText(text: String): Boolean {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("cwbridge", text))
@@ -140,7 +139,7 @@ class TapService : AccessibilityService() {
             "injectInputEvent", android.view.InputEvent::class.java, Int::class.javaPrimitiveType,
         )
         method.isAccessible = true
-        method.invoke(im, event, 0) as? Boolean ?: true
+        method.invoke(im, event, 0) as? Boolean ?: false
     } catch (t: Throwable) {
         LogBuffer.w("A11y", "injectKeyEvent failed: ${t.javaClass.simpleName}: ${t.message}"); false
     }
