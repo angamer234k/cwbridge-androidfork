@@ -1,0 +1,90 @@
+name: Patch MainActivity actions
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch showAddActionDialog
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+          old = (
+              '.setItems(arrayOf("Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service")) { _, which ->\n'
+              '                when (which) {\n'
+              '                    0 -> addTapAction(service)\n'
+              '                    1 -> addGetInfoAction(service)\n'
+              '                    2 -> addHttpRequestAction(service)\n'
+              '                    3 -> addAiAction(service)\n'
+              '                    4 -> addDelayAction(service)\n'
+              '                    5 -> addRunServiceAction(service)\n'
+              '                }\n'
+              '            }'
+          )
+          new = (
+              '.setItems(arrayOf(\n'
+              '                "Tap", "Get Info", "HTTP Request", "AI Action", "Delay", "Run Service",\n'
+              '                "Ctrl+T", "Press Enter", "Send Text",\n'
+              '            )) { _, which ->\n'
+              '                when (which) {\n'
+              '                    0 -> addTapAction(service)\n'
+              '                    1 -> addGetInfoAction(service)\n'
+              '                    2 -> addHttpRequestAction(service)\n'
+              '                    3 -> addAiAction(service)\n'
+              '                    4 -> addDelayAction(service)\n'
+              '                    5 -> addRunServiceAction(service)\n'
+              '                    6 -> {\n'
+              '                        ServiceRepository.addActionToService(service.id, Action.CtrlTAction())\n'
+              '                        refreshServices()\n'
+              '                    }\n'
+              '                    7 -> {\n'
+              '                        ServiceRepository.addActionToService(service.id, Action.PressEnterAction())\n'
+              '                        refreshServices()\n'
+              '                    }\n'
+              '                    8 -> addSendTextAction(service)\n'
+              '                }\n'
+              '            }'
+          )
+          if old not in t:
+              raise SystemExit("block not found")
+          t = t.replace(old, new, 1)
+          insert = (
+              "    private fun addSendTextAction(service: Service) {\n"
+              "        val input = android.widget.EditText(this).apply {\n"
+              "            hint = \"Text to paste (no Enter)\"\n"
+              "            setPadding(48, 32, 48, 32)\n"
+              "            minLines = 2\n"
+              "        }\n"
+              "        MaterialAlertDialogBuilder(this)\n"
+              "            .setTitle(\"Send Text\")\n"
+              "            .setMessage(\"Pastes into the focused field. Does not press Enter.\")\n"
+              "            .setView(input)\n"
+              "            .setPositiveButton(\"Add\") { _, _ ->\n"
+              "                ServiceRepository.addActionToService(\n"
+              "                    service.id,\n"
+              "                    Action.SendTextAction(text = input.text?.toString().orEmpty()),\n"
+              "                )\n"
+              "                refreshServices()\n"
+              "            }\n"
+              "            .setNegativeButton(\"Cancel\", null)\n"
+              "            .show()\n"
+              "    }\n\n"
+          )
+          marker = "    private fun showReorderActionsDialog"
+          if "addSendTextAction" not in t:
+              t = t.replace(marker, insert + marker, 1)
+          p.write_text(t)
+          print("patched ok", len(t))
+          PY
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "Services UI: Ctrl+T, Press Enter, Send Text actions" || echo nochange
+          git push origin main
