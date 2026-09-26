@@ -11,6 +11,8 @@ import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.ScrollView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -87,7 +89,7 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.1 — self-serve tools + smarter errors")
+        log("Helper 1.1.2 — crash-safe logging + diagnostics")
         log("Stuck? Tap Help / common fixes, or Run diagnostics.")
     }
 
@@ -121,7 +123,7 @@ class MainActivity : AppCompatActivity() {
             binding.usbState.text = "USB: no device — plug OTG to target"
             binding.usbState.setTextColor(0xFFC4A574.toInt())
             log("No USB devices")
-            logTip("Cable must support data. Target needs USB debugging. Some OEMs need ‘USB debugging (Security settings)’.")
+            logTip("Cable must support data. Target needs USB debugging. Some OEMs need USB debugging (Security settings).")
             return
         }
         val device = devices.first()
@@ -146,12 +148,12 @@ class MainActivity : AppCompatActivity() {
                 log("—— Push update ——")
                 val apk = withContext(Dispatchers.IO) {
                     ReleaseDownloader.downloadLatestCwbridge(File(cacheDir, "apk-cache")) { msg ->
-                        runOnUiThread { log(msg) }
+                        log(msg)
                     }.file
                 }
                 log("APK ready: ${apk.absolutePath} (${apk.length()} bytes)")
                 withContext(Dispatchers.IO) {
-                    pusher.push(apk, device) { msg -> runOnUiThread { log(msg) } }
+                    pusher.push(apk, device) { msg -> log(msg) }
                 }
                 log("SUCCESS — CWBridge updated + READ_LOGS granted")
                 logTip("On target: open CWBridge → enable Accessibility (CWBridge Tap) → Start bridge.")
@@ -169,7 +171,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("—— Grant READ_LOGS ——")
-                val out = pusher.grantReadLogs(device) { msg -> runOnUiThread { log(msg) } }
+                val out = pusher.grantReadLogs(device) { msg -> log(msg) }
                 withContext(Dispatchers.Main) {
                     log("grant result: ${out.ifBlank { "ok" }}")
                     Toast.makeText(this@MainActivity, "READ_LOGS grant sent", Toast.LENGTH_SHORT).show()
@@ -186,8 +188,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartShizuku.isEnabled = false
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                withContext(Dispatchers.Main) { log("—— Start Shizuku ——") }
-                val out = pusher.startShizuku(device) { msg -> runOnUiThread { log(msg) } }
+                log("—— Start Shizuku ——")
+                val out = pusher.startShizuku(device) { msg -> log(msg) }
                 withContext(Dispatchers.Main) {
                     log("Shizuku start finished")
                     Toast.makeText(
@@ -234,7 +236,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("—— Launch CWBridge on target ——")
-                val out = pusher.launchTarget(device) { msg -> runOnUiThread { log(msg) } }
+                val out = pusher.launchTarget(device) { msg -> log(msg) }
                 withContext(Dispatchers.Main) {
                     log("launch: ${out.take(200)}")
                     logTip("If nothing opens: install via Push update first, or check package on diagnostics.")
@@ -249,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Reset ADB keys?")
             .setMessage(
-                "Clears this helper’s ADB keypair. On the *target*, also:\n" +
+                "Clears this helper ADB keypair. On the *target*, also:\n" +
                     "Developer options → Revoke USB debugging authorizations.\n\n" +
                     "Then unplug, replug, and accept the RSA prompt again.",
             )
@@ -280,61 +282,18 @@ class MainActivity : AppCompatActivity() {
                         "Setup checklist",
                         "1. Install this Helper on the phone with the OTG cable.\n" +
                             "2. On TARGET: enable Developer options + USB debugging.\n" +
-                            "3. Connect phone (host) ↔ OTG ↔ target with a data cable.\n" +
+                            "3. Connect phone (host) to target with a data cable.\n" +
                             "4. Accept USB permission on this phone.\n" +
-                            "5. Accept ‘Allow USB debugging’ on the TARGET (check Always allow).\n" +
+                            "5. Accept USB debugging on the TARGET.\n" +
                             "6. Tap Push update.\n" +
-                            "7. On target: enable CWBridge Tap (Accessibility), Start bridge.",
+                            "7. On target: enable CWBridge Tap, Start bridge.",
                     )
-                    1 -> showHelpDetail(
-                        "USB / OTG not detected",
-                        "• Use a data cable, not charge-only.\n" +
-                            "• This phone must act as USB host (OTG).\n" +
-                            "• Try another cable/port.\n" +
-                            "• Unplug, reboot both devices, replug.\n" +
-                            "• Some hubs don’t pass ADB — plug target directly.\n" +
-                            "• Tap Refresh USB after connecting.",
-                    )
-                    2 -> showHelpDetail(
-                        "ADB timeout / unauthorized",
-                        "• Unlock the TARGET screen when connecting.\n" +
-                            "• Accept the RSA / USB debugging dialog on TARGET.\n" +
-                            "• Target → Revoke USB debugging authorizations, then reconnect.\n" +
-                            "• Helper → Reset ADB keys, then reconnect.\n" +
-                            "• Xiaomi/HyperOS: enable USB debugging (Security settings).",
-                    )
-                    3 -> showHelpDetail(
-                        "Push or install failed",
-                        "• Run diagnostics first.\n" +
-                            "• Ensure target has free storage.\n" +
-                            "• Uninstall an old CWBridge on target if signature conflicts.\n" +
-                            "• Retry Push (helper auto-retries once on stall).\n" +
-                            "• Check this phone has internet (downloads APK from GitHub).\n" +
-                            "• Copy/Share logs if you need to report the issue.",
-                    )
-                    4 -> showHelpDetail(
-                        "READ_LOGS / logcat",
-                        "• After Push, READ_LOGS is granted automatically.\n" +
-                            "• Or use Grant READ_LOGS only.\n" +
-                            "• In CWBridge, status should show logcat OK.\n" +
-                            "• Grant is on the TARGET package com.cwbridge.android.debug.",
-                    )
-                    5 -> showHelpDetail(
-                        "Shizuku",
-                        "• Install Shizuku on TARGET, open it once.\n" +
-                            "• Helper → Start Shizuku (needs OTG ADB).\n" +
-                            "• Confirm in Shizuku app that the service is running.\n" +
-                            "• After reboot, start Shizuku again.",
-                    )
-                    6 -> showHelpDetail(
-                        "After install on target",
-                        "1. Open CWBridge.\n" +
-                            "2. Settings → Accessibility → enable CWBridge Tap.\n" +
-                            "3. Allow display over other apps (overlay).\n" +
-                            "4. Confirm logcat OK (or re-run Grant READ_LOGS).\n" +
-                            "5. Tap Start bridge.\n" +
-                            "6. Overlay dot: green = listening, yellow = waiting, red = error.",
-                    )
+                    1 -> showHelpDetail("USB / OTG not detected", "Use a data cable. This phone = USB host. Unlock target. Tap Refresh USB.")
+                    2 -> showHelpDetail("ADB timeout / unauthorized", "Unlock target, accept RSA prompt, or Reset ADB keys + Revoke authorizations on target.")
+                    3 -> showHelpDetail("Push or install failed", "Run diagnostics. Free space on target. Internet on this phone for GitHub download.")
+                    4 -> showHelpDetail("READ_LOGS / logcat", "After Push, READ_LOGS is granted. Or Grant READ_LOGS only. Package: com.cwbridge.android.debug")
+                    5 -> showHelpDetail("Shizuku", "Install Shizuku on TARGET, open once. Helper → Start Shizuku.")
+                    6 -> showHelpDetail("After install on target", "Accessibility on, overlay on, logcat OK, Start bridge. Green = listening.")
                     7 -> openUrl("https://github.com/angamer234k/cwbridge-androidfork/releases")
                 }
             }
@@ -356,35 +315,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runDiagnostics() {
+        try { binding.btnDiagnostics.isEnabled = false } catch (_: Throwable) {}
         lifecycleScope.launch(Dispatchers.IO) {
-            log("—— DIAGNOSTICS ——")
-            log("Host: ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}")
-            log("(Target checks need USB permission)")
+            try {
+                log("—— DIAGNOSTICS ——")
+                log("Host: ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}")
+                log("(Target checks need USB permission)")
 
-            val device = selected
-            if (device == null || !pusher.hasPermission(device)) {
-                withContext(Dispatchers.Main) {
+                val device = selected
+                if (device == null || !pusher.hasPermission(device)) {
                     log("[WARN] No USB target with permission")
                     logTip("Connect OTG, Refresh USB, allow permission, run diagnostics again.")
-                }
-            } else {
-                try {
-                    val installed = pusher.isTargetInstalled(device) { msg ->
-                        runOnUiThread { log(msg) }
-                    }
-                    withContext(Dispatchers.Main) {
+                } else {
+                    try {
+                        val installed = pusher.isTargetInstalled(device) { msg -> log(msg) }
                         if (installed) {
                             log("[OK] Main app on target (${OtgAdbPusher.TARGET_PKG})")
                         } else {
                             log("[FAIL] Main app NOT on target")
                             logTip("Tap Push update to install.")
                         }
-                    }
-                    val grantProbe = pusher.shellOnDevice(
-                        device,
-                        "dumpsys package ${OtgAdbPusher.TARGET_PKG} | grep -i READ_LOGS || true",
-                    ) { msg -> runOnUiThread { log(msg) } }
-                    withContext(Dispatchers.Main) {
+                        val grantProbe = pusher.shellOnDevice(
+                            device,
+                            "dumpsys package ${OtgAdbPusher.TARGET_PKG} | grep -i READ_LOGS || true",
+                        ) { msg -> log(msg) }
                         log("READ_LOGS probe: ${grantProbe.trim().ifBlank { "(no line)" }.take(200)}")
                         if (grantProbe.contains("granted=true", ignoreCase = true) ||
                             grantProbe.contains("granted", ignoreCase = true)
@@ -393,81 +347,83 @@ class MainActivity : AppCompatActivity() {
                         } else if (installed) {
                             log("[WARN] READ_LOGS unclear — try Grant READ_LOGS only")
                         }
-                    }
-                    val shizukuPath = pusher.shellOnDevice(
-                        device,
-                        "pm path ${OtgAdbPusher.SHIZUKU_PKG}",
-                    ) { msg -> runOnUiThread { log(msg) } }
-                    withContext(Dispatchers.Main) {
+                        val shizukuPath = pusher.shellOnDevice(
+                            device,
+                            "pm path ${OtgAdbPusher.SHIZUKU_PKG}",
+                        ) { msg -> log(msg) }
                         if (shizukuPath.contains("package:")) {
                             log("[OK] Shizuku installed on target")
                         } else {
                             log("[WARN] Shizuku NOT on target (optional)")
                         }
-                    }
-                    val props = pusher.shellOnDevice(
-                        device,
-                        "getprop ro.product.model; getprop ro.build.version.release",
-                    ) { msg -> runOnUiThread { log(msg) } }
-                    withContext(Dispatchers.Main) {
+                        val props = pusher.shellOnDevice(
+                            device,
+                            "getprop ro.product.model; getprop ro.build.version.release",
+                        ) { msg -> log(msg) }
                         log("Target: ${props.trim().replace("\n", " / ").take(80)}")
-                    }
-                } catch (t: Throwable) {
-                    withContext(Dispatchers.Main) {
+                    } catch (t: Throwable) {
                         log("[FAIL] Target check: ${t.message}")
                         suggestForError(t.message ?: "")
                     }
                 }
-            }
 
-            withContext(Dispatchers.Main) {
-                val usbManager = getSystemService(USB_SERVICE) as UsbManager
-                val deviceList = usbManager.deviceList
-                if (deviceList.isNotEmpty()) {
-                    log("[OK] USB device: ${deviceList.values.first().deviceName}")
-                    val d = deviceList.values.first()
-                    if (pusher.hasPermission(d)) log("[OK] USB permission granted")
-                    else log("[WARN] USB permission NOT granted — accept the prompt")
-                } else {
-                    log("[WARN] No USB devices connected")
-                }
+                withContext(Dispatchers.Main) {
+                    try {
+                        val usbManager = getSystemService(USB_SERVICE) as UsbManager
+                        val deviceList = usbManager.deviceList
+                        if (deviceList.isNotEmpty()) {
+                            log("[OK] USB device: ${deviceList.values.first().deviceName}")
+                            val d = deviceList.values.first()
+                            if (pusher.hasPermission(d)) log("[OK] USB permission granted")
+                            else log("[WARN] USB permission NOT granted — accept the prompt")
+                        } else {
+                            log("[WARN] No USB devices connected")
+                        }
 
-                val adbDir = File(filesDir, "adbkey")
-                if (adbDir.exists()) {
-                    val keyFiles = adbDir.listFiles(
-                        FileFilter { f -> f.name.contains("adbkey") },
-                    )
-                    if (keyFiles != null && keyFiles.isNotEmpty()) {
-                        log("[OK] ADB keys exist (${keyFiles.size} files)")
-                    } else {
-                        log("[WARN] No ADB keys — will generate on next connect")
+                        val adbDir = File(filesDir, "adbkey")
+                        if (adbDir.exists()) {
+                            val keyFiles = adbDir.listFiles(
+                                FileFilter { f -> f.name.contains("adbkey") },
+                            )
+                            if (keyFiles != null && keyFiles.isNotEmpty()) {
+                                log("[OK] ADB keys exist (${keyFiles.size} files)")
+                            } else {
+                                log("[WARN] No ADB keys — will generate on next connect")
+                            }
+                        } else {
+                            log("[WARN] ADB key dir missing — will create on connect")
+                        }
+                    } catch (t: Throwable) {
+                        log("[WARN] Host USB/key check: ${t.message}")
                     }
-                } else {
-                    log("[WARN] ADB key dir missing — will create on connect")
                 }
-            }
 
-            withContext(Dispatchers.IO) {
-                try {
-                    val release = ReleaseDownloader.getLatestRelease()
-                    if (release != null) {
-                        log("[OK] GitHub releases (latest: ${release.tag_name})")
-                        val apkAsset = ReleaseDownloader.findApkAsset(release)
-                        if (apkAsset != null) log("[OK] APK asset: ${apkAsset.name}")
-                        else log("[WARN] No APK asset in release")
-                    } else {
-                        log("[FAIL] Cannot reach GitHub releases")
-                        logTip("Check internet on this phone. Downloads need network.")
+                withContext(Dispatchers.IO) {
+                    try {
+                        val release = ReleaseDownloader.getLatestRelease()
+                        if (release != null) {
+                            log("[OK] GitHub releases (latest: ${release.tag_name})")
+                            val apkAsset = ReleaseDownloader.findApkAsset(release)
+                            if (apkAsset != null) log("[OK] APK asset: ${apkAsset.name}")
+                            else log("[WARN] No APK asset in release")
+                        } else {
+                            log("[FAIL] Cannot reach GitHub releases")
+                            logTip("Check internet on this phone. Downloads need network.")
+                        }
+                    } catch (t: Throwable) {
+                        log("[FAIL] GitHub check: ${t.message}")
+                        logTip("Wi-Fi/data required to download the main APK for Push update.")
                     }
-                } catch (t: Throwable) {
-                    log("[FAIL] GitHub check: ${t.message}")
-                    logTip("Wi‑Fi/data required to download the main APK for Push update.")
                 }
-            }
 
-            withContext(Dispatchers.Main) {
                 log("—— DIAGNOSTICS COMPLETE ——")
                 log("Still stuck? Copy/Share logs and open Help / common fixes.")
+            } catch (t: Throwable) {
+                handleFailure("Diagnostics", t)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    try { binding.btnDiagnostics.isEnabled = true } catch (_: Throwable) {}
+                }
             }
         }
     }
@@ -476,7 +432,11 @@ class MainActivity : AppCompatActivity() {
         val msg = t.message ?: t.javaClass.simpleName
         log("FAIL ($action): $msg")
         suggestForError(msg)
-        Toast.makeText(this, "$action failed — see log tips", Toast.LENGTH_LONG).show()
+        try {
+            if (!isFinishing && !isDestroyed) {
+                Toast.makeText(this, "$action failed — see log tips", Toast.LENGTH_LONG).show()
+            }
+        } catch (_: Throwable) {}
     }
 
     private fun suggestForError(msg: String) {
@@ -494,6 +454,8 @@ class MainActivity : AppCompatActivity() {
                 logTip("Target may not be in ADB mode. Enable USB debugging; try another cable.")
             m.contains("shizuku") ->
                 logTip("Install Shizuku on target, open once, then Start Shizuku again.")
+            m.contains("thread") || m.contains("hierarchy") || m.contains("view") ->
+                logTip("Internal UI threading glitch — update helper; if it persists, share logs.")
             else ->
                 logTip("Run diagnostics. Open Help / common fixes. Copy logs if you need support.")
         }
@@ -535,10 +497,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Always safe from any thread — never crash on view access. */
     private fun log(msg: String) {
-        binding.logView.append(msg + "\n")
-        binding.logScroll.post {
-            binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+        val line = msg
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            appendLogLine(line)
+        } else {
+            try {
+                runOnUiThread { appendLogLine(line) }
+            } catch (_: Throwable) {
+                Handler(Looper.getMainLooper()).post { appendLogLine(line) }
+            }
+        }
+    }
+
+    private fun appendLogLine(msg: String) {
+        try {
+            if (!::binding.isInitialized) return
+            if (isFinishing || isDestroyed) return
+            binding.logView.append(msg + "\n")
+            binding.logScroll.post {
+                try {
+                    binding.logScroll.fullScroll(ScrollView.FOCUS_DOWN)
+                } catch (_: Throwable) {}
+            }
+        } catch (_: Throwable) {
+            // never crash the helper over a log line
         }
     }
 }
