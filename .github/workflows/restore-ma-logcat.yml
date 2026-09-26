@@ -1,0 +1,24 @@
+name: Restore MainActivity logcat fix
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble MainActivity from base64 parts
+        run: |
+          set -e
+          cat scripts/ma_part*.txt | tr -d '\n' | base64 -d > app/src/main/java/com/cwbridge/android/MainActivity.kt
+          wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt
+          head -20 app/src/main/java/com/cwbridge/android/MainActivity.kt
+          grep -n ensureLogcatRunning app/src/main/java/com/cwbridge/android/MainActivity.kt | head
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "fix: keep logcat alive while bridge is on (onPause fix)" || exit 0
+          git push
