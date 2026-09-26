@@ -1,0 +1,72 @@
+name: Fix MainActivity logcat bg
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore good MainActivity and patch logcat lifecycle
+        run: |
+          git show 89937f5a793b933642818532e1ac2a8bcc4679f7:app/src/main/java/com/cwbridge/android/MainActivity.kt > app/src/main/java/com/cwbridge/android/MainActivity.kt
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/MainActivity.kt")
+          t = p.read_text()
+          old_pause = """    override fun onPause() {
+        logcatReader.stop()
+        super.onPause()
+    }"""
+          new_pause = """    override fun onPause() {
+        // Keep logcat running while bridge is on so Roblox/CatWeb lines still arrive in background
+        if (!bridgeRunning) logcatReader.stop()
+        super.onPause()
+    }"""
+          if old_pause not in t:
+              raise SystemExit("onPause not found")
+          t = t.replace(old_pause, new_pause, 1)
+          old_start = """            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()"""
+          new_start = """            bridgeRunning = true
+            CatWebTracker.reset()
+            logcatReader.start(lifecycleScope)
+            AntiDisconnect.start(lifecycleScope)
+            invokeEngine.start()"""
+          if old_start not in t:
+              raise SystemExit("toggle start not found")
+          t = t.replace(old_start, new_start, 1)
+          old_stop = """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")"""
+          new_stop = """            bridgeRunning = false
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            logcatReader.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")"""
+          if old_stop not in t:
+              raise SystemExit("toggle stop not found")
+          t = t.replace(old_stop, new_stop, 1)
+          t = t.replace(
+              "session start version=2.9.4-android ctrl-t-test",
+              "session start version=2.9.5-android logcat-bg",
+              1,
+          )
+          p.write_text(t)
+          print("OK", len(t))
+          assert "if (!bridgeRunning) logcatReader.stop()" in t
+          PY
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt
+          git commit -m "fix: keep logcat alive while bridge on (2.9.5)" || echo nochange
+          git push
