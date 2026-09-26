@@ -11,8 +11,8 @@ android {
         applicationId = "com.cwbridge.helper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.0.6"
+        versionCode = 7
+        versionName = "1.1.0"
     }
 
     val debugStoreFile = rootProject.file("keystore/cwbridge-debug.p12")
@@ -57,4 +57,5 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
