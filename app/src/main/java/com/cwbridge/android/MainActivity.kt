@@ -242,7 +242,26 @@ class MainActivity : AppCompatActivity() {
                         ServiceRepository.addActionToService(service.id, Action.PressEnterAction())
                         refreshServices()
                     }
-                    8 -> addSendTextAction(service)
+                    8 -> {
+              val input = android.widget.EditText(this).apply {
+                  hint = "Text to paste (no Enter)"
+                  setPadding(48, 32, 48, 32)
+                  minLines = 2
+              }
+              MaterialAlertDialogBuilder(this)
+                  .setTitle("Send Text")
+                  .setMessage("Pastes into focused field. Does not press Enter.")
+                  .setView(input)
+                  .setPositiveButton("Add") { _, _ ->
+                      ServiceRepository.addActionToService(
+                          service.id,
+                          Action.SendTextAction(text = input.text?.toString().orEmpty()),
+                      )
+                      refreshServices()
+                  }
+                  .setNegativeButton("Cancel", null)
+                  .show()
+          }
                 }
             }
             .setNegativeButton("Cancel", null)
