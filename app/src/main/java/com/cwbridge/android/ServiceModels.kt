@@ -113,10 +113,32 @@ sealed class Action {
     ) : Action() {
         override val type: ActionType = ActionType.RUN_SERVICE
     }
+
+    data class CtrlTAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "Ctrl+T"
+    ) : Action() {
+        override val type: ActionType = ActionType.CTRL_T
+    }
+
+    data class PressEnterAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "Press Enter"
+    ) : Action() {
+        override val type: ActionType = ActionType.PRESS_ENTER
+    }
+
+    data class SendTextAction(
+        override val id: String = System.currentTimeMillis().toString(),
+        override val name: String = "Send Text",
+        val text: String = ""
+    ) : Action() {
+        override val type: ActionType = ActionType.SEND_TEXT
+    }
 }
 
 enum class TriggerType { LOG, TIME, ACCESSIBILITY }
-enum class ActionType { TAP, GET_INFO, HTTP_REQUEST, AI, DELAY, RUN_SERVICE }
+enum class ActionType { TAP, GET_INFO, HTTP_REQUEST, AI, DELAY, RUN_SERVICE, CTRL_T, PRESS_ENTER, SEND_TEXT }
 enum class InfoType { SCREEN_TEXT, NODE_TEXT, NODE_BOUNDS, CURRENT_APP, TIMESTAMP, CLIPBOARD }
 
 object ServiceRepository {
@@ -217,7 +239,6 @@ object ServiceRepository {
         return true
     }
 
-    /** Seed save/load helper services once when the list is empty. */
     fun ensureDefaultServices() {
         if (inMemoryServices.isNotEmpty()) return
         addService(
