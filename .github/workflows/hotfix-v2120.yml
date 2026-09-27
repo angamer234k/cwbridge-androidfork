@@ -1,4 +1,4 @@
-name: Hotfix v2.12.0 sources
+name: Hotfix v2.12 features
 
 on:
   workflow_dispatch:
@@ -13,44 +13,411 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Restore and patch WebUi
+      - name: Patch LocalHttpServer port fallback
         run: |
-          set -euo pipefail
-          # known-good before the bad PLACEHOLDER commits
-          curl -fsSL "https://raw.githubusercontent.com/angamer234k/cwbridge-androidfork/b3196d726ce3fe20f43f5b1bf51c10f83bb76db3/app/src/main/java/com/cwbridge/android/server/WebUi.kt" \
-            -o app/src/main/java/com/cwbridge/android/server/WebUi.kt
-          head -3 app/src/main/java/com/cwbridge/android/server/WebUi.kt
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
+          p = Path('app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt')
           t = p.read_text()
-          assert 'package com.cwbridge' in t, t[:80]
-          t = t.replace('<div id="app" class="hide">', '<div id="app">', 1)
-          old = "async function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n  } catch (e) {}\n}"
-          new = "function revealApp() {\n  NEEDS_LOGIN = false;\n  D('login').classList.add('hide');\n  D('app').classList.remove('hide');\n}\n\nasync function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    revealApp();\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n    var bits = [];\n    bits.push(s.accessibility ? 'a11y ok' : 'a11y OFF');\n    bits.push(s.shizuku ? 'shizuku ok' : 'shizuku OFF');\n    bits.push(s.catwebReady ? 'catweb ready' : 'catweb waiting');\n    if (!D('detail').textContent) D('detail').textContent = bits.join(' · ');\n    else D('detail').textContent = D('detail').textContent + ' · ' + bits.join(' · ');\n  } catch (e) {}\n}"
-          if old not in t:
-              raise SystemExit('refreshStatus block missing')
-          t = t.replace(old, new, 1)
-          old_login = "    NEEDS_LOGIN = false;\n    D('login').classList.add('hide');\n    D('app').classList.remove('hide');\n    msg('loginMsg', '');"
-          new_login = "    revealApp();\n    msg('loginMsg', '');"
-          if old_login not in t:
-              raise SystemExit('doLogin block missing')
-          t = t.replace(old_login, new_login, 1)
+          t = t.replace(
+              'private val port: Int = 8765,',
+              'preferredPort: Int = 8080,',
+              1,
+          )
+          # boundPort field after class fields
+          old_fields = '''    private val running = AtomicBoolean(false)
+    private var server: ServerSocket? = null'''
+          new_fields = '''    private val running = AtomicBoolean(false)
+    private var server: ServerSocket? = null
+    @Volatile private var boundPort: Int = 0'''
+          if old_fields not in t:
+              raise SystemExit('fields missing')
+          t = t.replace(old_fields, new_fields, 1)
+          t = t.replace('fun port(): Int = port', 'fun port(): Int = if (boundPort > 0) boundPort else preferredPort', 1)
+          old_start = '''    fun start() {
+        if (!running.compareAndSet(false, true)) return
+        thread(name = "cwbridge-http", isDaemon = true) {
+            try {
+                ServerSocket(port).use { ss ->
+                    server = ss
+                    LogBuffer.i("Server", "listening on port $port")
+                    while (running.get()) {
+                        try {
+                            val socket = ss.accept()
+                            thread(name = "cwbridge-http-conn", isDaemon = true) {
+                                try {
+                                    handle(socket)
+                                } catch (t: Throwable) {
+                                    LogBuffer.w("Server", "connection failed: ${t.message}")
+                                }
+                            }
+                        } catch (_: Exception) {
+                            if (!running.get()) break
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.e("Server", "failed: ${t.message}")
+                running.set(false)
+            } finally {
+                server = null
+            }
+        }
+    }'''
+          new_start = '''    fun start() {
+        if (!running.compareAndSet(false, true)) return
+        thread(name = "cwbridge-http", isDaemon = true) {
+            // Prefer 8080 (common), then legacy 8765, then 80 (needs priv — often fails).
+            val candidates = linkedSetOf(preferredPort, 8080, 8765, 80).filter { it in 1..65535 }
+            var lastErr: Throwable? = null
+            var started = false
+            for (tryPort in candidates) {
+                try {
+                    val ss = ServerSocket(tryPort)
+                    server = ss
+                    boundPort = tryPort
+                    LogBuffer.i("Server", "listening on port $tryPort (tried ${candidates.joinToString()})")
+                    started = true
+                    try {
+                        while (running.get()) {
+                            try {
+                                val socket = ss.accept()
+                                thread(name = "cwbridge-http-conn", isDaemon = true) {
+                                    try {
+                                        handle(socket)
+                                    } catch (t: Throwable) {
+                                        LogBuffer.w("Server", "connection failed: ${t.message}")
+                                    }
+                                }
+                            } catch (_: Exception) {
+                                if (!running.get()) break
+                            }
+                        }
+                    } finally {
+                        try { ss.close() } catch (_: Exception) {}
+                    }
+                    break
+                } catch (t: Throwable) {
+                    lastErr = t
+                    LogBuffer.w("Server", "port $tryPort failed: ${t.message}")
+                }
+            }
+            if (!started) {
+                LogBuffer.e("Server", "all ports failed: ${lastErr?.message}")
+                running.set(false)
+            }
+            server = null
+            boundPort = 0
+        }
+    }'''
+          if old_start not in t:
+              raise SystemExit('start() block missing')
+          t = t.replace(old_start, new_start, 1)
           p.write_text(t)
-          print('WebUi patched', len(t))
+          print('LocalHttpServer patched')
           PY
 
-      - name: Commit
+      - name: Patch MainActivity (port UI + CatWeb schedule + http)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/MainActivity.kt')
+          t = p.read_text()
+          # hardcoded port when creating server
+          t = t.replace('        val port = 8765\n        val server = LocalHttpServer(\n            context = applicationContext,\n            port = port,',
+                       '        val server = LocalHttpServer(\n            context = applicationContext,\n            preferredPort = 8080,', 1)
+          # toast
+          t = t.replace('Toast.makeText(this, "Server on port $port", Toast.LENGTH_SHORT).show()',
+                        'Toast.makeText(this, "Server starting (8080 → 8765 → 80)…", Toast.LENGTH_SHORT).show()', 1)
+          # refreshServerUi port default
+          t = t.replace('val port = localServer?.port() ?: 8765',
+                        'val port = localServer?.port() ?: 8080', 1)
+          # force http:// in any https:// device-ip strings if present
+          t = t.replace('https://<this-device-ip>', 'http://<this-device-ip>')
+          t = t.replace('https://$ip', 'http://$ip')
+          t = t.replace('"https://"', '"http://"')
+          # bridge start: schedule catweb
+          old_start = '''            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(bridgeScope)
+            ensureLogcatRunning()
+            invokeEngine.start()'''
+          new_start = '''            bridgeRunning = true
+            CatWebTracker.reset()
+            AntiDisconnect.start(bridgeScope)
+            ensureLogcatRunning()
+            BridgeControl.scheduleOpenCatWebIfNeeded(applicationContext, 10_000L)
+            invokeEngine.start()'''
+          if old_start not in t:
+              raise SystemExit('bridge start block missing')
+          t = t.replace(old_start, new_start, 1)
+          old_stop = '''            bridgeRunning = false
+            logcatReader.stop()
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")'''
+          new_stop = '''            bridgeRunning = false
+            BridgeControl.cancelOpenCatWeb()
+            logcatReader.stop()
+            invokeEngine.stop()
+            executionEngine.stop()
+            AntiDisconnect.stop()
+            LogBuffer.i("CWBridge", "bridge stopped")'''
+          if old_stop not in t:
+              raise SystemExit('bridge stop block missing')
+          t = t.replace(old_stop, new_stop, 1)
+          # after server.start(), briefly wait and toast actual port
+          old_srv = '''        server.start()
+        Toast.makeText(this, "Server starting (8080 → 8765 → 80)…", Toast.LENGTH_SHORT).show()
+        refreshServerUi()'''
+          new_srv = '''        server.start()
+        // bind happens on background thread — poll briefly for the real port
+        Thread {
+            repeat(20) {
+                Thread.sleep(50)
+                if (server.isRunning() && server.port() > 0) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Server on http://…:${server.port()}", Toast.LENGTH_LONG).show()
+                        refreshServerUi()
+                    }
+                    return@Thread
+                }
+            }
+            runOnUiThread {
+                Toast.makeText(this, "Server failed to bind (8080/8765/80)", Toast.LENGTH_LONG).show()
+                refreshServerUi()
+            }
+        }.start()
+        refreshServerUi()'''
+          if old_srv not in t:
+              # maybe toast still old form
+              print('WARN server toast block; trying alternate')
+              old_srv2 = '''        server.start()
+        Toast.makeText(this, "Server on port $port", Toast.LENGTH_SHORT).show()
+        refreshServerUi()'''
+              if old_srv2 in t:
+                  t = t.replace(old_srv2, new_srv, 1)
+              else:
+                  raise SystemExit('server.start toast block missing')
+          else:
+              t = t.replace(old_srv, new_srv, 1)
+          p.write_text(t)
+          print('MainActivity patched')
+          PY
+
+      - name: Patch BridgeControl CatWeb auto-open
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt')
+          t = p.read_text()
+          if 'scheduleOpenCatWebIfNeeded' in t:
+              print('already has CatWeb helpers')
+          else:
+              if 'import android.net.Uri' not in t:
+                  t = t.replace('import android.content.Intent\n',
+                                'import android.content.Intent\nimport android.net.Uri\nimport android.os.Handler\nimport android.os.Looper\n', 1)
+              insert = '''
+    /** CatWeb: Make a Website! */
+    const val CATWEB_PLACE_ID = "16855862021"
+    private const val CATWEB_DEEPLINK = "roblox://placeId=$CATWEB_PLACE_ID"
+    private const val CATWEB_HTTPS =
+        "https://www.roblox.com/games/start?placeId=$CATWEB_PLACE_ID"
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var catwebOpenRunnable: Runnable? = null
+
+    /** After delayMs, if CatWeb never booted, open the place via deeplink. */
+    fun scheduleOpenCatWebIfNeeded(context: Context, delayMs: Long = 10_000L) {
+        cancelOpenCatWeb()
+        val appCtx = context.applicationContext
+        val r = Runnable {
+            catwebOpenRunnable = null
+            if (CatWebTracker.seenBoot || CatWebTracker.ready) {
+                LogBuffer.i("Control", "CatWeb already seen — skip auto-open")
+                return@Runnable
+            }
+            LogBuffer.i("Control", "no CatWeb boot in ${delayMs}ms — opening deeplink")
+            openCatWeb(appCtx)
+        }
+        catwebOpenRunnable = r
+        mainHandler.postDelayed(r, delayMs)
+        LogBuffer.i("Control", "scheduled CatWeb auto-open in ${delayMs}ms")
+    }
+
+    fun cancelOpenCatWeb() {
+        catwebOpenRunnable?.let { mainHandler.removeCallbacks(it) }
+        catwebOpenRunnable = null
+    }
+
+    fun openCatWeb(context: Context): String {
+        return try {
+            val deep = Intent(Intent.ACTION_VIEW, Uri.parse(CATWEB_DEEPLINK)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(deep)
+                LogBuffer.i("Control", "opened $CATWEB_DEEPLINK")
+                "opening CatWeb (deeplink)"
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "deeplink failed: ${t.message} — https fallback")
+                val web = Intent(Intent.ACTION_VIEW, Uri.parse(CATWEB_HTTPS)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(web)
+                "opening CatWeb (https fallback)"
+            }
+        } catch (t: Throwable) {
+            LogBuffer.e("Control", "openCatWeb: ${t.message}")
+            "open CatWeb failed: ${t.message}"
+        }
+    }
+
+'''
+              marker = '    /** True when this device can take screenshots (Android 11+). */'
+              if marker not in t:
+                  raise SystemExit('screenshot marker missing')
+              t = t.replace(marker, insert + marker, 1)
+              p.write_text(t)
+              print('BridgeControl CatWeb helpers added')
+          PY
+
+      - name: Patch ShizukuShell stronger keys
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/ShizukuShell.kt')
+          t = p.read_text()
+          old_ctrl = '''    fun pressCtrlT(): Boolean {
+        val ctrl = KeyEvent.KEYCODE_CTRL_LEFT
+        val t = KeyEvent.KEYCODE_T
+        val attempts = listOf(
+            "input keycombination $ctrl $t",
+            "cmd input keycombination $ctrl $t",
+            "input keyevent $ctrl $t",
+        )
+        for (cmd in attempts) {
+            LogBuffer.i("Shizuku", "try: $cmd")
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(100).ifBlank { "(empty)" }}")
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Ctrl+T OK via: $cmd")
+                return true
+            }
+        }
+        LogBuffer.w("Shizuku", "all Ctrl+T strategies failed — ${statusLine()}")
+        return false
+    }'''
+          new_ctrl = '''    fun pressCtrlT(): Boolean {
+        val ctrl = KeyEvent.KEYCODE_CTRL_LEFT
+        val tKey = KeyEvent.KEYCODE_T
+        val attempts = listOf(
+            "input keycombination $ctrl $tKey",
+            "cmd input keycombination $ctrl $tKey",
+            "toybox input keycombination $ctrl $tKey",
+            "input keycombination 113 48",
+            "cmd input keycombination 113 48",
+            "input keyevent --longpress $ctrl $tKey",
+            "input keyevent $ctrl $tKey",
+            "input keyevent 113 48",
+        )
+        for (cmd in attempts) {
+            LogBuffer.i("Shizuku", "try: $cmd")
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(120).ifBlank { "(empty)" }}")
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Ctrl+T OK via: $cmd")
+                return true
+            }
+        }
+        LogBuffer.w("Shizuku", "all Ctrl+T strategies failed — ${statusLine()}")
+        return false
+    }'''
+          if old_ctrl not in t:
+              raise SystemExit('pressCtrlT missing')
+          t = t.replace(old_ctrl, new_ctrl, 1)
+          old_enter = '''    fun pressEnter(): Boolean {
+        for (cmd in listOf(
+            "input keyevent ${KeyEvent.KEYCODE_ENTER}",
+            "cmd input keyevent ${KeyEvent.KEYCODE_ENTER}",
+        )) {
+            val (code, _) = exec(cmd)
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Enter OK via $cmd")
+                return true
+            }
+        }
+        return false
+    }'''
+          new_enter = '''    fun pressEnter(): Boolean {
+        val enter = KeyEvent.KEYCODE_ENTER
+        val attempts = listOf(
+            "input keyevent $enter",
+            "cmd input keyevent $enter",
+            "input keyevent 66",
+            "cmd input keyevent 66",
+            "toybox input keyevent 66",
+            "input keyevent KEYCODE_ENTER",
+        )
+        for (cmd in attempts) {
+            LogBuffer.i("Shizuku", "try: $cmd")
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(80).ifBlank { "(empty)" }}")
+            if (code == 0) {
+                LogBuffer.i("Shizuku", "Enter OK via $cmd")
+                return true
+            }
+        }
+        LogBuffer.w("Shizuku", "all Enter strategies failed — ${statusLine()}")
+        return false
+    }'''
+          if old_enter not in t:
+              raise SystemExit('pressEnter missing')
+          t = t.replace(old_enter, new_enter, 1)
+          # better newProcess null message
+          t = t.replace(
+              '?: return -1 to "newProcess null — Shizuku API blocked?"',
+              '?: return -1 to "newProcess null — Shizuku API blocked? grant CWBridge + restart Shizuku"',
+              1,
+          )
+          p.write_text(t)
+          print('ShizukuShell patched')
+          PY
+
+      - name: Bump version if needed + README note
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          t = p.read_text()
+          if 'versionCode = 12' not in t:
+              t = t.replace('versionCode = 10', 'versionCode = 12')
+              t = t.replace('versionName = "2.11.0-android"', 'versionName = "2.12.0-android"')
+              p.write_text(t)
+              print('version bumped')
+          else:
+              print('version already 12')
+          r = Path('README.md')
+          if r.exists():
+              rt = r.read_text()
+              rt = rt.replace('port `8765`', 'port `8080` (falls back to 8765, then 80)')
+              rt = rt.replace('http://<device-ip>:8765', 'http://<device-ip>:8080')
+              rt = rt.replace('https://<device-ip>', 'http://<device-ip>')
+              r.write_text(rt)
+              print('README updated')
+          PY
+
+      - name: Commit and push
         run: |
           git config user.name cwbridge-bot
           git config user.email bot@cwbridge.local
-          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          git add -A
+          git status
           if git diff --cached --quiet; then
             echo no changes
           else
-            git commit -m "fix: WebUi blank page (reveal #app on LAN)"
+            git commit -m "feat: port fallback 8080→8765→80, Shizuku key spam, CatWeb auto-open 10s"
             git push
           fi
