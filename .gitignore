@@ -22,3 +22,4 @@ output.json
 *.hprof
 .cxx/
 *.log
+*.env

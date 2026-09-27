@@ -101,6 +101,30 @@ The helper will:
 4. Grant `READ_LOGS`  
 5. Show success or errors in its log pane  
 
+## Windows updater (same job, from a PC)
+
+A PC is a better USB host than a phone, so the helper's job is also available as a
+PowerShell script. It finds `adb`, reports the device and installed version, pulls
+the latest release APK, installs it, grants `READ_LOGS`, and can start Shizuku or
+tail logcat.
+
+```powershell
+# read-only device report
+.\scripts\cwbridge-updater.ps1 -Status
+
+# install / update from the latest release
+.\scripts\cwbridge-updater.ps1
+
+# tail logcat
+.\scripts\cwbridge-updater.ps1 -Logs
+```
+
+Needs [Android platform-tools](https://developer.android.com/tools/releases/platform-tools); `adb` is
+auto-detected. Full details and flags: [`scripts/README-cwbridge-updater.md`](scripts/README-cwbridge-updater.md).
+
+The CWBridge **bridge** itself is Android-only (AccessibilityService, `READ_LOGS`, overlay, Shizuku) —
+this tool updates it, it does not run it.
+
 ## License
 
 UNLICENSED experiment. The helper vendors [cgutman/AdbLib](https://github.com/cgutman/AdbLib) (BSD-3-Clause) at build time.

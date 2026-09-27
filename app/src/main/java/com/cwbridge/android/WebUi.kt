@@ -321,11 +321,11 @@ async function refreshServices() {
         '<span class="pill ' + (v.enabled ? 'ACTIVE' : 'IDLE') + '">' +
           (v.enabled ? 'on' : 'off') + '</span>' +
         '<span style="color:var(--muted);font-size:11px">' + v.triggers + 'T/' + v.actions + 'A</span>' +
-        '<button onclick="runService(\\'' + id + '\\')">Run</button>' +
-        '<button class="ghost" onclick="toggleService(\\'' + id + '\\',' + (!v.enabled) + ')">' +
+        '<button onclick="runService(\'' + id + '\')">Run</button>' +
+        '<button class="ghost" onclick="toggleService(\'' + id + '\',' + (!v.enabled) + ')">' +
           (v.enabled ? 'Disable' : 'Enable') + '</button>' +
-        '<button class="ghost" onclick="editService(\\'' + id + '\\')">Edit</button>' +
-        '<button class="danger" onclick="deleteService(\\'' + id + '\\')">Delete</button>' +
+        '<button class="ghost" onclick="editService(\'' + id + '\')">Edit</button>' +
+        '<button class="danger" onclick="deleteService(\'' + id + '\')">Delete</button>' +
         '</div>';
     }).join('');
   } catch (e) { msg('svcMsg', e.message, 'err'); }
@@ -385,7 +385,7 @@ async function refreshStore() {
       return '<tr><td>' + esc(d.domain) + '</td><td>' + d.keys + '</td>' +
         '<td>' + esc(d.used) + '</td><td>' + (d.unlimited ? 'unlimited' : esc(d.limit)) + '</td>' +
         '<td><div class="bar"><span style="width:' + pct + '%"></span></div></td>' +
-        '<td><button class="danger" onclick="clearDomain(\\'' + esc(d.domain) + '\\')">Clear</button></td></tr>';
+        '<td><button class="danger" onclick="clearDomain(\'' + esc(d.domain) + '\')">Clear</button></td></tr>';
     }).join('') || '<tr><td colspan="6" style="color:var(--muted)">no domains yet</td></tr>';
   } catch (e) { msg('storeMsg', e.message, 'err'); }
 }

@@ -29,3 +29,10 @@ SUB ITEMS:
 
 STILL TO DO:
 - PAIR WITH 6 DIGIT CODE IN APP — deliberately deferred, needs the separate Vercel/Firestore pairing repo
+
+CI GUARDS ADDED:
++ scripts/check-webui.js — reconstructs the page from WebUi.kt and compiles the inline JS, because the
+  Kotlin compiler never sees it. A \\' inside a Kotlin raw string ships a page whose <script> block
+  fails to parse at runtime, so the panel renders blank while the build stays green.
+  Runs in both build-debug-apk.yml (every push) and release.yml, before the Gradle build.
++ ALSO CHECKS: SCREENSHOT_MARKER matches the placeholder comment in the markup (silent button-drop otherwise)
