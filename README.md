@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/github/v/release/angamer234k/cwbridge-androidfork?label=Release&style=flat-square" alt="Release" />
   <img src="https://img.shields.io/github/downloads/angamer234k/cwbridge-androidfork/total?label=Downloads&style=flat-square" alt="Downloads" />
   <img src="https://img.shields.io/github/actions/workflow/status/angamer234k/cwbridge-androidfork/build-debug-apk.yml?label=Build&style=flat-square" alt="Build" />
+<br />
 made by lemon
 </p>
 
