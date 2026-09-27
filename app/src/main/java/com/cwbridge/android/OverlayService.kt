@@ -30,7 +30,6 @@ import com.cwbridge.android.bridge.ConsoleLevel
 import com.cwbridge.android.bridge.LogBuffer
 import com.cwbridge.android.bridge.OverlayState
 import com.cwbridge.android.bridge.RobloxLogBuffer
-import com.cwbridge.android.data.Service
 
 /** Floating status dot. Tap shows logs; long-press schedules Ctrl+T in 3s. */
 class OverlayService : Service() {
