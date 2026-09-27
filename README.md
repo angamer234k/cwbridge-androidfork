@@ -48,10 +48,10 @@ Commands use the `invoke|…` format (same idea as the old MacroDroid flow), e.g
 
 ## Web server (control panel)
 
-Open **CWBridge → Server** and tap **Start server**. The app listens on port `8765`, so from any browser on the same network go to:
+Open **CWBridge → Server** and tap **Start server**. The app listens on port `8080` (falls back to 8765, then 80), so from any browser on the same network go to:
 
 ```
-http://<device-ip>:8765
+http://<device-ip>:8080
 ```
 
 The panel lets you:

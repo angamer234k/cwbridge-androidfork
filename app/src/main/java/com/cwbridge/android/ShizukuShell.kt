@@ -85,7 +85,7 @@ object ShizukuShell {
         }
         return try {
             val process = newProcess(arrayOf("sh", "-c", command))
-                ?: return -1 to "newProcess null — Shizuku API blocked?"
+                ?: return -1 to "newProcess null — Shizuku API blocked? grant CWBridge + restart Shizuku"
             val out = StringBuilder()
             val readerThread = Thread {
                 try {
@@ -131,16 +131,21 @@ object ShizukuShell {
 
     fun pressCtrlT(): Boolean {
         val ctrl = KeyEvent.KEYCODE_CTRL_LEFT
-        val t = KeyEvent.KEYCODE_T
+        val tKey = KeyEvent.KEYCODE_T
         val attempts = listOf(
-            "input keycombination $ctrl $t",
-            "cmd input keycombination $ctrl $t",
-            "input keyevent $ctrl $t",
+            "input keycombination $ctrl $tKey",
+            "cmd input keycombination $ctrl $tKey",
+            "toybox input keycombination $ctrl $tKey",
+            "input keycombination 113 48",
+            "cmd input keycombination 113 48",
+            "input keyevent --longpress $ctrl $tKey",
+            "input keyevent $ctrl $tKey",
+            "input keyevent 113 48",
         )
         for (cmd in attempts) {
             LogBuffer.i("Shizuku", "try: $cmd")
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(100).ifBlank { "(empty)" }}")
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(120).ifBlank { "(empty)" }}")
             if (code == 0) {
                 LogBuffer.i("Shizuku", "Ctrl+T OK via: $cmd")
                 return true
@@ -151,16 +156,25 @@ object ShizukuShell {
     }
 
     fun pressEnter(): Boolean {
-        for (cmd in listOf(
-            "input keyevent ${KeyEvent.KEYCODE_ENTER}",
-            "cmd input keyevent ${KeyEvent.KEYCODE_ENTER}",
-        )) {
-            val (code, _) = exec(cmd)
+        val enter = KeyEvent.KEYCODE_ENTER
+        val attempts = listOf(
+            "input keyevent $enter",
+            "cmd input keyevent $enter",
+            "input keyevent 66",
+            "cmd input keyevent 66",
+            "toybox input keyevent 66",
+            "input keyevent KEYCODE_ENTER",
+        )
+        for (cmd in attempts) {
+            LogBuffer.i("Shizuku", "try: $cmd")
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(80).ifBlank { "(empty)" }}")
             if (code == 0) {
                 LogBuffer.i("Shizuku", "Enter OK via $cmd")
                 return true
             }
         }
+        LogBuffer.w("Shizuku", "all Enter strategies failed — ${statusLine()}")
         return false
     }
 

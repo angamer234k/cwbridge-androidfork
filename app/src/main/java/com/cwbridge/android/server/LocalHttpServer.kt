@@ -35,48 +35,65 @@ import kotlin.concurrent.thread
  */
 class LocalHttpServer(
     private val context: Context,
-    private val port: Int = 8765,
+    preferredPort: Int = 8080,
     private val onInvoke: (String) -> Unit,
     private val onToggleBridge: () -> Boolean,
 ) {
     private val running = AtomicBoolean(false)
     private var server: ServerSocket? = null
+    @Volatile private var boundPort: Int = 0
     private val gson = Gson()
     private val store by lazy { Store(context) }
     // Must match Room's parsing or sealed Trigger/Action lists come back empty.
     private val serviceGson by lazy { ServiceConverters().gson }
 
     fun isRunning(): Boolean = running.get()
-    fun port(): Int = port
+    fun port(): Int = if (boundPort > 0) boundPort else preferredPort
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
         thread(name = "cwbridge-http", isDaemon = true) {
-            try {
-                ServerSocket(port).use { ss ->
+            // Prefer 8080, then legacy 8765, then 80 (often needs priv).
+            val candidates = linkedSetOf(preferredPort, 8080, 8765, 80).filter { it in 1..65535 }
+            var lastErr: Throwable? = null
+            var started = false
+            for (tryPort in candidates) {
+                try {
+                    val ss = ServerSocket(tryPort)
                     server = ss
-                    LogBuffer.i("Server", "listening on port $port")
-                    while (running.get()) {
-                        try {
-                            val socket = ss.accept()
-                            thread(name = "cwbridge-http-conn", isDaemon = true) {
-                                try {
-                                    handle(socket)
-                                } catch (t: Throwable) {
-                                    LogBuffer.w("Server", "connection failed: ${t.message}")
+                    boundPort = tryPort
+                    LogBuffer.i("Server", "listening on port $tryPort (tried ${candidates.joinToString()})")
+                    started = true
+                    try {
+                        while (running.get()) {
+                            try {
+                                val socket = ss.accept()
+                                thread(name = "cwbridge-http-conn", isDaemon = true) {
+                                    try {
+                                        handle(socket)
+                                    } catch (t: Throwable) {
+                                        LogBuffer.w("Server", "connection failed: ${t.message}")
+                                    }
                                 }
+                            } catch (_: Exception) {
+                                if (!running.get()) break
                             }
-                        } catch (_: Exception) {
-                            if (!running.get()) break
                         }
+                    } finally {
+                        try { ss.close() } catch (_: Exception) {}
                     }
+                    break
+                } catch (t: Throwable) {
+                    lastErr = t
+                    LogBuffer.w("Server", "port $tryPort failed: ${t.message}")
                 }
-            } catch (t: Throwable) {
-                LogBuffer.e("Server", "failed: ${t.message}")
-                running.set(false)
-            } finally {
-                server = null
             }
+            if (!started) {
+                LogBuffer.e("Server", "all ports failed: ${lastErr?.message}")
+                running.set(false)
+            }
+            server = null
+            boundPort = 0
         }
     }
 

@@ -2,6 +2,9 @@ package com.cwbridge.android.bridge
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Bitmap
 import android.os.Build
 import com.cwbridge.android.ShizukuShell
@@ -62,6 +65,62 @@ object BridgeControl {
         } catch (t: Throwable) {
             LogBuffer.e("Control", "restartBridge: ${t.message}")
             "restart failed: ${t.message}"
+        }
+    }
+
+
+    /** CatWeb: Make a Website! */
+    const val CATWEB_PLACE_ID = "16855862021"
+    private const val CATWEB_DEEPLINK = "roblox://placeId=$CATWEB_PLACE_ID"
+    private const val CATWEB_HTTPS =
+        "https://www.roblox.com/games/start?placeId=$CATWEB_PLACE_ID"
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var catwebOpenRunnable: Runnable? = null
+
+    /** After delayMs, if CatWeb never booted, open the place via deeplink. */
+    fun scheduleOpenCatWebIfNeeded(context: Context, delayMs: Long = 10_000L) {
+        cancelOpenCatWeb()
+        val appCtx = context.applicationContext
+        val r = Runnable {
+            catwebOpenRunnable = null
+            if (CatWebTracker.seenBoot || CatWebTracker.ready) {
+                LogBuffer.i("Control", "CatWeb already seen — skip auto-open")
+                return@Runnable
+            }
+            LogBuffer.i("Control", "no CatWeb boot in ${delayMs}ms — opening deeplink")
+            openCatWeb(appCtx)
+        }
+        catwebOpenRunnable = r
+        mainHandler.postDelayed(r, delayMs)
+        LogBuffer.i("Control", "scheduled CatWeb auto-open in ${delayMs}ms")
+    }
+
+    fun cancelOpenCatWeb() {
+        catwebOpenRunnable?.let { mainHandler.removeCallbacks(it) }
+        catwebOpenRunnable = null
+    }
+
+    fun openCatWeb(context: Context): String {
+        return try {
+            val deep = Intent(Intent.ACTION_VIEW, Uri.parse(CATWEB_DEEPLINK)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(deep)
+                LogBuffer.i("Control", "opened $CATWEB_DEEPLINK")
+                "opening CatWeb (deeplink)"
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "deeplink failed: ${t.message} — https fallback")
+                val web = Intent(Intent.ACTION_VIEW, Uri.parse(CATWEB_HTTPS)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(web)
+                "opening CatWeb (https fallback)"
+            }
+        } catch (t: Throwable) {
+            LogBuffer.e("Control", "openCatWeb: ${t.message}")
+            "open CatWeb failed: ${t.message}"
         }
     }
 

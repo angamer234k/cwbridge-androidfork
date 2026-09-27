@@ -649,6 +649,7 @@ class MainActivity : AppCompatActivity() {
     private fun toggleBridge() {
         if (bridgeRunning) {
             bridgeRunning = false
+            BridgeControl.cancelOpenCatWeb()
             logcatReader.stop()
             invokeEngine.stop()
             executionEngine.stop()
@@ -673,6 +674,7 @@ class MainActivity : AppCompatActivity() {
             CatWebTracker.reset()
             AntiDisconnect.start(bridgeScope)
             ensureLogcatRunning()
+            BridgeControl.scheduleOpenCatWebIfNeeded(applicationContext, 10_000L)
             invokeEngine.start()
             invokeEngine.focusXPct = 50f
             invokeEngine.focusYPct = 50f
@@ -854,7 +856,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshServerUi() {
         val running = localServer?.isRunning() == true
-        val port = localServer?.port() ?: 8765
+        val port = localServer?.port() ?: 8080
         binding.btnServerToggle.text = if (running) "Stop server" else "Start server"
         binding.serverState.text = if (running) {
             "Listening on port $port — open http://<this-device-ip>:$port"
@@ -874,10 +876,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val port = 8765
         val server = LocalHttpServer(
             context = applicationContext,
-            port = port,
+            preferredPort = 8080,
             onInvoke = { raw -> invokeEngine.onExternalLog(raw) },
             onToggleBridge = {
                 // toggleBridge() can refuse to start (no a11y / no READ_LOGS),
@@ -898,7 +899,22 @@ class MainActivity : AppCompatActivity() {
             }
         })
         server.start()
-        Toast.makeText(this, "Server on port $port", Toast.LENGTH_SHORT).show()
+        Thread {
+            repeat(20) {
+                Thread.sleep(50)
+                if (server.isRunning() && server.port() > 0) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Server on http://…:${server.port()}", Toast.LENGTH_LONG).show()
+                        refreshServerUi()
+                    }
+                    return@Thread
+                }
+            }
+            runOnUiThread {
+                Toast.makeText(this, "Server failed to bind (8080/8765/80)", Toast.LENGTH_LONG).show()
+                refreshServerUi()
+            }
+        }.start()
         refreshServerUi()
     }
 
