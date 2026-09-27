@@ -1,5 +1,6 @@
-package com.cwbridge.android
+package com.cwbridge.android.bridge
 
+import com.cwbridge.android.TapService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.bridge
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.cwbridge.android.MainActivity
+import com.cwbridge.android.R
 
 object BridgeNotifier {
     private const val CHANNEL = "cwbridge_bridge"

@@ -22,3 +22,5 @@ output.json
 *.hprof
 .cxx/
 *.log
+*.env
+__pycache__/

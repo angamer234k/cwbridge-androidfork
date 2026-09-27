@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
 import androidx.room.Database
 import androidx.room.RoomDatabase

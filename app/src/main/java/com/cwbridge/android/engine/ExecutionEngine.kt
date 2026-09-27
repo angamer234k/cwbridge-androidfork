@@ -1,6 +1,18 @@
-package com.cwbridge.android
+package com.cwbridge.android.engine
 
 import android.content.Context
+import com.cwbridge.android.ShizukuShell
+import com.cwbridge.android.TapService
+import com.cwbridge.android.bridge.BridgeStatus
+import com.cwbridge.android.bridge.LogBuffer
+import com.cwbridge.android.bridge.LogcatReader
+import com.cwbridge.android.bridge.RecentLogLines
+import com.cwbridge.android.data.Action
+import com.cwbridge.android.data.InfoType
+import com.cwbridge.android.data.Service
+import com.cwbridge.android.data.ServiceRepository
+import com.cwbridge.android.data.Trigger
+import com.cwbridge.android.data.VarStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

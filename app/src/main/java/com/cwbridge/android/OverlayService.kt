@@ -25,6 +25,12 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import com.cwbridge.android.bridge.BridgeStatus
+import com.cwbridge.android.bridge.ConsoleLevel
+import com.cwbridge.android.bridge.LogBuffer
+import com.cwbridge.android.bridge.OverlayState
+import com.cwbridge.android.bridge.RobloxLogBuffer
+import com.cwbridge.android.data.Service
 
 /** Floating status dot. Tap shows logs; long-press schedules Ctrl+T in 3s. */
 class OverlayService : Service() {

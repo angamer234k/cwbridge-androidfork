@@ -1,5 +1,6 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
+import com.cwbridge.android.bridge.LogBuffer
 import java.util.concurrent.ConcurrentHashMap
 
 /**

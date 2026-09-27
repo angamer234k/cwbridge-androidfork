@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
 import androidx.room.Dao
 import androidx.room.Delete

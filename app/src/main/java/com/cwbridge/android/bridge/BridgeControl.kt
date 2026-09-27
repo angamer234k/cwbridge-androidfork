@@ -1,9 +1,13 @@
-package com.cwbridge.android
+package com.cwbridge.android.bridge
 
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
+import com.cwbridge.android.ShizukuShell
+import com.cwbridge.android.TapService
+import com.cwbridge.android.data.Service
+import com.cwbridge.android.engine.ExecutionEngine
 import java.io.ByteArrayOutputStream
 
 /**

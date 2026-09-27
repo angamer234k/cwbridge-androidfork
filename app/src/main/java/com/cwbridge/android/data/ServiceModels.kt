@@ -1,7 +1,8 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
 import android.content.Context
 import androidx.room.Room
+import com.cwbridge.android.bridge.LogBuffer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

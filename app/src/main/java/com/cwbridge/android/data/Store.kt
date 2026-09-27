@@ -1,6 +1,7 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
 import android.content.Context
+import com.cwbridge.android.bridge.LogBuffer
 import kotlin.math.pow
 
 /**
