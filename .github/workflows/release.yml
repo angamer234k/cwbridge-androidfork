@@ -87,7 +87,27 @@ jobs:
           tag_name: ${{ steps.collect.outputs.tag }}
           name: CWBridge ${{ steps.collect.outputs.tag }}
           body: |
-            ## version 2.10.2 wow
+            ## CWBridge Android ${{ steps.collect.outputs.tag }}
+
+            ### Web server & remote control
+            - Built-in web server (port 8765) with a browser control panel
+            - Local-network clients (192.168.x.x, 10.x, 172.16-31.x) need no password;
+              anything else uses the generated password shown in the app
+            - Remote control: take screenshot, restart bridge, restart Roblox, Ctrl+T,
+              Enter, read clipboard, toggle bridge
+            - Services creator: list, create, edit, enable/disable, delete, run
+            - Per-domain storage quotas (bits/bytes/KB/MB/GB)
+
+            ### Fixes
+            - "Check for updates" now actually works (version suffix handling fixed)
+            - `paste` with no argument pastes the current clipboard
+            - A failing tool/service no longer takes down the bridge
+            - First run shows a one-time notice about device-specific limitations
+
+            | File | What it is |
+            |------|------------|
+            | `cwbridge-android-debug.apk` | Main app |
+            | `cwbridge-helper-debug.apk` | USB/OTG installer helper |
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk

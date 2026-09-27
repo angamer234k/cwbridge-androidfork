@@ -102,12 +102,19 @@ class UpdateChecker(
     fun findApkAsset(release: GitHubRelease, preferDebug: Boolean = isDebugBuild()): GitHubAsset? {
         val apks = release.assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
         if (apks.isEmpty()) return null
-        val debug = apks.filter { it.name.contains("debug", ignoreCase = true) }
+
+        // The release ships the helper alongside the main app, and both APKs
+        // contain "debug". Offering the helper here would push a different
+        // package (com.cwbridge.helper) at users of the main app, so exclude it.
+        val mainApks = apks.filterNot { it.name.contains("helper", ignoreCase = true) }
+        val pool = if (mainApks.isNotEmpty()) mainApks else apks
+
+        val debug = pool.filter { it.name.contains("debug", ignoreCase = true) }
         return when {
             preferDebug && debug.isNotEmpty() -> debug.first()
-            apks.any { it.name.contains("android", ignoreCase = true) } ->
-                apks.first { it.name.contains("android", ignoreCase = true) }
-            else -> apks.first()
+            pool.any { it.name.contains("android", ignoreCase = true) } ->
+                pool.first { it.name.contains("android", ignoreCase = true) }
+            else -> pool.first()
         }
     }
 
