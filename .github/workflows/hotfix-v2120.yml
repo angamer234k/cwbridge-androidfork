@@ -1,9 +1,11 @@
 name: Hotfix v2.12.0 sources
+
 on:
   workflow_dispatch:
   push:
     paths:
       - '.github/workflows/hotfix-v2120.yml'
+
 jobs:
   patch:
     runs-on: ubuntu-latest
@@ -11,68 +13,39 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Restore WebUi from known-good and patch blank page
+
+      - name: Restore and patch WebUi
         run: |
-          set -e
+          set -euo pipefail
           GOOD=120872390b13718ae89fd4d67811cfc9d8785f48
           git show "$GOOD:app/src/main/java/com/cwbridge/android/server/WebUi.kt" > app/src/main/java/com/cwbridge/android/server/WebUi.kt
-          python3 << 'PY'
+          python3 - <<'PY'
           from pathlib import Path
           p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
           t = p.read_text()
           t = t.replace('<div id="app" class="hide">', '<div id="app">', 1)
-          old = '''async function refreshStatus() {
-  try {
-    const s = await api('/api/status');
-    const p = D('pill');
-    p.className = 'pill ' + (s.state || 'IDLE');
-    p.textContent = s.state || 'IDLE';
-    D('detail').textContent = s.detail || '';
-  } catch (e) {}
-}'''
-          new = '''function revealApp() {
-  NEEDS_LOGIN = false;
-  D('login').classList.add('hide');
-  D('app').classList.remove('hide');
-}
-
-async function refreshStatus() {
-  try {
-    const s = await api('/api/status');
-    revealApp();
-    const p = D('pill');
-    p.className = 'pill ' + (s.state || 'IDLE');
-    p.textContent = s.state || 'IDLE';
-    D('detail').textContent = s.detail || '';
-    var bits = [];
-    bits.push(s.accessibility ? 'a11y ok' : 'a11y OFF');
-    bits.push(s.shizuku ? 'shizuku ok' : 'shizuku OFF');
-    bits.push(s.catwebReady ? 'catweb ready' : 'catweb waiting');
-    if (!D('detail').textContent) D('detail').textContent = bits.join(' · ');
-    else D('detail').textContent = D('detail').textContent + ' · ' + bits.join(' · ');
-  } catch (e) {}
-}'''
+          old = "async function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n  } catch (e) {}\n}"
+          new = "function revealApp() {\n  NEEDS_LOGIN = false;\n  D('login').classList.add('hide');\n  D('app').classList.remove('hide');\n}\n\nasync function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    revealApp();\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n    var bits = [];\n    bits.push(s.accessibility ? 'a11y ok' : 'a11y OFF');\n    bits.push(s.shizuku ? 'shizuku ok' : 'shizuku OFF');\n    bits.push(s.catwebReady ? 'catweb ready' : 'catweb waiting');\n    if (!D('detail').textContent) D('detail').textContent = bits.join(' · ');\n    else D('detail').textContent = D('detail').textContent + ' · ' + bits.join(' · ');\n  } catch (e) {}\n}"
           if old not in t:
               raise SystemExit('refreshStatus block missing')
           t = t.replace(old, new, 1)
-          old_login = '''    NEEDS_LOGIN = false;
-    D('login').classList.add('hide');
-    D('app').classList.remove('hide');
-    msg('loginMsg', '');'''
-          new_login = '''    revealApp();
-    msg('loginMsg', '');'''
+          old_login = "    NEEDS_LOGIN = false;\n    D('login').classList.add('hide');\n    D('app').classList.remove('hide');\n    msg('loginMsg', '');"
+          new_login = "    revealApp();\n    msg('loginMsg', '');"
           if old_login not in t:
               raise SystemExit('doLogin block missing')
           t = t.replace(old_login, new_login, 1)
           p.write_text(t)
           print('WebUi patched', len(t))
           PY
-      - name: Commit if changed
+
+      - name: Commit
         run: |
-          git config user.name "cwbridge-bot"
-          git config user.email "bot@cwbridge.local"
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
           git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
-          git diff --cached --quiet && echo 'no changes' || git commit -m "fix: WebUi blank page (reveal #app on LAN)"
-          git push
+          if git diff --cached --quiet; then
+            echo no changes
+          else
+            git commit -m "fix: WebUi blank page (reveal #app on LAN)"
+            git push
+          fi
