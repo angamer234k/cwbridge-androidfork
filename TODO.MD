@@ -37,7 +37,7 @@ CI GUARDS ADDED:
   Runs in both build-debug-apk.yml (every push) and release.yml, before the Gradle build.
 + ALSO CHECKS: SCREENSHOT_MARKER matches the placeholder comment in the markup (silent button-drop otherwise)
 
-IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, committed, NOT pushed)
+DONE — PACKAGE FOLDERS (merged to main as 1c43a72, branch deleted, still UNPUSHED)
 = 22 of 29 files moved out of the flat package (was 29 .kt files, 0 subdirs):
     bridge/  AntiDisconnect BridgeControl BridgeNotifier BridgeStatus CatWebTracker
              LogBuffer LogcatReader RecentLogLines RobloxLogBuffer
@@ -52,11 +52,10 @@ IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, committed, N
   launcher, the a11y service or the overlay with NO compile error.
 = imports verified: `python scripts/_reorg.py --check` -> 41 declarations, 0 missing, 0 unused
 = line endings normalised back to CRLF after the scripted rewrite
-= COMMITTED as 8a0dab9 "do stuff" on branch refactor/package-folders (forked from 5c2bc9a).
-  Working tree is CLEAN. Verified by `git ls-tree`: 29 .kt in HEAD, 29 in the tree (7 root + 22 moved).
-- BRANCH IS BEHIND MAIN: main moved on to e99d0bc (+ d47cb75), both README.md only, and local main
-  == origin/main. The branch forked at 5c2bc9a, so main is 2 ahead and the branch is 2 ahead.
-  `git merge-tree` dry-run reports NO CONFLICTS. Nothing is pushed anywhere.
++ MERGED INTO MAIN LOCALLY: merge commit 1c43a72, branch refactor/package-folders deleted.
+  README.md auto-merged cleanly (main's 2 README commits vs the branch side) — no conflicts.
+  main is now AHEAD OF origin/main BY 4 (d838f4f, 8a0dab9, 1ddc2ae, 1c43a72) and NOT pushed.
+  `git ls-tree`: 29 .kt in main — 7 at root + 22 under bridge/ data/ engine/ server/.
 - scripts/check-webui.js line 20 still hardcodes `.../android/WebUi.kt` -> now server/WebUi.kt.
   THIS GATES EVERY BUILD (build-debug-apk.yml + release.yml). Must be fixed, ideally by making
   it auto-discover WebUi.kt anywhere under the java tree so the next move can't break CI again.
@@ -97,10 +96,36 @@ STILL TO DO — WEB PANEL (Stage 2, not started; was blocked on Stage 1 going gr
   interpolate, so a stray $ is a Kotlin COMPILE error, not a web bug — the page is
   deliberately $-free today and the inline JS uses + concatenation for exactly this reason.
 
-WINDOWS HELPER — committed in d838f4f, but HALF COMPLETE
-+ scripts/cwbridge-updater.ps1 — update check + APK download
-+ scripts/cwbridge-helper-gui.ps1 — headless core + self-test: 22 passed, 0 failed
-- THE WINDOW IS NOT BUILT. The file ends at Write-Log (line 864); no Form is ever constructed,
-  nothing calls ShowDialog / Application.Run, and Write-Log writes to $script:Rtb which is never
-  created -> calling it throws. Never launched by a human, only run with -SelfTest.
-- so: still needs the actual form, then a real local run against a device.
+WINDOWS HELPER — core committed in d838f4f; THE WINDOW IS NOW BUILT TOO
++ scripts/cwbridge-updater.ps1 — update check + APK download (CLI)
++ scripts/cwbridge-helper-gui.ps1 — headless core + self-test: 22 passed, 0 failed, 0 skipped
++ THE WINDOW IS BUILT (it was missing: the file used to end at Write-Log, no Form was ever
+  constructed, and Write-Log wrote to a $script:Rtb that did not exist). Added ~375 lines:
+    Start-Core runs the SAME $script:CoreText in a background runspace, so adb cannot freeze
+    the message loop; Pump-Core drains the log queue from a 120 ms timer; Set-Working
+    disables every action button in flight, so nothing can double-fire.
+    Form: adb path + Browse, device combo + Refresh (auto-picks the first usable device and
+    keeps your pick across refreshes), 10 action buttons (Check device, Install/update,
+    Install local APK, Grant READ_LOGS, Launch CWBridge, Start Shizuku, Web panel,
+    Diagnostics, Clear log, Save log), a 6-row status grid coloured green/amber/red, a log
+    pane and a progress bar. Resize re-runs one Set-Layout (no docking, no dock-order traps).
++ VERIFIED HERE (headless box: no adb, no device, no interactive desktop):
+    - -SelfTest 22 passed, 0 failed, 0 skipped
+    - a throwaway smoke harness stripped the two message-loop lines, built the real window and
+      ran the real layout + fill functions -> 13/13 (controls exist, nothing lays out
+      off-window, device auto-pick, status colouring, log text reaches the pane).
+      Harness lived in %TEMP% and was deleted afterwards; recreate it if you want it in CI.
+    - launching the real script: STA, no exception on stdout/stderr, still alive after 8 s
+      inside ShowDialog. That is what a healthy modal window looks like from the outside.
+- STILL NOT RUN BY A HUMAN AGAINST A REAL PHONE. Also: this box cannot display windows at
+  all - even a 3-line probe Form gives FindWindow hwnd=0 - so "window not found" here proves
+  nothing. The real test is running it on the desktop with a device plugged in.
++ LATENT BUG FOUND AND FIXED while building this (remember it):
+    New-Lbl was `param([string]$Text, [double]$Size = 9, [switch]$Bold, $Ink)`.
+    PowerShell EXCLUDES [switch] parameters from positional binding, so a switch sitting
+    between two positionals shifts every later argument by one and SILENTLY DROPS the last:
+    `New-Lbl 'x' 17 $true $col` bound $Ink = $true and threw "Cannot convert value "True" to
+    type System.Drawing.Color" on the very first label. Invisible until now because nothing
+    ever called New-Lbl (no window existed). FIX: switch moved last ->
+    param(..., $Ink, [switch]$Bold), and all 6 call sites pass -Bold by name.
+    RULE: never put a [switch] between positional parameters in this file.

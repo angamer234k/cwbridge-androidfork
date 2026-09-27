@@ -837,7 +837,10 @@ function New-Btn {
 }
 
 function New-Lbl {
-  param([string]$Text, [double]$Size = 9, [switch]$Bold, $Ink)
+  # $Bold must stay the last parameter: PowerShell leaves [switch] parameters
+  # out of positional binding, so a switch sitting between two positionals makes
+  # every positional call after it shift by one and silently drop an argument.
+  param([string]$Text, [double]$Size = 9, $Ink, [switch]$Bold)
   $l = New-Object System.Windows.Forms.Label
   $l.Text = $Text
   $l.AutoSize = $false
@@ -862,3 +865,373 @@ function Write-Log {
   $script:Rtb.SelectionStart = $script:Rtb.TextLength
   $script:Rtb.ScrollToCaret()
 }
+
+
+# ---------------------------------------------------------------------------
+# Core runner
+#
+# Same $script:CoreText the self-test drives, but started on a background
+# runspace so adb cannot freeze the message loop. This is the "GUI path" the
+# self-test asserts on: identical text, separate runspace, log lines travel
+# back through $script:LogQ and are drained by a UI timer.
+# ---------------------------------------------------------------------------
+$script:CoreSB = [ScriptBlock]::Create($script:CoreText)
+
+function Set-Working {
+  param([bool]$Working)
+  $script:Busy = $Working
+  foreach ($b in $script:Buttons) { $b.Enabled = -not $Working }
+  if ($Working) {
+    $script:Bar.Style = 'Marquee'
+  } else {
+    $script:Bar.Style = 'Continuous'
+    $script:Bar.Value = 0
+  }
+}
+
+function Start-Core {
+  param([hashtable]$Op)
+  if ($script:Busy) { Write-Log 'busy - let the current job finish first' 'warn'; return }
+
+  if (-not $script:AdbPath -and $script:AdbBox.Text.Trim()) { $script:AdbPath = $script:AdbBox.Text.Trim() }
+
+  $c = @{ Log = $script:LogQ; AdbPath = $script:AdbPath }
+  foreach ($k in $Op.Keys) { $c[$k] = $Op[$k] }
+  if ($script:Serial) { $c.Serial = $script:Serial }
+
+  Set-Working $true
+  $rs = [runspacefactory]::CreateRunspace()
+  $rs.Open()
+  $ps = [powershell]::Create()
+  $ps.Runspace = $rs
+  $null = $ps.AddScript($script:CoreText).AddArgument($c)
+  $script:Job = [pscustomobject]@{ PS = $ps; RS = $rs; Handle = $ps.BeginInvoke() }
+}
+
+# Drained from a UI timer: pump queued log lines into the pane, then pick up
+# the result the moment the runspace reports finished.
+function Pump-Core {
+  $e = $null
+  while ($script:LogQ.TryDequeue([ref]$e)) {
+    if ($e.ContainsKey('P')) {
+      $pct = [int]$e['P']
+      if ($pct -ge 0 -and $pct -le 100) {
+        $script:Bar.Style = 'Continuous'
+        $script:Bar.Value = $pct
+      }
+    }
+    Write-Log ([string]$e['T']) ([string]$e['L'])
+  }
+
+  if (-not $script:Job) { return }
+  if (-not $script:Job.Handle.IsCompleted) { return }
+
+  $out = $null
+  try { $out = $script:Job.PS.EndInvoke($script:Job.Handle) }
+  catch { Write-Log $_.Exception.Message 'err' }
+
+  $res = @($out) | Where-Object { $_ -is [System.Collections.Specialized.OrderedDictionary] } |
+         Select-Object -First 1
+
+  $script:Job.PS.Dispose()
+  $script:Job.RS.Dispose()
+  $script:Job = $null
+
+  if ($res) {
+    if ($res.Devices) { Fill-Devices $res.Devices }
+    if ($res.Status)  { Fill-Status $res.Status }
+    if ($res.Ok) { Write-Log 'done' 'ok' } else { Write-Log ('failed: ' + $res.Message) 'err' }
+  }
+  Set-Working $false
+}
+
+
+# ---------------------------------------------------------------------------
+# Window
+#
+# Dark window: a control column on the left (adb, device picker, actions, a
+# status grid) and the log on the right. Explicit coordinates plus one Resize
+# handler keep the layout predictable, which is worth more here than the
+# docking sugar WinForms gives you.
+# ---------------------------------------------------------------------------
+$script:Form = New-Object System.Windows.Forms.Form
+$script:Form.Text = 'CWBridge Helper'
+$script:Form.ClientSize = New-Object System.Drawing.Size(1140, 740)
+$script:Form.MinimumSize = New-Object System.Drawing.Size(940, 620)
+$script:Form.BackColor = $script:Col.Bg
+$script:Form.ForeColor = $script:Col.Fg
+$script:Form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+$script:Form.StartPosition = 'CenterScreen'
+
+function Add-Ctl {
+  param($C)
+  $null = $script:Form.Controls.Add($C)
+  return $C
+}
+
+$script:Head = Add-Ctl (New-Lbl 'CWBridge Helper' 17 $script:Col.Fg -Bold)
+$script:Sub  = Add-Ctl (New-Lbl 'Install, update and diagnose CWBridge over USB. The bridge itself stays Android-only.' 9 $script:Col.Dim)
+
+# ---- adb
+$script:AdbLbl = Add-Ctl (New-Lbl 'adb.exe' 9 $script:Col.Dim -Bold)
+$script:AdbBox = Add-Ctl (New-Object System.Windows.Forms.TextBox)
+$script:AdbBox.BackColor = $script:Col.Panel2
+$script:AdbBox.ForeColor = $script:Col.Fg
+$script:AdbBox.BorderStyle = 'FixedSingle'
+$script:AdbBox.Text = $script:AdbPath
+$script:BtnBrowse = Add-Ctl (New-Btn 'Browse...' 96)
+
+# ---- device
+$script:DevLbl = Add-Ctl (New-Lbl 'device' 9 $script:Col.Dim -Bold)
+$script:DevBox = Add-Ctl (New-Object System.Windows.Forms.ComboBox)
+$script:DevBox.DropDownStyle = 'DropDownList'
+$script:DevBox.BackColor = $script:Col.Panel2
+$script:DevBox.ForeColor = $script:Col.Fg
+$script:BtnRefresh = Add-Ctl (New-Btn 'Refresh' 96)
+
+# ---- action buttons
+# Every one of these goes through Set-Working, so nothing can be double-fired
+# while a job is in flight.
+$script:Buttons = @()
+function Add-Act {
+  param([string]$Text, [scriptblock]$OnClick, [switch]$Primary)
+  $b = New-Btn $Text 186 -Primary:$Primary
+  $b.Add_Click($OnClick)
+  $script:Buttons += $b
+  return (Add-Ctl $b)
+}
+
+$script:BtnCheck   = Add-Act 'Check device'       { Start-Core @{ Op = 'status'; NeedDevice = $true } }
+$script:BtnUpdate  = Add-Act 'Install / update'   { Start-Core @{ Op = 'push'; NeedDevice = $true } } -Primary
+$script:BtnLocal   = Add-Act 'Install local APK'  {
+  $dlg = New-Object System.Windows.Forms.OpenFileDialog
+  $dlg.Filter = 'Android packages (*.apk)|*.apk|All files (*.*)|*.*'
+  $dlg.Title = 'Pick an APK to install'
+  if ($dlg.ShowDialog() -ne 'OK') { return }
+  $p = $dlg.FileName
+  $dlg.Dispose()
+  Start-Core @{ Op = 'install-local'; NeedDevice = $true; Apk = $p; SkipGrant = $true; SkipShizuku = $true }
+}
+$script:BtnGrant   = Add-Act 'Grant READ_LOGS'    { Start-Core @{ Op = 'grant-logs'; NeedDevice = $true } }
+$script:BtnLaunch  = Add-Act 'Launch CWBridge'    { Start-Core @{ Op = 'launch'; NeedDevice = $true } }
+$script:BtnShizuku = Add-Act 'Start Shizuku'      { Start-Core @{ Op = 'shizuku'; NeedDevice = $true } }
+$script:BtnWeb     = Add-Act 'Web panel'          { Start-Core @{ Op = 'web'; NeedDevice = $true } }
+$script:BtnDiag    = Add-Act 'Diagnostics'        { Start-Core @{ Op = 'diagnostics'; NeedDevice = $true } }
+$script:BtnClear   = Add-Act 'Clear log'          { $script:Rtb.Clear() }
+$script:BtnSave    = Add-Act 'Save log...'        {
+  $dlg = New-Object System.Windows.Forms.SaveFileDialog
+  $dlg.Filter = 'Text (*.txt)|*.txt|All files (*.*)|*.*'
+  $dlg.FileName = 'cwbridge-helper-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt'
+  if ($dlg.ShowDialog() -eq 'OK') { $script:Rtb.Text | Set-Content -LiteralPath $dlg.FileName }
+  $dlg.Dispose()
+}
+
+# ---- status grid
+$script:StatRows = @()
+function Add-Stat {
+  param([string]$Caption)
+  $k = Add-Ctl (New-Lbl $Caption 9 $script:Col.Dim -Bold)
+  $v = Add-Ctl (New-Lbl '-' 9 $script:Col.Fg)
+  $script:StatRows += ,@($k, $v)
+  return $v
+}
+
+$script:SDevice = Add-Stat 'device'
+$script:SApp    = Add-Stat 'cwbridge'
+$script:SLogs   = Add-Stat 'read_logs'
+$script:SA11y   = Add-Stat 'accessibility'
+$script:SShiz   = Add-Stat 'shizuku'
+$script:SIp     = Add-Stat 'wlan ip'
+
+# ---- log + progress
+$script:LogLbl = Add-Ctl (New-Lbl 'log' 9 $script:Col.Dim -Bold)
+$script:Rtb = Add-Ctl (New-Object System.Windows.Forms.RichTextBox)
+$script:Rtb.BackColor = $script:Col.Panel
+$script:Rtb.ForeColor = $script:Col.Fg
+$script:Rtb.BorderStyle = 'None'
+$script:Rtb.ReadOnly = $true
+$script:Rtb.HideSelection = $false
+$script:Rtb.WordWrap = $false
+$script:Rtb.ScrollBars = 'Both'
+$script:Rtb.Font = New-Object System.Drawing.Font('Consolas', 9)
+
+$script:Bar = Add-Ctl (New-Object System.Windows.Forms.ProgressBar)
+$script:Bar.Style = 'Continuous'
+$script:Bar.Minimum = 0
+$script:Bar.Maximum = 100
+
+
+# ---------------------------------------------------------------------------
+# Layout
+#
+# One function, called on Resize and once before the window is shown, so the
+# first paint is already correct instead of jumping around on open.
+# ---------------------------------------------------------------------------
+function Set-Layout {
+  $w = $script:Form.ClientSize.Width
+  $h = $script:Form.ClientSize.Height
+  $pad = 16
+  $colW = 396
+  $logX = $pad + $colW + $pad
+  $logW = $w - $logX - $pad
+  if ($logW -lt 220) { $logW = 220 }
+
+  $script:Head.SetBounds($pad, 14, $w - 2 * $pad, 26)
+  $script:Sub.SetBounds($pad, 42, $w - 2 * $pad, 18)
+
+  $script:AdbLbl.SetBounds($pad, 76, 300, 16)
+  $script:AdbBox.SetBounds($pad, 94, $colW - 104, 24)
+  $script:BtnBrowse.SetBounds($pad + $colW - 96, 92, 96, 28)
+
+  $script:DevLbl.SetBounds($pad, 128, 300, 16)
+  $script:DevBox.SetBounds($pad, 146, $colW - 104, 24)
+  $script:BtnRefresh.SetBounds($pad + $colW - 96, 144, 96, 28)
+
+  # actions, two columns, paired row by row
+  $bw = [int](($colW - 10) / 2)
+  $bx2 = $pad + $bw + 10
+  $y = 186
+  $acts = @($script:BtnCheck, $script:BtnUpdate, $script:BtnLocal, $script:BtnGrant,
+            $script:BtnLaunch, $script:BtnShizuku, $script:BtnWeb, $script:BtnDiag,
+            $script:BtnClear, $script:BtnSave)
+  for ($i = 0; $i -lt $acts.Count; $i++) {
+    if ($i % 2 -eq 0) {
+      $acts[$i].SetBounds($pad, $y, $bw, 30)
+    } else {
+      $acts[$i].SetBounds($bx2, $y, $bw, 30)
+      $y += 38
+    }
+  }
+  $y += 12
+
+  # status grid
+  for ($i = 0; $i -lt $script:StatRows.Count; $i++) {
+    $script:StatRows[$i][0].SetBounds($pad, $y + $i * 24, 118, 20)
+    $script:StatRows[$i][1].SetBounds($pad + 122, $y + $i * 24, $colW - 122, 20)
+  }
+
+  $logY = 76
+  $logH = $h - $logY - 46
+  if ($logH -lt 120) { $logH = 120 }
+  $script:LogLbl.SetBounds($logX, 58, 200, 16)
+  $script:Rtb.SetBounds($logX, $logY, $logW, $logH)
+  $script:Bar.SetBounds($logX, $logY + $logH + 10, $logW, 18)
+}
+
+# ---------------------------------------------------------------------------
+# Filling the pickers from a core result
+# ---------------------------------------------------------------------------
+function Fill-Devices {
+  param($Devices)
+  $script:DevBox.DisplayMember = 'Label'
+  $script:DevBox.ValueMember = 'Serial'
+  $keep = $script:Serial
+  $script:DevBox.Items.Clear()
+  foreach ($d in @($Devices)) {
+    $null = $script:DevBox.Items.Add([pscustomobject]@{
+      Label  = ($d.Serial + '   (' + $d.State + ')')
+      Serial = $d.Serial
+      State  = $d.State
+    })
+  }
+
+  # keep the current pick while it is still attached, else the first usable one
+  $pick = -1
+  for ($i = 0; $i -lt $script:DevBox.Items.Count; $i++) {
+    if ($keep -and $script:DevBox.Items[$i].Serial -eq $keep) { $pick = $i }
+  }
+  if ($pick -lt 0) {
+    for ($i = 0; $i -lt $script:DevBox.Items.Count; $i++) {
+      if ($script:DevBox.Items[$i].State -eq 'device') { $pick = $i; break }
+    }
+  }
+  if ($pick -lt 0 -and $script:DevBox.Items.Count -gt 0) { $pick = 0 }
+  if ($pick -ge 0) {
+    $script:DevBox.SelectedIndex = $pick
+    $script:Serial = $script:DevBox.Items[$pick].Serial
+  } else {
+    $script:Serial = ''
+  }
+}
+
+function Fill-Status {
+  param($S)
+  $script:SDevice.Text = ($S.Model + ' - Android ' + $S.Android + ' (SDK ' + $S.Sdk + ')')
+  $script:SIp.Text = $S.WlanIp
+
+  if ($S.Installed) {
+    $script:SApp.Text = 'installed v' + $S.Version
+    $script:SApp.ForeColor = $script:Col.Green
+  } else {
+    $script:SApp.Text = 'not installed - press Install / update'
+    $script:SApp.ForeColor = $script:Col.Yellow
+  }
+
+  if ($S.ReadLogs) {
+    $script:SLogs.Text = 'granted'
+    $script:SLogs.ForeColor = $script:Col.Green
+  } else {
+    $script:SLogs.Text = 'NOT granted - console stays empty'
+    $script:SLogs.ForeColor = $script:Col.Red
+  }
+
+  if ($S.A11y) {
+    $script:SA11y.Text = 'CWBridge Tap enabled'
+    $script:SA11y.ForeColor = $script:Col.Green
+  } else {
+    $script:SA11y.Text = 'CWBridge Tap NOT enabled - taps will not work'
+    $script:SA11y.ForeColor = $script:Col.Red
+  }
+
+  if ($S.Shizuku) {
+    $script:SShiz.Text = 'installed'
+    $script:SShiz.ForeColor = $script:Col.Green
+  } else {
+    $script:SShiz.Text = 'not installed'
+    $script:SShiz.ForeColor = $script:Col.Dim
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Wiring
+# ---------------------------------------------------------------------------
+$script:BtnBrowse.Add_Click({
+  $dlg = New-Object System.Windows.Forms.OpenFileDialog
+  $dlg.Filter = 'adb.exe|adb.exe|All files (*.*)|*.*'
+  $dlg.Title = 'Point at adb.exe'
+  if ($dlg.ShowDialog() -eq 'OK') {
+    $script:AdbPath = $dlg.FileName
+    $script:AdbBox.Text = $dlg.FileName
+    Write-Log ('adb set to ' + $dlg.FileName) 'info'
+  }
+  $dlg.Dispose()
+})
+
+# Refresh stays enabled during a job on purpose: Start-Core refuses to overlap,
+# and re-scanning is the one thing you want while a long install runs.
+$script:BtnRefresh.Add_Click({ Start-Core @{ Op = 'devices' } })
+
+$script:DevBox.Add_SelectedIndexChanged({
+  if ($script:DevBox.SelectedItem) { $script:Serial = $script:DevBox.SelectedItem.Serial }
+})
+
+$script:Timer = New-Object System.Windows.Forms.Timer
+$script:Timer.Interval = 120
+$script:Timer.Add_Tick({ Pump-Core })
+
+$script:Form.Add_Resize({ Set-Layout })
+$script:Form.Add_FormClosed({ $script:Timer.Stop() })
+$script:Form.Add_Shown({
+  Set-Layout
+  Write-Log 'CWBridge Helper' 'ok'
+  Write-Log 'Plug in a device with USB debugging enabled, then pick it above.' 'tip'
+  Write-Log 'Install / update downloads the newest release, installs it and grants READ_LOGS.' 'tip'
+  $script:Timer.Start()
+  Start-Core @{ Op = 'devices' }
+})
+
+Set-Layout
+$null = $script:Form.ShowDialog()
+
+
+
