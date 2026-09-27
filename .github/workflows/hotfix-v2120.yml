@@ -1,6 +1,9 @@
 name: Hotfix v2.12.0 sources
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/hotfix-v2120.yml'
 jobs:
   patch:
     runs-on: ubuntu-latest
@@ -8,6 +11,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore WebUi from known-good and patch blank page
         run: |
           set -e
@@ -18,16 +23,6 @@ jobs:
           p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
           t = p.read_text()
           t = t.replace('<div id="app" class="hide">', '<div id="app">', 1)
-          old = """async function refreshStatus() {
-            try {
-              const s = await api('/api/status');
-              const p = D('pill');
-              p.className = 'pill ' + (s.state || 'IDLE');
-              p.textContent = s.state || 'IDLE';
-              D('detail').textContent = s.detail || '';
-            } catch (e) {}
-          }"""
-          # normalize spaces - file uses 2-space indent in JS
           old = '''async function refreshStatus() {
   try {
     const s = await api('/api/status');
@@ -78,6 +73,6 @@ async function refreshStatus() {
         run: |
           git config user.name "cwbridge-bot"
           git config user.email "bot@cwbridge.local"
-          git add -A
+          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
           git diff --cached --quiet && echo 'no changes' || git commit -m "fix: WebUi blank page (reveal #app on LAN)"
           git push
