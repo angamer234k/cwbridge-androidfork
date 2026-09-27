@@ -43,17 +43,38 @@ class ExecutionEngine(
             LogBuffer.i("ExecutionEngine", "Service ${service.name} is disabled, skipping")
             return
         }
-        scope.launch(Dispatchers.IO) { executeActions(service.actions) }
+        scope.launch(Dispatchers.IO) {
+            // Supervisor-style: one failing service must not kill the scope.
+            runCatching { executeActions(service.actions) }
+                .onFailure { reportServiceFailure(service, it) }
+        }
     }
 
     fun executeAction(action: Action) {
-        scope.launch(Dispatchers.IO) { executeActionInternal(action) }
+        scope.launch(Dispatchers.IO) {
+            runCatching { executeActionInternal(action) }
+                .onFailure { reportActionFailure(action, it) }
+        }
+    }
+
+    private fun reportActionFailure(action: Action, t: Throwable) {
+        val reason = t.message ?: t::class.java.simpleName
+        LogBuffer.e("ExecutionEngine", "action '${action.name}' failed: $reason — continuing")
+        BridgeStatus.reportError("Action '${action.name}' failed", remember = false)
+    }
+
+    private fun reportServiceFailure(service: Service, t: Throwable) {
+        val reason = t.message ?: t::class.java.simpleName
+        LogBuffer.e("ExecutionEngine", "service '${service.name}' failed: $reason — continuing")
+        BridgeStatus.reportError("Service '${service.name}' failed", remember = false)
     }
 
     private suspend fun executeActions(actions: List<Action>) {
         for (action in actions) {
             if (!running) break
-            executeActionInternal(action)
+            // A broken action must never abort the rest of the service.
+            runCatching { executeActionInternal(action) }
+                .onFailure { reportActionFailure(action, it) }
             delay(50)
         }
     }

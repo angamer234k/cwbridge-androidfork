@@ -26,6 +26,11 @@ object BridgeStatus {
     var detail: String = "Bridge off"
         private set
 
+    /** Sticky error — set by real faults, survives recompute(). */
+    @Volatile
+    var hasStickyError: Boolean = false
+        private set
+
     private val listeners = CopyOnWriteArrayList<(OverlayState, String) -> Unit>()
 
     fun addListener(l: (OverlayState, String) -> Unit) {
@@ -35,6 +40,21 @@ object BridgeStatus {
 
     fun removeListener(l: (OverlayState, String) -> Unit) {
         listeners.remove(l)
+    }
+
+    /**
+     * Report a fault for the overlay.
+     * @param remember true = sticky (cleared only by clearError), used for real
+     *   errors like "accessibility off". false = transient, e.g. one failed
+     *   service action, which should not permanently pin the dot red.
+     */
+    fun reportError(message: String, remember: Boolean = true) {
+        if (remember) hasStickyError = true
+        set(OverlayState.ERROR, message)
+    }
+
+    fun clearError() {
+        hasStickyError = false
     }
 
     fun set(state: OverlayState, detail: String = "") {
@@ -47,7 +67,13 @@ object BridgeStatus {
                 OverlayState.ERROR -> "Error"
             }
         }
-        listeners.forEach { it(this.state, this.detail) }
+        // One bad listener must not break status updates for the overlay.
+        listeners.forEach {
+            try {
+                it(this.state, this.detail)
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     /** Recompute from live signals (call after bridge toggle / logcat / FLog). */
@@ -59,7 +85,7 @@ object BridgeStatus {
         hasError: Boolean,
     ) {
         when {
-            hasError -> set(OverlayState.ERROR, "Error — check logs")
+            hasError || hasStickyError -> set(OverlayState.ERROR, "Error — check logs")
             !bridgeRunning -> set(OverlayState.IDLE, "Bridge off")
             !a11yConnected -> set(OverlayState.ERROR, "Accessibility off")
             !hasLogcat -> set(OverlayState.WAITING, "Need READ_LOGS")

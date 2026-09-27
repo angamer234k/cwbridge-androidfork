@@ -42,7 +42,46 @@ To publish a new build: **Actions → Release APKs → Run workflow** (tag e.g. 
 4. Optionally allow **Display over other apps** for the floating status dot (green = listening, yellow = waiting, red = error). Tap the dot to see the last console lines.
 5. Open CWBridge → **Start bridge**.
 
-Commands use the `invoke|…` format (same idea as the old MacroDroid flow), e.g. save/load keys, status, tap, paste.
+Commands use the `invoke|…` format (same idea as the old MacroDroid flow), e.g. save/load keys, status, tap, paste. `paste` with no text argument pastes whatever is already on the clipboard.
+
+## Web server (control panel)
+
+Open **CWBridge → Server** and tap **Start server**. The app listens on port `8765`, so from any browser on the same network go to:
+
+```
+http://<device-ip>:8765
+```
+
+The panel lets you:
+
+- **Remote control** — take a screenshot, restart the bridge, restart Roblox, toggle the bridge, send Ctrl+T / Enter, read the clipboard
+- **Tap** — by percentage, by pixels, or by on-screen button text
+- **Send invoke commands** — e.g. `tap.50.85`, `paste.hello`, `save.key.value`
+- **Services creator** — list, create, edit (JSON), enable/disable, delete and run services
+- **Storage** — browse domains (`name.rbx`), set a per-domain size limit, save/clear keys, and see usage bars
+- **Variables and console** — live `VarStore` values and the last Roblox/CatWeb console lines
+
+### Access rules
+
+| Where you connect from | Password |
+|------------------------|----------|
+| Local network (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`, loopback) | **Not required** |
+| Anywhere else (proxied, tunneled, internet) | Generated password required |
+
+Find or regenerate the password under **Server → Show password**. Remote sessions use a cookie, so the password is only needed once per browser.
+
+Limits accept `bits`, `bytes`, `KB`, `MB`, `GB` (e.g. `512KB`, `2MB`, `1gb`), or `0`/`unlimited` to remove the cap. Saves that would push a domain past its limit are rejected with an error instead of silently growing.
+
+### Known limits
+
+- **Take screenshot** requires **Android 11 (API 30)+**. On older versions the button is not shown in the web panel at all.
+- **Ctrl+T / Enter / Restart Roblox** need **Shizuku** running with CWBridge allowed. Without it, Restart Roblox cannot force-stop Roblox and says so.
+- The first time you open the app after installing, CWBridge shows a one-time notice listing which of these may not work on your device.
+- The 6-digit **pair code** from the roadmap is not implemented yet — it needs the separate pairing service.
+
+## Updates
+
+**Check for updates** at the bottom of the main screen queries the GitHub releases API and offers the matching APK (debug builds get the debug asset).
 
 ## Helper app (install onto another device over USB)
 

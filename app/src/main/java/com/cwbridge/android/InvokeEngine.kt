@@ -199,12 +199,18 @@ class InvokeEngine(
 
             "paste" -> {
                 // paste.<text>  (data1 + optional .data2 rejoined)
+                // paste with no arg -> paste whatever is already on the clipboard.
                 val text = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
                 if (text.isEmpty()) {
-                    replyErr("paste", "need paste.text")
-                    return
+                    val existing = getClipboard()
+                    if (existing.isNullOrEmpty()) {
+                        replyErr("paste", "no text arg and clipboard is empty")
+                        return
+                    }
+                    pasteExisting(existing)
+                } else {
+                    runPasteSequence(text)
                 }
-                runPasteSequence(text)
             }
 
             "clip" -> {
@@ -283,6 +289,27 @@ class InvokeEngine(
             svc.clickAt(submitXPx, submitYPx)
         }
         replyOk("paste", "done ${text.length} chars focus=$focusXPct,$focusYPct submit=$submitXPx,$submitYPx")
+    }
+
+    /**
+     * `paste` with no text arg: the clipboard already holds the content, so only
+     * the focus-tap -> paste -> submit sequence runs. We deliberately do NOT
+     * rewrite the clipboard here.
+     */
+    private suspend fun pasteExisting(existing: String) {
+        val svc = TapService.instance
+        if (svc == null) {
+            replyErr("paste", "TapService offline")
+            return
+        }
+        svc.clickAtPercent(focusXPct, focusYPct)
+        delay(1000)
+        svc.pasteClipboard()
+        delay(1000)
+        if (submitXPx > 0f || submitYPx > 0f) {
+            svc.clickAt(submitXPx, submitYPx)
+        }
+        replyOk("paste", "pasted clipboard (${existing.length} chars) focus=$focusXPct,$focusYPct")
     }
 
     private fun setClipboard(text: String) {

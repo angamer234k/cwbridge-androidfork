@@ -5,15 +5,20 @@ import android.accessibilityservice.GestureDescription
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
 import android.hardware.input.InputManager
+import android.os.Build
 import android.os.SystemClock
+import android.view.Display
 import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.ScreenshotResult
+import android.view.accessibility.TakeScreenshotCallback
 
 /** Accessibility: taps, paste, send text, Enter, Ctrl+T (Shizuku-backed). */
 class TapService : AccessibilityService() {
@@ -50,6 +55,52 @@ class TapService : AccessibilityService() {
     }
 
     fun clickAt(x: Float, y: Float): Boolean = gestureTap(x, y, "px")
+
+    /**
+     * Capture the screen. Android 11+ only — [Build.VERSION_CODES.R].
+     * The callback fires with null when the system refuses the capture.
+     */
+    fun screenshot(callback: (Bitmap?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            callback(null)
+            return
+        }
+        try {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                executor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        callback(bitmapFrom(screenshot))
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        LogBuffer.w("A11y", "takeScreenshot failed code=$errorCode")
+                        callback(null)
+                    }
+                },
+            )
+        } catch (t: Throwable) {
+            LogBuffer.w("A11y", "takeScreenshot threw: ${t.message}")
+            callback(null)
+        }
+    }
+
+    private fun bitmapFrom(result: ScreenshotResult): Bitmap? = try {
+        val hwBitmap = result.hardwareBuffer
+        val wrapped = hwBitmap?.let { Bitmap.wrapHardwareBuffer(it, result.colorSpace) }
+        // A hardware bitmap cannot be compressed directly; make it software.
+        if (wrapped != null && wrapped.config == Bitmap.Config.HARDWARE) {
+            val copy = wrapped.copy(Bitmap.Config.ARGB_8888, false)
+            wrapped.recycle()
+            copy
+        } else {
+            wrapped
+        }.also { hwBitmap?.close() }
+    } catch (t: Throwable) {
+        LogBuffer.w("A11y", "bitmapFrom: ${t.message}")
+        null
+    }
 
     fun clickAtPercent(xPercent: Float, yPercent: Float): Boolean {
         val dm = resources.displayMetrics

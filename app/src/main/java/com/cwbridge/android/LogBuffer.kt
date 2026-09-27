@@ -55,6 +55,13 @@ object LogBuffer {
             Level.W -> Log.w(tag, msg)
             Level.E -> Log.e(tag, msg)
         }
-        listeners.forEach { it(line) }
+        // A misbehaving listener must never break logging for everyone else.
+        listeners.forEach {
+            try {
+                it(line)
+            } catch (t: Throwable) {
+                android.util.Log.w("LogBuffer", "listener failed: ${t.message}")
+            }
+        }
     }
 }

@@ -15,7 +15,8 @@ import java.lang.reflect.Type
 /** Sealed Action/Trigger need _kind — plain Gson emptied lists on load. */
 class ServiceConverters {
 
-    private val gson: Gson = GsonBuilder()
+    /** Shared so the web server parses service JSON the same way Room does. */
+    val gson: Gson = GsonBuilder()
         .registerTypeAdapter(Action::class.java, ActionAdapter())
         .registerTypeAdapter(Trigger::class.java, TriggerAdapter())
         .create()

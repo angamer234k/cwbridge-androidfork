@@ -70,9 +70,9 @@ class MainActivity : AppCompatActivity() {
             binding.logView.text = ""
         }
         binding.btnAddService.setOnClickListener { showAddServiceDialog() }
-        try {
-            binding.root.findViewById<View>(resources.getIdentifier("btnServerToggle", "id", packageName))?.setOnClickListener { toggleLocalServer() }
-        } catch (_: Exception) {}
+        binding.btnCheckUpdate.setOnClickListener { checkForUpdates() }
+        setupServerUi()
+        maybeShowCompatibilityNotice()
         setupServicesRecyclerView()
         LogBuffer.addListener(logListener)
         LogBuffer.snapshot().forEach { appendLog(it) }
@@ -151,10 +151,7 @@ class MainActivity : AppCompatActivity() {
         binding.categoryActions.visibility = if (category == "actions") View.VISIBLE else View.GONE
         binding.categoryServices.visibility = if (category == "services") View.VISIBLE else View.GONE
         binding.categoryLogs.visibility = if (category == "logs") View.VISIBLE else View.GONE
-        try {
-            binding.root.findViewById<View>(resources.getIdentifier("categoryServer", "id", packageName))?.visibility =
-                if (category == "server") View.VISIBLE else View.GONE
-        } catch (_: Exception) {}
+        binding.categoryServer.visibility = if (category == "server") View.VISIBLE else View.GONE
     }
 
     private fun setupServicesRecyclerView() {
@@ -679,6 +676,8 @@ class MainActivity : AppCompatActivity() {
         binding.logcatState.text = if (logcatReader.hasPermission()) "logcat OK" else "logcat needs grant"
         binding.statusDetail.text =
             if (bridgeRunning) "Watching invoke| in logcat" else "Idle — start after enabling Tap"
+        binding.versionText.text = "Version ${UpdateChecker(applicationContext).getCurrentVersion()}"
+        refreshServerUi()
         when {
             !bridgeRunning -> BridgeStatus.set(OverlayState.IDLE, "Bridge off")
             !(TapService.isConnected() || a11y) -> BridgeStatus.set(OverlayState.ERROR, "Accessibility off")
@@ -790,27 +789,186 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun toggleLocalServer() {
-        val srv = localServer
-        if (srv != null && srv.isRunning()) {
-            srv.stop()
-            localServer = null
-            try {
-                binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))?.text = "Start server"
-                binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))?.text = "Server off"
-            } catch (_: Exception) {}
-            LogBuffer.i("Server", "stopped")
-            Toast.makeText(this, "Server stopped", Toast.LENGTH_SHORT).show()
+    // ---- first-run compatibility notice -----------------------------------
+
+    /**
+     * Shown once, right after install. Lists only the things that may genuinely
+     * not work on this device, so it is short and specific rather than a wall of
+     * maybes. Everything listed here is hidden or reported cleanly at the point
+     * of use regardless.
+     */
+    private fun maybeShowCompatibilityNotice() {
+        if (!FirstRun.consumeCompatibilityNotice(applicationContext)) return
+
+        val notes = buildList {
+            if (!BridgeControl.screenshotSupported()) {
+                add("• Take screenshot needs Android 11+ — the button is hidden in the web panel on this device.")
+            }
+            if (!ShizukuShell.isReady()) {
+                add("• Ctrl+T, Enter and Restart Roblox need Shizuku running with CWBridge allowed. " +
+                    "Without it, Restart Roblox cannot force-stop Roblox.")
+            }
+            add("• The bridge needs Accessibility (CWBridge Tap) and READ_LOGS to see console output.")
+        }
+
+        if (notes.isEmpty()) return
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Some features may not be supported")
+            .setMessage(
+                notes.joinToString("\n\n") +
+                    "\n\nYou can fix most of this under Permissions and Server in the app.",
+            )
+            .setPositiveButton("Got it", null)
+            .show()
+    }
+
+    // ---- web server -------------------------------------------------------
+
+    private fun setupServerUi() {
+        ServerAuth.init(applicationContext)
+        binding.btnServerToggle.setOnClickListener { toggleLocalServer() }
+        binding.btnShowPassword.setOnClickListener { showServerPassword() }
+        binding.btnRegenPassword.setOnClickListener { regenerateServerPassword() }
+        binding.btnServerQuota.setOnClickListener { setDefaultDomainQuota() }
+        refreshServerUi()
+    }
+
+    private fun refreshServerUi() {
+        val running = localServer?.isRunning() == true
+        val port = localServer?.port() ?: 8765
+        binding.btnServerToggle.text = if (running) "Stop server" else "Start server"
+        binding.serverState.text = if (running) {
+            "Listening on port $port — open http://<this-device-ip>:$port"
         } else {
-            val server = LocalHttpServer(8765) { raw -> invokeEngine.onExternalLog(raw) }
-            localServer = server
-            server.start()
-            try {
-                binding.root.findViewById<android.widget.Button>(resources.getIdentifier("btnServerToggle", "id", packageName))?.text = "Stop server"
-                binding.root.findViewById<android.widget.TextView>(resources.getIdentifier("serverState", "id", packageName))?.text =
-                    "Listening on http://127.0.0.1:8765"
-            } catch (_: Exception) {}
-            Toast.makeText(this, "Server on :8765", Toast.LENGTH_SHORT).show()
+            "Server off"
+        }
+    }
+
+    private fun toggleLocalServer() {
+        val existing = localServer
+        if (existing != null && existing.isRunning()) {
+            existing.stop()
+            localServer = null
+            LogBuffer.i("Server", "stopped from UI")
+            Toast.makeText(this, "Server stopped", Toast.LENGTH_SHORT).show()
+            refreshServerUi()
+            return
+        }
+
+        val port = 8765
+        val server = LocalHttpServer(
+            context = applicationContext,
+            port = port,
+            onInvoke = { raw -> invokeEngine.onExternalLog(raw) },
+            onToggleBridge = {
+                // toggleBridge() can refuse to start (no a11y / no READ_LOGS),
+                // so report the state that actually resulted, not a guess.
+                runOnUiThread { toggleBridge() }
+                Thread.sleep(150)
+                bridgeRunning
+            },
+        )
+        localServer = server
+        BridgeControl.setExecutionEngine(executionEngine)
+        BridgeControl.setHooks(object : BridgeControl.Hooks {
+            override fun restartBridge() {
+                runOnUiThread {
+                    toggleBridge()
+                    LogBuffer.i("Control", "bridge restarted from web UI")
+                }
+            }
+        })
+        server.start()
+        Toast.makeText(this, "Server on port $port", Toast.LENGTH_SHORT).show()
+        refreshServerUi()
+    }
+
+    private fun showServerPassword() {
+        val pw = ServerAuth.password(applicationContext)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Server password")
+            .setMessage(
+                "Use this to unlock the web panel from outside your local network.\n\n" +
+                    "$pw\n\nLocal-network addresses (192.168.x.x etc.) do not need it.",
+            )
+            .setPositiveButton("Copy") { _, _ ->
+                val cm = getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText("cwbridge", pw))
+                Toast.makeText(this, "Password copied", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun regenerateServerPassword() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Regenerate password?")
+            .setMessage("Remote sessions will be signed out.")
+            .setPositiveButton("Regenerate") { _, _ ->
+                ServerAuth.regeneratePassword(applicationContext)
+                Toast.makeText(this, "New password generated", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun setDefaultDomainQuota() {
+        val input = android.widget.EditText(this).apply {
+            hint = "e.g. 2MB (bits/bytes/KB/MB/GB, 0 = unlimited)"
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Default domain limit")
+            .setMessage("Applies to domains that have no custom limit.")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val bytes = Store.parseSize(input.text.toString())
+                if (bytes == null) {
+                    Toast.makeText(this, "Could not parse size", Toast.LENGTH_LONG).show()
+                } else {
+                    Store(applicationContext).setLimit(Store.DEFAULT_DOMAIN, bytes)
+                    Toast.makeText(this, "Default limit saved", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // ---- updates ----------------------------------------------------------
+
+    private fun checkForUpdates() {
+        val button = binding.btnCheckUpdate
+        button.isEnabled = false
+        button.text = "Checking…"
+        val checker = UpdateChecker(applicationContext)
+        lifecycleScope.launch {
+            val result = checker.check()
+            when (result) {
+                is UpdateChecker.Result.Available -> {
+                    val asset = checker.findApkAsset(result.release)
+                    if (asset == null) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "${result.latestVersion} is out, but the release has no APK asset",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    } else {
+                        checker.showUpdateDialog(result.release, asset)
+                    }
+                }
+                is UpdateChecker.Result.UpToDate -> Toast.makeText(
+                    this@MainActivity,
+                    "You're up to date (${checker.getCurrentVersion()})",
+                    Toast.LENGTH_LONG,
+                ).show()
+                is UpdateChecker.Result.Failed -> Toast.makeText(
+                    this@MainActivity,
+                    "Update check failed: ${result.reason}",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            button.isEnabled = true
+            button.text = "Check for updates"
         }
     }
 }

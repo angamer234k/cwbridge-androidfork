@@ -1,20 +1,38 @@
 package com.cwbridge.android
 
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-/** Tiny local HTTP server: GET /status, POST /invoke */
+/**
+ * Built-in web server: serves a control panel at / plus a JSON API.
+ *
+ * Auth rule (see ServerAuth): a client on the local network skips the password,
+ * anything else must log in first. Every connection gets its own thread and is
+ * wrapped, so a bad request can never take the listener down.
+ */
 class LocalHttpServer(
+    private val context: Context,
     private val port: Int = 8765,
     private val onInvoke: (String) -> Unit,
+    private val onToggleBridge: () -> Boolean,
 ) {
     private val running = AtomicBoolean(false)
     private var server: ServerSocket? = null
+    private val gson = Gson()
+    private val store by lazy { Store(context) }
+    // Must match Room's parsing or sealed Trigger/Action lists come back empty.
+    private val serviceGson by lazy { ServiceConverters().gson }
 
     fun isRunning(): Boolean = running.get()
     fun port(): Int = port
@@ -25,11 +43,17 @@ class LocalHttpServer(
             try {
                 ServerSocket(port).use { ss ->
                     server = ss
-                    LogBuffer.i("Server", "listening on http://127.0.0.1:$port")
+                    LogBuffer.i("Server", "listening on port $port")
                     while (running.get()) {
                         try {
                             val socket = ss.accept()
-                            thread(isDaemon = true) { handle(socket) }
+                            thread(name = "cwbridge-http-conn", isDaemon = true) {
+                                try {
+                                    handle(socket)
+                                } catch (t: Throwable) {
+                                    LogBuffer.w("Server", "connection failed: ${t.message}")
+                                }
+                            }
                         } catch (_: Exception) {
                             if (!running.get()) break
                         }
@@ -51,49 +75,469 @@ class LocalHttpServer(
         LogBuffer.i("Server", "stopped")
     }
 
+    // ---- request plumbing -------------------------------------------------
+
     private fun handle(socket: Socket) {
         socket.use { s ->
+            s.soTimeout = 15_000
             val reader = BufferedReader(InputStreamReader(s.getInputStream()))
-            val writer = OutputStreamWriter(s.getOutputStream())
+            val out = s.getOutputStream()
+
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
-            val method = parts.getOrNull(0) ?: "GET"
-            val path = parts.getOrNull(1) ?: "/"
+            val method = parts.getOrNull(0)?.uppercase() ?: "GET"
+            val target = parts.getOrNull(1) ?: "/"
+
+            val headers = HashMap<String, String>()
             while (true) {
                 val h = reader.readLine() ?: break
                 if (h.isEmpty()) break
-            }
-            val body = if (method == "POST") {
-                val buf = StringBuilder()
-                while (reader.ready()) {
-                    val c = reader.read()
-                    if (c < 0) break
-                    buf.append(c.toChar())
+                val idx = h.indexOf(':')
+                if (idx > 0) {
+                    headers[h.substring(0, idx).trim().lowercase()] = h.substring(idx + 1).trim()
                 }
-                buf.toString()
-            } else ""
+            }
 
-            val (code, contentType, content) = when {
-                path.startsWith("/status") -> Triple(
-                    200, "text/plain",
-                    "CWBridge local server\nstate=${BridgeStatus.state}\ndetail=${BridgeStatus.detail}\n",
-                )
-                path.startsWith("/invoke") && method == "POST" -> {
-                    val payload = body.trim()
-                    if (payload.isNotEmpty()) {
-                        onInvoke(if (payload.contains("invoke|")) payload else "invoke|$payload")
-                        Triple(200, "text/plain", "ok\n")
-                    } else Triple(400, "text/plain", "empty body\n")
-                }
-                path == "/" || path.startsWith("/help") -> Triple(
-                    200, "text/plain",
-                    "CWBridge Local Server\nGET /status\nPOST /invoke\n",
-                )
-                else -> Triple(404, "text/plain", "not found\n")
-            }
-            val bytes = content.toByteArray()
-            writer.write("HTTP/1.1 $code OK\r\nContent-Type: $contentType\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n$content")
-            writer.flush()
+            val length = headers["content-length"]?.toIntOrNull() ?: 0
+            val body = if (length > 0) readFully(reader, length) else ""
+
+            val path = target.substringBefore('?')
+            val query = parseQuery(target.substringAfter('?', ""))
+            val remote = s.inetAddress?.hostAddress ?: "unknown"
+
+            route(out, method, path, query, body, headers, remote)
         }
+    }
+
+    private fun readFully(reader: BufferedReader, length: Int): String {
+        val buf = CharArray(length)
+        var read = 0
+        while (read < length) {
+            val n = reader.read(buf, read, length - read)
+            if (n <= 0) break
+            read += n
+        }
+        return String(buf, 0, read)
+    }
+
+    private fun parseQuery(raw: String): Map<String, String> {
+        if (raw.isEmpty()) return emptyMap()
+        return raw.split("&").mapNotNull { pair ->
+            if (pair.isEmpty()) return@mapNotNull null
+            val i = pair.indexOf('=')
+            val k = urlDecode(if (i < 0) pair else pair.substring(0, i))
+            val v = urlDecode(if (i < 0) "" else pair.substring(i + 1))
+            k to v
+        }.toMap()
+    }
+
+    private fun urlDecode(s: String): String = try {
+        URLDecoder.decode(s, "UTF-8")
+    } catch (_: Throwable) {
+        s
+    }
+
+    // ---- routing ----------------------------------------------------------
+
+    private fun route(
+        out: OutputStream,
+        method: String,
+        path: String,
+        query: Map<String, String>,
+        body: String,
+        headers: Map<String, String>,
+        remote: String,
+    ) {
+        // Login is the one endpoint that must work while locked.
+        if (path == "/api/login" && method == "POST") {
+            val token = ServerAuth.login(context, jsonString(body, "password"))
+            return if (token != null) {
+                respond(
+                    out, 200, json(mapOf("ok" to true)),
+                    cookie = "CWBridge-Session=$token; Path=/; HttpOnly; SameSite=Strict",
+                )
+            } else {
+                respond(out, 401, json(mapOf("error" to "wrong password")))
+            }
+        }
+
+        val session = cookie(headers, "CWBridge-Session")
+        val presented = query["password"] ?: headers["x-cwbridge-password"]
+            ?: jsonString(body, "password").ifBlank { null }
+        val denial = ServerAuth.check(context, remote, session, presented)
+        if (denial != null) {
+            return respond(out, 401, json(mapOf("error" to denial, "needsPassword" to true)))
+        }
+
+        if (path == "/api/logout" && method == "POST") {
+            ServerAuth.logout(session)
+            return respond(
+                out, 200, json(mapOf("ok" to true)),
+                cookie = "CWBridge-Session=; Path=/; Max-Age=0",
+            )
+        }
+
+        try {
+            dispatch(out, method, path, body)
+        } catch (t: Throwable) {
+            // Never let one bad request kill anything.
+            LogBuffer.e("Server", "$method $path -> ${t.message}")
+            respond(out, 500, json(mapOf("error" to (t.message ?: t::class.java.simpleName))))
+        }
+    }
+
+    private fun dispatch(out: OutputStream, method: String, path: String, body: String) {
+        when {
+            path == "/" || path == "/index.html" ->
+                respond(out, 200, WebUi.page(BridgeControl.screenshotSupported()), "text/html; charset=utf-8")
+
+            path == "/favicon.ico" -> respond(out, 204, "", "image/x-icon")
+
+            path == "/api/status" -> respond(out, 200, statusJson())
+
+            path == "/api/logs" -> respond(out, 200, logsJson())
+
+            path == "/api/vars" -> respond(out, 200, json(mapOf("vars" to VarStore.snapshot())))
+
+            path == "/api/screenshot" -> {
+                val shot = BridgeControl.takeScreenshot()
+                shot.fold(
+                    onSuccess = { bytes ->
+                        respondBytes(out, 200, bytes, "image/png")
+                    },
+                    onFailure = {
+                        val code = if (it is UnsupportedOperationException) 501 else 503
+                        respond(out, code, json(mapOf("error" to (it.message ?: "failed"))))
+                    },
+                )
+            }
+
+            path == "/api/bridge/toggle" && method == "POST" -> {
+                val nowRunning = onToggleBridge()
+                respond(
+                    out, 200,
+                    json(mapOf("message" to if (nowRunning) "bridge started" else "bridge stopped")),
+                )
+            }
+
+            path == "/api/invoke" && method == "POST" -> {
+                val cmd = jsonString(body, "command")
+                if (cmd.isBlank()) {
+                    respond(out, 400, json(mapOf("error" to "command required")))
+                } else {
+                    onInvoke(if (cmd.contains("invoke|")) cmd else "invoke|$cmd")
+                    respond(out, 200, json(mapOf("message" to "sent: $cmd")))
+                }
+            }
+
+            path == "/api/tap" && method == "POST" -> respond(out, 200, tapJson(body))
+
+            path.startsWith("/api/control/") ->
+                respond(out, 200, controlJson(path.removePrefix("/api/control/")))
+
+            path == "/api/services" && method == "GET" -> respond(out, 200, servicesListJson())
+
+            path == "/api/services" && method == "POST" -> respond(out, 200, createService(body))
+
+            path == "/api/store" && method == "GET" -> respond(out, 200, storeJson())
+
+            path == "/api/store" && method == "POST" -> respond(out, 200, saveKey(body))
+
+            path == "/api/store/clear" && method == "POST" -> respond(out, 200, clearDomain(body))
+
+            path == "/api/limits" && method == "POST" -> respond(out, 200, setLimit(body))
+
+            path.startsWith("/api/services/") -> {
+                val rest = path.removePrefix("/api/services/")
+                val id = urlDecode(rest.substringBefore('/'))
+                val sub = rest.substringAfter('/', "")
+                respond(out, 200, serviceByIdJson(id, sub, method, body))
+            }
+
+            else -> respond(out, 404, json(mapOf("error" to "not found: $path")))
+        }
+    }
+
+    // ---- handlers ---------------------------------------------------------
+
+    private fun statusJson(): String = json(
+        mapOf(
+            "state" to BridgeStatus.state.name,
+            "detail" to BridgeStatus.detail,
+            "catwebReady" to CatWebTracker.ready,
+            "accessibility" to TapService.isConnected(),
+            "shizuku" to ShizukuShell.isReady(),
+        ),
+    )
+
+    private fun logsJson(): String =
+        json(mapOf("lines" to RobloxLogBuffer.last(40).map { it.text }))
+
+    private fun tapJson(body: String): String {
+        val svc = TapService.instance
+            ?: return json(mapOf("error" to "CWBridge Tap (accessibility) not connected"))
+        val ok = when (jsonString(body, "mode")) {
+            "percent" -> {
+                val x = jsonDouble(body, "x") ?: return json(mapOf("error" to "x and y required"))
+                val y = jsonDouble(body, "y") ?: return json(mapOf("error" to "x and y required"))
+                svc.clickAtPercent(x.toFloat(), y.toFloat())
+            }
+            "px" -> {
+                val x = jsonDouble(body, "x") ?: return json(mapOf("error" to "x and y required"))
+                val y = jsonDouble(body, "y") ?: return json(mapOf("error" to "x and y required"))
+                svc.clickAt(x.toFloat(), y.toFloat())
+            }
+            "text" -> {
+                val t = jsonString(body, "text")
+                if (t.isBlank()) return json(mapOf("error" to "text required"))
+                svc.clickByText(t)
+            }
+            else -> return json(mapOf("error" to "mode must be percent, px or text"))
+        }
+        return json(mapOf("message" to if (ok) "tap ok" else "tap failed"))
+    }
+
+    private fun controlJson(action: String): String {
+        val svc = TapService.instance
+        val message = when (action) {
+            "restart-bridge" -> BridgeControl.restartBridge()
+            "restart-roblox" -> BridgeControl.restartRoblox(context)
+            "ctrl-t" -> {
+                val ok = when {
+                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                    svc != null -> svc.pressCtrlT()
+                    else -> false
+                }
+                if (ok) "Ctrl+T sent" else "Ctrl+T failed"
+            }
+            "enter" -> {
+                val ok = when {
+                    ShizukuShell.isReady() -> ShizukuShell.pressEnter()
+                    svc != null -> svc.pressEnter()
+                    else -> false
+                }
+                if (ok) "Enter sent" else "Enter failed"
+            }
+            "clipboard" -> readClipboard()
+            else -> return json(mapOf("error" to "unknown control: $action"))
+        }
+        return json(mapOf("message" to message))
+    }
+
+    private fun readClipboard(): String = try {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        val clip = cm.primaryClip
+        if (clip != null && clip.itemCount > 0) {
+            clip.getItemAt(0).coerceToText(context)?.toString().orEmpty().take(200)
+        } else {
+            "(clipboard empty)"
+        }
+    } catch (t: Throwable) {
+        "(clipboard unavailable: ${t.message})"
+    }
+
+    // ---- services ---------------------------------------------------------
+
+    private fun servicesListJson(): String {
+        val list = ServiceRepository.getAllServices().map { s ->
+            mapOf(
+                "id" to s.id,
+                "name" to s.name,
+                "description" to s.description,
+                "enabled" to s.isEnabled,
+                "triggers" to s.triggers.size,
+                "actions" to s.actions.size,
+            )
+        }
+        return json(mapOf("services" to list))
+    }
+
+    private fun createService(body: String): String {
+        val name = jsonString(body, "name")
+        if (name.isBlank()) return json(mapOf("error" to "name required"))
+        val created = Service(name = name)
+        ServiceRepository.addService(created)
+        LogBuffer.i("Server", "web created service '${created.name}' (${created.id})")
+        return json(mapOf("message" to "created ${created.name}", "id" to created.id))
+    }
+
+    private fun serviceByIdJson(id: String, sub: String, method: String, body: String): String {
+        val existing = ServiceRepository.getServiceById(id)
+            ?: return json(mapOf("error" to "no such service: $id"))
+
+        if (method == "GET" && sub.isEmpty()) {
+            return json(mapOf("service" to existing))
+        }
+
+        if (method == "DELETE" && sub.isEmpty()) {
+            ServiceRepository.deleteService(existing.id)
+            LogBuffer.i("Server", "web deleted service ${existing.name}")
+            return json(mapOf("message" to "deleted ${existing.name}"))
+        }
+
+        if (method == "POST" && sub == "run") {
+            BridgeControl.runService(existing)
+            return json(mapOf("message" to "running ${existing.name}"))
+        }
+
+        if (method == "POST" && sub.isEmpty()) {
+            val raw = jsonString(body, "json")
+            if (raw.isNotBlank()) {
+                val parsed = try {
+                    serviceGson.fromJson(raw, Service::class.java)
+                } catch (t: Throwable) {
+                    null
+                } ?: return json(mapOf("error" to "bad service JSON"))
+                val merged = parsed.copy(id = existing.id)
+                ServiceRepository.updateService(merged)
+                BridgeControl.reloadTriggers(merged)
+                return json(mapOf("message" to "saved ${merged.name}"))
+            }
+
+            val enabledField = bodyField(body, "enabled")
+            if (enabledField != null && !enabledField.isJsonNull) {
+                val updated = existing.copy(isEnabled = enabledField.asBoolean)
+                ServiceRepository.updateService(updated)
+                BridgeControl.reloadTriggers(updated)
+                return json(mapOf("message" to if (updated.isEnabled) "enabled" else "disabled"))
+            }
+            return json(mapOf("error" to "send {enabled:bool} or {json:'...'}"))
+        }
+
+        return json(mapOf("error" to "unknown service route"))
+    }
+
+    // ---- storage + quota --------------------------------------------------
+
+    private fun storeJson(): String {
+        val domains = store.domains().map { d ->
+            mapOf(
+                "domain" to d.domain,
+                "keys" to d.keyCount,
+                "used" to Store.formatBytes(d.usedBytes),
+                "usedBytes" to d.usedBytes,
+                "limit" to if (d.unlimited) "unlimited" else Store.formatBytes(d.limitBytes),
+                "limitBytes" to d.limitBytes,
+                "unlimited" to d.unlimited,
+            )
+        }
+        return json(mapOf("domains" to domains))
+    }
+
+    private fun saveKey(body: String): String {
+        val domain = jsonString(body, "domain")
+        val key = jsonString(body, "key")
+        val value = bodyField(body, "value")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+        return store.save(domain, key, value).fold(
+            onSuccess = {
+                json(
+                    mapOf(
+                        "message" to "saved $key in $domain (" +
+                            Store.formatBytes(store.usageOf(domain)) + " of " +
+                            Store.formatBytes(store.limitOf(domain)) + ")",
+                    ),
+                )
+            },
+            onFailure = { json(mapOf("error" to (it.message ?: "save failed"))) },
+        )
+    }
+
+    private fun clearDomain(body: String): String {
+        val domain = jsonString(body, "domain")
+        return store.clearDomain(domain).fold(
+            onSuccess = { json(mapOf("message" to "cleared $it keys from $domain")) },
+            onFailure = { json(mapOf("error" to (it.message ?: "clear failed"))) },
+        )
+    }
+
+    private fun setLimit(body: String): String {
+        val domain = jsonString(body, "domain")
+        val raw = jsonString(body, "limit")
+        if (raw.equals("unlimited", ignoreCase = true) || raw == "0") {
+            return store.setLimit(domain, 0L).fold(
+                onSuccess = { json(mapOf("message" to "$domain is now unlimited")) },
+                onFailure = { json(mapOf("error" to (it.message ?: "failed"))) },
+            )
+        }
+        val bytes = Store.parseSize(raw)
+            ?: return json(mapOf("error" to "bad limit '$raw' — try 500KB, 2MB or 1GB"))
+        return store.setLimit(domain, bytes).fold(
+            onSuccess = { json(mapOf("message" to "$domain limited to ${Store.formatBytes(bytes)}")) },
+            onFailure = { json(mapOf("error" to (it.message ?: "failed"))) },
+        )
+    }
+
+    // ---- json helpers -----------------------------------------------------
+
+    private fun json(map: Map<String, Any?>): String = gson.toJson(map)
+
+    private fun parseBody(body: String): JsonObject? = try {
+        if (body.isBlank()) null else JsonParser.parseString(body).asJsonObject
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun bodyField(body: String, name: String): JsonElement? = parseBody(body)?.get(name)
+
+    private fun jsonString(body: String, name: String): String =
+        bodyField(body, name)?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+
+    private fun jsonDouble(body: String, name: String): Double? =
+        bodyField(body, name)?.takeIf { !it.isJsonNull }?.asDouble
+
+    private fun cookie(headers: Map<String, String>, name: String): String? {
+        val raw = headers["cookie"] ?: return null
+        return raw.split(";").map { it.trim() }
+            .firstOrNull { it.startsWith("$name=") }
+            ?.substringAfter('=')
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    // ---- writing ----------------------------------------------------------
+
+    private fun respond(
+        out: OutputStream,
+        code: Int,
+        body: String,
+        contentType: String = "application/json; charset=utf-8",
+        cookie: String? = null,
+    ) {
+        respondBytes(out, code, body.toByteArray(Charsets.UTF_8), contentType, cookie)
+    }
+
+    /** Raw bytes, used for the PNG screenshot endpoint. */
+    private fun respondBytes(
+        out: OutputStream,
+        code: Int,
+        bytes: ByteArray,
+        contentType: String,
+        cookie: String? = null,
+    ) {
+        try {
+            val sb = StringBuilder()
+            sb.append("HTTP/1.1 ").append(code).append(' ').append(reason(code)).append("\r\n")
+            sb.append("Content-Type: ").append(contentType).append("\r\n")
+            sb.append("Content-Length: ").append(bytes.size).append("\r\n")
+            sb.append("Cache-Control: no-store\r\n")
+            sb.append("X-Content-Type-Options: nosniff\r\n")
+            if (cookie != null) sb.append("Set-Cookie: ").append(cookie).append("\r\n")
+            sb.append("Connection: close\r\n\r\n")
+            out.write(sb.toString().toByteArray(Charsets.US_ASCII))
+            if (bytes.isNotEmpty()) out.write(bytes)
+            out.flush()
+        } catch (_: Throwable) {
+            // Client vanished mid-response; nothing useful to do.
+        }
+    }
+
+    private fun reason(code: Int) = when (code) {
+        200 -> "OK"
+        204 -> "No Content"
+        400 -> "Bad Request"
+        401 -> "Unauthorized"
+        404 -> "Not Found"
+        500 -> "Internal Server Error"
+        else -> "OK"
     }
 }

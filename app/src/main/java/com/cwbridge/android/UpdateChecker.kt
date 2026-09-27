@@ -2,16 +2,13 @@ package com.cwbridge.android
 
 import android.app.DownloadManager
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Environment
-import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
 
 /**
  * Checks for app updates from GitHub releases.
@@ -41,80 +38,141 @@ class UpdateChecker(
         val browser_download_url: String
     )
 
+    /** Outcome of a check, so the UI can tell "up to date" from "check failed". */
+    sealed class Result {
+        data class Available(val release: GitHubRelease, val latestVersion: String) : Result()
+        object UpToDate : Result()
+        data class Failed(val reason: String) : Result()
+    }
+
     /**
-     * Check for updates and return the latest release info if newer than current version
+     * Check GitHub for a newer release. Never throws — failures come back as
+     * [Result.Failed] so the caller can show a real message.
      */
-    suspend fun checkForUpdate(currentVersion: String): GitHubRelease? = withContext(Dispatchers.IO) {
+    suspend fun check(): Result = withContext(Dispatchers.IO) {
+        val currentVersion = getCurrentVersion()
         try {
             val request = Request.Builder()
                 .url(RELEASES_API)
                 .get()
                 .addHeader("Accept", "application/vnd.github+json")
                 .build()
-            
-            val response = okHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                LogBuffer.e("UpdateChecker", "Failed to check for updates: HTTP ${response.code}")
-                return@withContext null
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val reason = "HTTP ${response.code}"
+                    LogBuffer.e("UpdateChecker", "check failed: $reason")
+                    return@withContext Result.Failed(reason)
+                }
+
+                val body = response.body?.string()
+                    ?: return@withContext Result.Failed("empty response")
+
+                val release = try {
+                    gson.fromJson(body, GitHubRelease::class.java)
+                } catch (t: Throwable) {
+                    return@withContext Result.Failed("bad JSON: ${t.message}")
+                } ?: return@withContext Result.Failed("no release data")
+
+                if (release.tag_name.isBlank()) {
+                    return@withContext Result.Failed("release has no tag")
+                }
+
+                val latestVersion = release.tag_name.removePrefix("v")
+                LogBuffer.i("UpdateChecker", "latest=$latestVersion current=$currentVersion")
+
+                return@withContext if (isNewerVersion(latestVersion, currentVersion)) {
+                    Result.Available(release, latestVersion)
+                } else {
+                    LogBuffer.i("UpdateChecker", "up to date: $currentVersion")
+                    Result.UpToDate
+                }
             }
-            
-            val release = gson.fromJson(response.body?.string(), GitHubRelease::class.java)
-            val latestVersion = release.tag_name.removePrefix("v")
-            
-            if (isNewerVersion(latestVersion, currentVersion)) {
-                LogBuffer.i("UpdateChecker", "Update available: $latestVersion (current: $currentVersion)")
-                release
-            } else {
-                LogBuffer.i("UpdateChecker", "Up to date: $currentVersion")
-                null
-            }
-        } catch (e: Exception) {
-            LogBuffer.e("UpdateChecker", "Update check failed: ${e.message}")
-            null
+        } catch (t: Throwable) {
+            val reason = t.message ?: t::class.java.simpleName
+            LogBuffer.e("UpdateChecker", "check failed: $reason")
+            Result.Failed(reason)
         }
     }
 
     /**
-     * Compare version strings to see if latest is newer than current
+     * Pick the main app APK. Debug builds must not install the release APK over
+     * a differently-signed debug build, so prefer a debug asset when we are one.
      */
-    private fun isNewerVersion(latest: String, current: String): Boolean {
-        val latestParts = latest.split("[.-]".toRegex())
-        val currentParts = current.split("[.-]".toRegex())
-        
-        for (i in 0 until maxOf(latestParts.size, currentParts.size)) {
-            val latestPart = latestParts.getOrNull(i)?.toIntOrNull() ?: 0
-            val currentPart = currentParts.getOrNull(i)?.toIntOrNull() ?: 0
-            
-            if (latestPart > currentPart) return true
-            if (latestPart < currentPart) return false
+    fun findApkAsset(release: GitHubRelease, preferDebug: Boolean = isDebugBuild()): GitHubAsset? {
+        val apks = release.assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
+        if (apks.isEmpty()) return null
+        val debug = apks.filter { it.name.contains("debug", ignoreCase = true) }
+        return when {
+            preferDebug && debug.isNotEmpty() -> debug.first()
+            apks.any { it.name.contains("android", ignoreCase = true) } ->
+                apks.first { it.name.contains("android", ignoreCase = true) }
+            else -> apks.first()
+        }
+    }
+
+    private fun isDebugBuild(): Boolean {
+        return try {
+            (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Compare version strings to see if latest is newer than current.
+     *
+     * Version names look like "2.10.5-android" in releases and
+     * "2.10.5-android-debug" in debug builds, so non-numeric suffixes are
+     * stripped before comparing. A bare "1.0.0" or anything unparseable falls
+     * back to a semver-ish numeric comparison.
+     */
+    fun isNewerVersion(latest: String, current: String): Boolean {
+        val a = numericParts(latest)
+        val b = numericParts(current)
+        if (a.isEmpty() || b.isEmpty()) return false
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val pa = a.getOrNull(i) ?: 0
+            val pb = b.getOrNull(i) ?: 0
+            if (pa > pb) return true
+            if (pa < pb) return false
         }
         return false
     }
 
-    /**
-     * Find the APK asset in the release
-     */
-    fun findApkAsset(release: GitHubRelease): GitHubAsset? {
-        return release.assets.find { 
-            it.name.endsWith(".apk") || it.name.endsWith(".apk.debug")
-        }
+    /** Keep only the leading dotted-numeric prefix: "2.10.5-android" -> [2,10,5]. */
+    private fun numericParts(version: String): List<Int> {
+        val core = version.trim().removePrefix("v")
+        val head = core.takeWhile { it.isDigit() || it == '.' }
+        return head.split('.').mapNotNull { it.toIntOrNull() }
     }
 
     /**
-     * Show update dialog to user and request permission to download
+     * Show update dialog to user and request permission to download.
+     * Posts to the main thread because this is called after a suspend check.
      */
     fun showUpdateDialog(release: GitHubRelease, apkAsset: GitHubAsset) {
         val versionName = release.tag_name
-        val releaseNotes = release.body.take(200) + if (release.body.length > 200) "..." else ""
-        
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Update Available")
-            .setMessage("Version $versionName is available.\n\n$releaseNotes")
-            .setPositiveButton("Download") { _, _ ->
-                requestDownloadPermission(apkAsset)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        val notes = release.body.orEmpty().take(300)
+        val message = buildString {
+            append("Version ").append(versionName).append(" is available.\n")
+            if (notes.isNotBlank()) append("\n").append(notes)
+        }
+        onMain {
+            android.app.AlertDialog.Builder(context)
+                .setTitle("Update available")
+                .setMessage(message)
+                .setPositiveButton("Download") { _, _ -> requestDownloadPermission(apkAsset) }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    /** Run [block] on the main thread; safe to call from a background coroutine. */
+    private fun onMain(block: () -> Unit) {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) block()
+        else handler.post(block)
     }
 
     /**
@@ -132,7 +190,9 @@ class UpdateChecker(
     }
 
     /**
-     * Download APK using system DownloadManager
+     * Download APK using the system DownloadManager, then prompt to install.
+     * On Android 10+ setDestinationInExternalPublicDir can throw for apps
+     * without legacy storage, so fall back to a plain cache destination.
      */
     private fun downloadAndInstall(apkAsset: GitHubAsset) {
         try {
@@ -140,43 +200,56 @@ class UpdateChecker(
                 .setTitle("CWBridge Update")
                 .setDescription("Downloading ${apkAsset.name}")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(
-                    Environment.DIRECTORY_DOWNLOADS,
-                    apkAsset.name
-                )
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
-            
+
             val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val downloadId = downloadManager.enqueue(request)
-            
+            val downloadId = try {
+                request.setDestinationInExternalPublicDir(
+                    Environment.DIRECTORY_DOWNLOADS,
+                    apkAsset.name,
+                )
+                downloadManager.enqueue(request)
+            } catch (t: Throwable) {
+                // Scoped storage refused the public dir — download without a target.
+                LogBuffer.w("UpdateChecker", "public dir unavailable: ${t.message}")
+                request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, apkAsset.name)
+                downloadManager.enqueue(request)
+            }
+
             LogBuffer.i("UpdateChecker", "Download started: ${apkAsset.name} (ID: $downloadId)")
-            
-            // Show installation instructions when download completes
-            android.app.AlertDialog.Builder(context)
-                .setTitle("Download Started")
-                .setMessage("The update will appear in your notifications. Tap it to install after download completes.")
-                .setPositiveButton("OK", null)
-                .show()
-        } catch (e: Exception) {
-            LogBuffer.e("UpdateChecker", "Download failed: ${e.message}")
-            android.widget.Toast.makeText(
-                context,
-                "Download failed: ${e.message}",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+
+            onMain {
+                android.app.AlertDialog.Builder(context)
+                    .setTitle("Download started")
+                    .setMessage(
+                        "The update will appear in your notifications.\n" +
+                            "Tap it to install once the download finishes.",
+                    )
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        } catch (t: Throwable) {
+            val reason = t.message ?: t::class.java.simpleName
+            LogBuffer.e("UpdateChecker", "Download failed: $reason")
+            onMain {
+                android.widget.Toast.makeText(
+                    context,
+                    "Download failed: $reason",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
         }
     }
 
-    /**
-     * Get current app version from package info
-     */
+    /** Current versionName, e.g. "2.10.5-android-debug". Null-safe on API 33+. */
     fun getCurrentVersion(): String {
         return try {
-            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName
-        } catch (e: Exception) {
-            "1.0.0"
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            info.versionName ?: "0"
+        } catch (t: Throwable) {
+            LogBuffer.w("UpdateChecker", "version lookup failed: ${t.message}")
+            "0"
         }
     }
 }
