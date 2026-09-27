@@ -9,6 +9,11 @@
  * the page exactly as the app would and fails the build if it is not valid.
  *
  * Usage: node scripts/check-webui.js [path/to/WebUi.kt]
+ *
+ * With no argument it SEARCHES app/src/main/java for WebUi.kt. It used to hardcode
+ * .../com/cwbridge/android/WebUi.kt, which broke every build the instant WebUi.kt
+ * moved into the server/ subpackage. Searching means the next move cannot break CI
+ * the same way; an explicit path still wins if you pass one.
  */
 'use strict';
 
@@ -16,12 +21,43 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 /** ------------------------------------------------------ */
-const file = process.argv[2] || path.join(
-  __dirname, '..', 'app', 'src', 'main', 'java', 'com', 'cwbridge', 'android', 'WebUi.kt');
+const javaRoot = path.join(__dirname, '..', 'app', 'src', 'main', 'java');
 
-if (!fs.existsSync(file)) {
-  console.error('check-webui: cannot find ' + file);
-  process.exit(1);
+function findWebUi(dir, hits) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (e) {
+    return hits; // unreadable directory: keep looking rather than crash
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) findWebUi(full, hits);
+    else if (entry.name === 'WebUi.kt') hits.push(full);
+  }
+  return hits;
+}
+
+let file = process.argv[2];
+if (file) {
+  if (!fs.existsSync(file)) {
+    console.error('check-webui: cannot find ' + file);
+    process.exit(1);
+  }
+} else {
+  const hits = findWebUi(javaRoot, []);
+  if (hits.length === 0) {
+    console.error('check-webui: found no WebUi.kt anywhere under ' + javaRoot);
+    console.error('  If the file was renamed, update this script.');
+    process.exit(1);
+  }
+  if (hits.length > 1) {
+    console.error('check-webui: ' + hits.length + ' WebUi.kt files found, cannot pick one:');
+    for (const h of hits) console.error('  - ' + h);
+    console.error('  Pass one explicitly: node scripts/check-webui.js <path>');
+    process.exit(1);
+  }
+  file = hits[0];
 }
 
 const src = fs.readFileSync(file, 'utf8');
@@ -95,5 +131,8 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log('check-webui: OK (' + parts.length + ' parts, ' + scripts.length +
-  ' script block(s), ' + page.length + ' bytes)');
+// Name the file that was actually checked: with discovery in play, "OK" alone
+// hides which WebUi.kt was validated.
+console.log('check-webui: OK for ' + path.relative(path.join(__dirname, '..'), file) +
+  ' (' + parts.length + ' parts, ' + scripts.length + ' script block(s), ' +
+  page.length + ' bytes)');

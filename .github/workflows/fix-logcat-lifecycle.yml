@@ -72,7 +72,7 @@ jobs:
         run: |
           python3 << 'PY'
           from pathlib import Path
-          p = Path("app/src/main/java/com/cwbridge/android/LogcatReader.kt")
+          p = Path("app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt")
           t = p.read_text()
 
           old = '''                        when {

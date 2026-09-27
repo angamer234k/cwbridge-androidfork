@@ -191,8 +191,8 @@ jobs:
               ma = ma.replace("session start version=2.9.4-android ctrl-t-test", "session start version=2.10.6-android textman-vars", 1)
               ma_path.write_text(ma)
               print("patched", len(ma))
-          # force-seed ServiceModels
-          sm_path = Path("app/src/main/java/com/cwbridge/android/ServiceModels.kt")
+          # force-seed ServiceModels (moved out of the flat package: data/)
+          sm_path = Path("app/src/main/java/com/cwbridge/android/data/ServiceModels.kt")
           sm = sm_path.read_text()
           if "seedOrReplaceDefault" not in sm:
               sm = sm.replace("upsertDefault(", "seedOrReplaceDefault(")

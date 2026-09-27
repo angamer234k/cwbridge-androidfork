@@ -14,14 +14,18 @@ jobs:
         run: |
           set -eux
           GOOD=83cc37a965b157329daef4a1655195a80b15ea8c
+          # The path after ${GOOD}: is HISTORICAL - ServiceModels.kt still lived in the
+          # flat com/cwbridge/android package at that commit. The path after '>' is the
+          # CURRENT location (data/). Writing to the old root path would leave a stray
+          # ServiceModels.kt in the root package = duplicate class, silent build break.
           git show ${GOOD}:app/src/main/java/com/cwbridge/android/MainActivity.kt > app/src/main/java/com/cwbridge/android/MainActivity.kt
-          git show ${GOOD}:app/src/main/java/com/cwbridge/android/ServiceModels.kt > app/src/main/java/com/cwbridge/android/ServiceModels.kt
-          wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git show ${GOOD}:app/src/main/java/com/cwbridge/android/ServiceModels.kt > app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
+          wc -c app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
           head -2 app/src/main/java/com/cwbridge/android/MainActivity.kt
       - name: Commit
         run: |
           git config user.name cwbridge-bot
           git config user.email bot@cwbridge.local
-          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
           git commit -m "restore: MainActivity + ServiceModels from good commit" || echo nochange
           git push

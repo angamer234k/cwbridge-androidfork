@@ -15,14 +15,16 @@ jobs:
         run: |
           set -e
           GOOD=83cc37a965b157329daef4a1655195a80b15ea8c
+          # After $GOOD: the path is HISTORICAL (flat package back then); after '>' it is
+          # the CURRENT home of the file. See restore-good-sources.yml for why this matters.
           git show "$GOOD:app/src/main/java/com/cwbridge/android/MainActivity.kt" > app/src/main/java/com/cwbridge/android/MainActivity.kt
-          git show "$GOOD:app/src/main/java/com/cwbridge/android/ServiceModels.kt" > app/src/main/java/com/cwbridge/android/ServiceModels.kt
-          wc -l app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git show "$GOOD:app/src/main/java/com/cwbridge/android/ServiceModels.kt" > app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
+          wc -l app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
           python3 << 'PY'
           from pathlib import Path
           import re
 
-          sm_path = Path("app/src/main/java/com/cwbridge/android/ServiceModels.kt")
+          sm_path = Path("app/src/main/java/com/cwbridge/android/data/ServiceModels.kt")
           sm = sm_path.read_text()
           if "seedOrReplaceDefault" not in sm:
               sm = sm.replace("upsertDefault(", "seedOrReplaceDefault(")
@@ -243,7 +245,7 @@ jobs:
         run: |
           git config user.name "cwbridge-bot"
           git config user.email "bot@cwbridge.local"
-          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/ServiceModels.kt
+          git add app/src/main/java/com/cwbridge/android/MainActivity.kt app/src/main/java/com/cwbridge/android/data/ServiceModels.kt
           git status
           git commit -m "fix: restore MainActivity+ServiceModels + TextMan/vars UI (v2.10.6)" || echo nochange
           git push
