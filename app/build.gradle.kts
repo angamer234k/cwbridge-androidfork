@@ -12,8 +12,8 @@ android {
         applicationId = "com.cwbridge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "2.11.0-android"
+        versionCode = 12
+        versionName = "2.12.0-android"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
