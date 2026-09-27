@@ -119,42 +119,40 @@ object ServerAuth {
         sessions.entries.removeIf { it.value < now }
     }
 
-    companion object {
-        /**
-         * Loopback plus the RFC1918 ranges Android hands out over Wi-Fi/hotspot.
-         * Note this checks the immediate peer only, which is the correct security
-         * boundary: a reverse proxy would show up as 127.0.0.1 and would therefore
-         * be treated as local. Callers that care should keep the server bound to
-         * the LAN and not exposed publicly.
-         */
-        fun isLocalNetwork(address: String): Boolean {
-            val host = address.substringBefore(':').trim()
-            if (host.isEmpty()) return false
-            if (host == "localhost" || host == "::1") return true
-            if (host.startsWith("127.")) return true
-            val parts = host.split(".")
-            if (parts.size != 4) return false
-            val a = parts[0].toIntOrNull() ?: return false
-            val b = parts[1].toIntOrNull() ?: return false
-            return when (a) {
-                10 -> true
-                192 -> b == 168
-                172 -> b in 16..31
-                else -> false
-            }
+    /**
+     * Loopback plus the RFC1918 ranges Android hands out over Wi-Fi/hotspot.
+     * Note this checks the immediate peer only, which is the correct security
+     * boundary: a reverse proxy would show up as 127.0.0.1 and would therefore
+     * be treated as local. Callers that care should keep the server bound to
+     * the LAN and not exposed publicly.
+     */
+    fun isLocalNetwork(address: String): Boolean {
+        val host = address.substringBefore(':').trim()
+        if (host.isEmpty()) return false
+        if (host == "localhost" || host == "::1") return true
+        if (host.startsWith("127.")) return true
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return when (a) {
+            10 -> true
+            192 -> b == 168
+            172 -> b in 16..31
+            else -> false
         }
+    }
 
-        private fun randomToken(): String {
-            val bytes = ByteArray(TOKEN_BYTES)
-            SecureRandom().nextBytes(bytes)
-            return bytes.joinToString("") { "%02x".format(it) }
-        }
+    private fun randomToken(): String {
+        val bytes = ByteArray(TOKEN_BYTES)
+        SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
 
-        /** Readable password: avoids ambiguous chars, 20 chars. */
-        private fun generatePassword(): String {
-            val alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-            val rnd = SecureRandom()
-            return (1..20).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
-        }
+    /** Readable password: avoids ambiguous chars, 20 chars. */
+    private fun generatePassword(): String {
+        val alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        val rnd = SecureRandom()
+        return (1..20).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
     }
 }

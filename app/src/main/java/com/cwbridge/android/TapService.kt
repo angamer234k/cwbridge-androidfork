@@ -17,7 +17,8 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.ScreenshotResult
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /** Accessibility: taps, paste, send text, Enter, Ctrl+T (Shizuku-backed). */
 class TapService : AccessibilityService() {
@@ -58,36 +59,45 @@ class TapService : AccessibilityService() {
     /**
      * Capture the screen. Android 11+ only — [Build.VERSION_CODES.R].
      * The callback fires with null when the system refuses the capture.
+     *
+     * Both ScreenshotResult and TakeScreenshotCallback are nested inside
+     * AccessibilityService, and AccessibilityService.getExecutor() is a hidden
+     * (non-SDK) method, so we supply our own single-thread executor and retire
+     * it once the callback lands.
      */
     fun screenshot(callback: (Bitmap?) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             callback(null)
             return
         }
+        val exec: ExecutorService = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "cwbridge-screenshot")
+        }
         try {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
-                executor,
-                // Nested inside AccessibilityService; Kotlin does not inherit
-                // nested classifiers, so it must be named explicitly.
+                exec,
                 object : AccessibilityService.TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
+                    override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                        exec.shutdown()
                         callback(bitmapFrom(screenshot))
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        exec.shutdown()
                         LogBuffer.w("A11y", "takeScreenshot failed code=$errorCode")
                         callback(null)
                     }
                 },
             )
         } catch (t: Throwable) {
+            exec.shutdown()
             LogBuffer.w("A11y", "takeScreenshot threw: ${t.message}")
             callback(null)
         }
     }
 
-    private fun bitmapFrom(result: ScreenshotResult): Bitmap? = try {
+    private fun bitmapFrom(result: AccessibilityService.ScreenshotResult): Bitmap? = try {
         val hwBitmap = result.hardwareBuffer
         val wrapped = hwBitmap?.let { Bitmap.wrapHardwareBuffer(it, result.colorSpace) }
         // A hardware bitmap cannot be compressed directly; make it software.
