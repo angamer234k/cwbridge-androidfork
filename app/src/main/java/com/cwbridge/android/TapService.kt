@@ -18,7 +18,6 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.ScreenshotResult
-import android.view.accessibility.TakeScreenshotCallback
 
 /** Accessibility: taps, paste, send text, Enter, Ctrl+T (Shizuku-backed). */
 class TapService : AccessibilityService() {
@@ -69,7 +68,9 @@ class TapService : AccessibilityService() {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 executor,
-                object : TakeScreenshotCallback {
+                // Nested inside AccessibilityService; Kotlin does not inherit
+                // nested classifiers, so it must be named explicitly.
+                object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(screenshot: ScreenshotResult) {
                         callback(bitmapFrom(screenshot))
                     }
