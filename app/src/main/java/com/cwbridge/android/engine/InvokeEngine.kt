@@ -1,14 +1,18 @@
-package com.cwbridge.android
+package com.cwbridge.android.engine
 
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import com.cwbridge.android.DeviceStatus
+import com.cwbridge.android.TapService
+import com.cwbridge.android.bridge.LogBuffer
+import com.cwbridge.android.data.Store
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Watches log lines for `invoke|request[.data1[.data2]]` and dispatches handlers.

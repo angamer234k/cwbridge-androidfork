@@ -3,9 +3,10 @@ package com.cwbridge.android
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.view.KeyEvent
-import rikka.shizuku.Shizuku
+import com.cwbridge.android.bridge.LogBuffer
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import rikka.shizuku.Shizuku
 
 /**
  * Privileged shell via Shizuku (ADB/shell uid).

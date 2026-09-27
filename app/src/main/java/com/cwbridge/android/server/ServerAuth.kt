@@ -1,6 +1,7 @@
-package com.cwbridge.android
+package com.cwbridge.android.server
 
 import android.content.Context
+import com.cwbridge.android.bridge.LogBuffer
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 

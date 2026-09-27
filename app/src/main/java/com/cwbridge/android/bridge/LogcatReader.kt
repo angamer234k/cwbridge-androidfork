@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.bridge
 
 import android.Manifest
 import android.content.Context

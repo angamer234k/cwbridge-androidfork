@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.bridge
 
 /**
  * Watches CatWeb console-style lines:

@@ -1,4 +1,6 @@
-package com.cwbridge.android
+package com.cwbridge.android.server
+
+import com.cwbridge.android.data.Service
 
 /**
  * Single-page control panel for the built-in web server, served straight from

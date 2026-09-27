@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.engine
 
 import android.view.LayoutInflater
 import android.view.View
@@ -7,6 +7,8 @@ import android.widget.TextView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.cwbridge.android.R
+import com.cwbridge.android.data.Service
 
 class ServiceAdapter(
     private val services: List<Service>,

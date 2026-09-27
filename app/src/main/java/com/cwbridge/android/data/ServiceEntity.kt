@@ -1,4 +1,4 @@
-package com.cwbridge.android
+package com.cwbridge.android.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
