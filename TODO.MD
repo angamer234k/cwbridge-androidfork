@@ -37,7 +37,7 @@ CI GUARDS ADDED:
   Runs in both build-debug-apk.yml (every push) and release.yml, before the Gradle build.
 + ALSO CHECKS: SCREENSHOT_MARKER matches the placeholder comment in the markup (silent button-drop otherwise)
 
-IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, NOT committed, NOT pushed)
+IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, committed, NOT pushed)
 = 22 of 29 files moved out of the flat package (was 29 .kt files, 0 subdirs):
     bridge/  AntiDisconnect BridgeControl BridgeNotifier BridgeStatus CatWebTracker
              LogBuffer LogcatReader RecentLogLines RobloxLogBuffer
@@ -52,8 +52,11 @@ IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, NOT committe
   launcher, the a11y service or the overlay with NO compile error.
 = imports verified: `python scripts/_reorg.py --check` -> 41 declarations, 0 missing, 0 unused
 = line endings normalised back to CRLF after the scripted rewrite
-- NOT COMMITTED YET. Working tree = 22 deletions + 5 modified (imports added) + 4 untracked
-  package dirs. Verified by `git ls-tree`: 29 .kt in HEAD, 29 in the tree (7 root + 22 moved).
+= COMMITTED as 8a0dab9 "do stuff" on branch refactor/package-folders (forked from 5c2bc9a).
+  Working tree is CLEAN. Verified by `git ls-tree`: 29 .kt in HEAD, 29 in the tree (7 root + 22 moved).
+- BRANCH IS BEHIND MAIN: main moved on to e99d0bc (+ d47cb75), both README.md only, and local main
+  == origin/main. The branch forked at 5c2bc9a, so main is 2 ahead and the branch is 2 ahead.
+  `git merge-tree` dry-run reports NO CONFLICTS. Nothing is pushed anywhere.
 - scripts/check-webui.js line 20 still hardcodes `.../android/WebUi.kt` -> now server/WebUi.kt.
   THIS GATES EVERY BUILD (build-debug-apk.yml + release.yml). Must be fixed, ideally by making
   it auto-discover WebUi.kt anywhere under the java tree so the next move can't break CI again.
@@ -69,7 +72,10 @@ IN PROGRESS — PACKAGE FOLDERS (branch `refactor/package-folders`, NOT committe
 - CANNOT COMPILE LOCALLY: no gradlew, no gradle-wrapper.jar, no Android SDK on this machine.
   Stage 1 is UNVERIFIED until CI runs. Land it alone and wait for green before touching the
   web panel, so a red build can only mean the move, not a CSS filter.
-- scripts/_reorg.py and scripts/__pycache__/ are untracked scratch -> delete before committing.
++ CLEANUP DONE (both were committed by mistake in 8a0dab9): scripts/_reorg.py deleted and
+  scripts/__pycache__/_reorg.cpython-313.pyc untracked from git. `__pycache__/` is now in
+  .gitignore. _reorg.py stays recoverable via `git show 8a0dab9:scripts/_reorg.py` — its
+  `--check` mode was the only local import verifier we have, so keep that command handy.
 
 STILL TO DO — WEB PANEL (Stage 2, not started; was blocked on Stage 1 going green)
 - GOOEY STATUS INDICATOR — native SVG feGaussianBlur + feColorMatrix (alpha row 0 0 0 24 -11),
