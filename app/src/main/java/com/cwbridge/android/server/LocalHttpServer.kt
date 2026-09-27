@@ -35,7 +35,7 @@ import kotlin.concurrent.thread
  */
 class LocalHttpServer(
     private val context: Context,
-    preferredPort: Int = 8080,
+    private val preferredPort: Int = 8080,
     private val onInvoke: (String) -> Unit,
     private val onToggleBridge: () -> Boolean,
 ) {
