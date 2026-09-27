@@ -17,12 +17,13 @@ jobs:
       - name: Restore and patch WebUi
         run: |
           set -euo pipefail
-          GOOD=120872390b13718ae89fd4d67811cfc9d8785f48
+          GOOD=b3196d726ce3fe20f43f5b1bf51c10f83bb76db3
           git show "$GOOD:app/src/main/java/com/cwbridge/android/server/WebUi.kt" > app/src/main/java/com/cwbridge/android/server/WebUi.kt
           python3 - <<'PY'
           from pathlib import Path
           p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
           t = p.read_text()
+          assert t.startswith('package '), t[:40]
           t = t.replace('<div id="app" class="hide">', '<div id="app">', 1)
           old = "async function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n  } catch (e) {}\n}"
           new = "function revealApp() {\n  NEEDS_LOGIN = false;\n  D('login').classList.add('hide');\n  D('app').classList.remove('hide');\n}\n\nasync function refreshStatus() {\n  try {\n    const s = await api('/api/status');\n    revealApp();\n    const p = D('pill');\n    p.className = 'pill ' + (s.state || 'IDLE');\n    p.textContent = s.state || 'IDLE';\n    D('detail').textContent = s.detail || '';\n    var bits = [];\n    bits.push(s.accessibility ? 'a11y ok' : 'a11y OFF');\n    bits.push(s.shizuku ? 'shizuku ok' : 'shizuku OFF');\n    bits.push(s.catwebReady ? 'catweb ready' : 'catweb waiting');\n    if (!D('detail').textContent) D('detail').textContent = bits.join(' · ');\n    else D('detail').textContent = D('detail').textContent + ' · ' + bits.join(' · ');\n  } catch (e) {}\n}"
