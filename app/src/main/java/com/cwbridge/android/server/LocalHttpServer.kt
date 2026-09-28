@@ -382,13 +382,16 @@ class LocalHttpServer(
             "restart-bridge" -> BridgeControl.restartBridge()
             "restart-roblox" -> BridgeControl.restartRoblox(context)
             "ctrl-t" -> {
-                val ok = when {
+                val keyOk = when {
                     svc != null -> svc.pressCtrlT()
                     ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
                     else -> false
                 }
-                if (ok) "Ctrl+T sent"
-                else "ERROR: Ctrl+T failed after normal keys + hold-Ctrl methods — is Roblox focused? Shizuku granted?"
+                if (keyOk) "Ctrl+T sent (key path)"
+                else if (ShizukuShell.isReady() && ShizukuShell.openNewTabByPlusTap())
+                    "Ctrl+T keys failed — tapped CatWeb + button instead"
+                else
+                    "ERROR: Ctrl+T keys and + button all failed — check console"
             }
             "enter" -> {
                 val ok = when {

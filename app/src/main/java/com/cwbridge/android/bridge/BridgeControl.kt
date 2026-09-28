@@ -217,21 +217,28 @@ object BridgeControl {
             val d = raw.trim()
             if (d.isEmpty()) continue
             LogBuffer.i("Control", "openDomains [${i + 1}/${domains.size}] $d")
-            val ctrl = when {
-                ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                svc != null -> svc.pressCtrlT()
-                else -> false
+            // Prefer + button taps (Roblox mobile rarely accepts synthetic Ctrl)
+            var opened = false
+            if (ShizukuShell.isReady()) {
+                opened = ShizukuShell.openNewTabByPlusTap()
+                if (!opened) opened = ShizukuShell.pressCtrlT()
             }
-            if (!ctrl) {
-                // CatWeb tab bar "+" (wiki: opens new tab). Adjust if needed.
-                val plusX = 92f
-                val plusY = 4f
-                val tapped = svc?.clickAtPercent(plusX, plusY) == true
-                LogBuffer.w("Control", "Ctrl+T failed — tapping + @$plusX%,$plusY% ok=$tapped")
-                if (!tapped) {
-                    results += "$d: Ctrl+T and + tap failed"
-                    continue
+            if (!opened && svc != null) {
+                // a11y multi-spot +
+                for ((px, py) in listOf(
+                    92f to 4f, 96f to 4f, 88f to 5f, 94f to 6f, 50f to 4f
+                )) {
+                    if (svc.clickAtPercent(px, py)) {
+                        LogBuffer.i("Control", "+ a11y tap @$px%,$py%")
+                        opened = true
+                        break
+                    }
                 }
+                if (!opened) opened = svc.pressCtrlT()
+            }
+            if (!opened) {
+                results += "$d: new-tab failed (keys + + button)"
+                continue
             }
             try { Thread.sleep(400) } catch (_: InterruptedException) {}
             val tapped = svc?.clickAtPercent(urlBarXPct, urlBarYPct) == true

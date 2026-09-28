@@ -209,46 +209,131 @@ object ShizukuShell {
         focusRoblox()
         try { Thread.sleep(250) } catch (_: InterruptedException) {}
 
-        // Phase 1: real IInputManager inject (this is what actually reaches games)
+        // Phase 0: Linux sendevent (hardware-level — games often only see this)
+        val linuxKey = androidToLinuxKey(keyCode)
+        if (linuxKey != null && sendeventCtrlChord(linuxKey, label)) {
+            return true
+        }
+
+        // Phase 1: IInputManager as shell
         if (injectCtrlChordShell(keyCode)) {
             LogBuffer.i("Shizuku", "Ctrl+$label OK via IInputManager")
             return true
         }
-        LogBuffer.w("Shizuku", "Ctrl+$label IInputManager failed — trying input cmds")
+        LogBuffer.w("Shizuku", "Ctrl+$label IInputManager failed")
 
-        // Phase 2: normal keycombination
-        val normal = listOf(
+        // Phase 2: keycombination
+        for (cmd in listOf(
             "cmd input keycombination 113 $keyCode",
             "input keycombination 113 $keyCode",
             "cmd input keycombination 114 $keyCode",
             "input keycombination 114 $keyCode",
-        )
-        for (cmd in normal) {
+        )) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label normal $cmd exit=$code ${out.take(50)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label keycombo $cmd exit=$code ${out.take(40)}")
             if (code == 0 && outLooksOk(out)) {
                 LogBuffer.i("Shizuku", "Ctrl+$label OK (keycombination)")
                 return true
             }
         }
 
-        // Phase 3: hold-style
-        val hold = listOf(
+        // Phase 3: hold scripts
+        for (cmd in listOf(
             "input keyevent --longpress 113; input keyevent $keyCode",
             "cmd input keyevent --longpress 113; cmd input keyevent $keyCode",
-        )
-        for (cmd in hold) {
+        )) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label hold $cmd exit=$code ${out.take(50)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label hold $cmd exit=$code ${out.take(40)}")
             if (code == 0 && outLooksOk(out)) {
-                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold script)")
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold)")
                 return true
             }
         }
 
-        LogBuffer.e("Shizuku", "Ctrl+$label FAILED all inject paths")
+        LogBuffer.e("Shizuku", "Ctrl+$label FAILED all key paths")
         return false
     }
+
+    /** Android KeyEvent code → Linux input key code (for sendevent). */
+    private fun androidToLinuxKey(androidKeyCode: Int): Int? = when (androidKeyCode) {
+        KeyEvent.KEYCODE_T -> 20          // KEY_T
+        KeyEvent.KEYCODE_1 -> 2           // KEY_1
+        KeyEvent.KEYCODE_2 -> 3
+        KeyEvent.KEYCODE_3 -> 4
+        KeyEvent.KEYCODE_4 -> 5
+        KeyEvent.KEYCODE_5 -> 6
+        KeyEvent.KEYCODE_6 -> 7
+        KeyEvent.KEYCODE_7 -> 8
+        KeyEvent.KEYCODE_8 -> 9
+        KeyEvent.KEYCODE_9 -> 10
+        else -> null
+    }
+
+    /**
+     * Write EV_KEY events to every /dev/input/event* we can open.
+     * KEY_LEFTCTRL=29. SYN_REPORT after each. Shell may lack write on some OEMs.
+     */
+    private fun sendeventCtrlChord(linuxKey: Int, label: String): Boolean {
+        // Discover devices; try each. Permission denied is expected on some.
+        val script = """
+devs=$(ls /dev/input/event* 2>/dev/null)
+ok=0
+for dev in $devs; do
+  if sendevent "$dev" 1 29 1 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 $linuxKey 1 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 $linuxKey 0 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 29 0 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null; then
+    echo "OK $dev"
+    ok=1
+  fi
+done
+exit $((1-ok))
+""".trimIndent()
+        val (code, out) = exec(script)
+        LogBuffer.i("Shizuku", "sendevent Ctrl+$label exit=$code ${out.take(120)}")
+        if (code == 0 && out.contains("OK")) {
+            LogBuffer.i("Shizuku", "Ctrl+$label OK via sendevent")
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Open a CatWeb new tab by tapping the "+" on the tab bar.
+     * Tries several percent positions (phones / tablets / notches differ).
+     */
+    fun openNewTabByPlusTap(): Boolean {
+        focusRoblox()
+        try { Thread.sleep(200) } catch (_: InterruptedException) {}
+        // (x%, y%) candidates for the + control
+        val spots = listOf(
+            92f to 4f, 96f to 4f, 88f to 4f,
+            92f to 6f, 94f to 5f, 90f to 3f,
+            50f to 4f, // some layouts center the +
+            85f to 8f, 97f to 8f,
+        )
+        // Prefer shell input tap (works without a11y)
+        val (szCode, szOut) = exec("wm size")
+        val sizeMatch = Regex("""(\d+)x(\d+)""").find(szOut)
+        val w = sizeMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        val h = sizeMatch?.groupValues?.getOrNull(2)?.toIntOrNull() ?: 0
+        LogBuffer.i("Shizuku", "screen ${w}x$h (wm size exit=$szCode)")
+        if (w > 0 && h > 0) {
+            for ((xp, yp) in spots) {
+                val x = ((xp / 100f) * w).toInt()
+                val y = ((yp / 100f) * h).toInt()
+                val (code, out) = exec("input tap $x $y")
+                LogBuffer.i("Shizuku", "+ tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(40)}")
+                if (code == 0) {
+                    try { Thread.sleep(350) } catch (_: InterruptedException) {}
+                    // We cannot verify a new tab opened; treat first successful tap as best effort
+                    // and continue through a couple so at least one hits
+                }
+            }
+            // Report success if any tap exited 0
+            LogBuffer.i("Shizuku", "openNewTabByPlusTap: finished multi-tap sequence")
+            return true
+        }
+        return false
+    }
+
 
     private fun outLooksOk(out: String): Boolean {
         if (out.isBlank()) return true
