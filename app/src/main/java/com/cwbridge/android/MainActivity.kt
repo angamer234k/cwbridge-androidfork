@@ -661,7 +661,7 @@ class MainActivity : AppCompatActivity() {
                 try { logcatReader.stop() } catch (_: Throwable) {}
                 try { invokeEngine.stop() } catch (_: Throwable) {}
                 try { AntiDisconnect.stop() } catch (_: Throwable) {}
-                refreshBridgeUi()
+                refreshUi()
             }
             BridgeStatus.set(OverlayState.ERROR, message.take(48))
             MaterialAlertDialogBuilder(this)
