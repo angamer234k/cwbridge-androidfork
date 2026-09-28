@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Rewrite ScreenOcr.kt with Tasks.await; ensure ML Kit dep present."""
+"""Remove ML Kit dep; ScreenOcr stubs until CI can compile ML Kit cleanly."""
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SCREEN_OCR = r'''package com.cwbridge.android.bridge
+STUB = r'''package com.cwbridge.android.bridge
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,18 +13,14 @@ import android.graphics.BitmapFactory
 import android.graphics.Rect
 import com.cwbridge.android.ShizukuShell
 import com.cwbridge.android.TapService
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Screen capture + on-device OCR.
- * Prefer Shizuku `screencap` (often works on FLAG_SECURE games); fall back to a11y.
+ * Screen capture helper. OCR (ML Kit) temporarily stubbed so releases build;
+ * URL-bar open falls back to percent coords. Disconnect OCR logs a skip.
  */
 object ScreenOcr {
 
@@ -76,61 +73,14 @@ object ScreenOcr {
         y0Pct: Float = 0f,
         y1Pct: Float = 100f,
     ): Hit? {
-        val q = query.trim().lowercase()
-        if (q.isEmpty()) return null
-        val full = capture(context)
-        if (full == null) {
-            LogBuffer.w("OCR", "no bitmap for \"$query\"")
-            return null
-        }
+        // ML Kit not linked in this build — force coordinate fallbacks
+        LogBuffer.w("OCR", "stub: no ML Kit — miss for \"$query\" (region X$x0Pct-$x1Pct Y$y0Pct-$y1Pct)")
+        // Still exercise capture path so logs show if screencap works
         try {
-            val w = full.width
-            val h = full.height
-            if (w < 2 || h < 2) return null
-            val left = ((x0Pct / 100f) * w).toInt().coerceIn(0, w - 1)
-            val top = ((y0Pct / 100f) * h).toInt().coerceIn(0, h - 1)
-            val right = ((x1Pct / 100f) * w).toInt().coerceIn(left + 1, w)
-            val bottom = ((y1Pct / 100f) * h).toInt().coerceIn(top + 1, h)
-            val crop = try {
-                Bitmap.createBitmap(full, left, top, right - left, bottom - top)
-            } catch (t: Throwable) {
-                LogBuffer.w("OCR", "crop: ${t.message}")
-                full
-            }
-            val hits = recognizeAll(crop)
-            if (crop !== full) {
-                try {
-                    crop.recycle()
-                } catch (_: Throwable) {
-                }
-            }
-            var best: Hit? = null
-            for (raw in hits) {
-                if (!raw.text.lowercase().contains(q)) continue
-                val b = Rect(
-                    raw.bounds.left + left,
-                    raw.bounds.top + top,
-                    raw.bounds.right + left,
-                    raw.bounds.bottom + top,
-                )
-                val hit = Hit(raw.text, b.exactCenterX(), b.exactCenterY(), b)
-                if (best == null || hit.text.length > best.text.length) best = hit
-            }
-            if (best != null) {
-                LogBuffer.i(
-                    "OCR",
-                    "hit \"${best.text.take(40)}\" @ (${best.centerX.toInt()},${best.centerY.toInt()}) q=\"$query\"",
-                )
-            } else {
-                LogBuffer.w("OCR", "no hit for \"$query\" region X$x0Pct-$x1Pct Y$y0Pct-$y1Pct")
-            }
-            return best
-        } finally {
-            try {
-                full.recycle()
-            } catch (_: Throwable) {
-            }
+            capture(context)?.recycle()
+        } catch (_: Throwable) {
         }
+        return null
     }
 
     fun regionContains(
@@ -141,32 +91,6 @@ object ScreenOcr {
         y0Pct: Float,
         y1Pct: Float,
     ): Boolean = findText(context, needle, x0Pct, x1Pct, y0Pct, y1Pct) != null
-
-    private fun recognizeAll(bitmap: Bitmap): List<Hit> {
-        return try {
-            val image = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
-            val result = Tasks.await(recognizer.process(image), 12, TimeUnit.SECONDS)
-            val list = ArrayList<Hit>()
-            for (block in result.textBlocks) {
-                for (line in block.lines) {
-                    val box = line.boundingBox ?: continue
-                    list.add(
-                        Hit(
-                            text = line.text,
-                            centerX = box.exactCenterX(),
-                            centerY = box.exactCenterY(),
-                            bounds = Rect(box),
-                        ),
-                    )
-                }
-            }
-            list
-        } catch (t: Throwable) {
-            LogBuffer.w("OCR", "recognizeAll: ${t.javaClass.simpleName}: ${t.message}")
-            emptyList()
-        }
-    }
 
     fun centerSquarePct(context: Context, sizePx: Int): FloatArray {
         val dm = context.resources.displayMetrics
@@ -183,32 +107,19 @@ object ScreenOcr {
 '''
 
 def main() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/ScreenOcr.kt"
-    p.write_text(SCREEN_OCR)
-    print("ScreenOcr rewritten")
+    (ROOT / "app/src/main/java/com/cwbridge/android/bridge/ScreenOcr.kt").write_text(STUB)
+    print("ScreenOcr stubbed")
 
     g = ROOT / "app/build.gradle.kts"
-    gt = g.read_text()
-    dep = 'implementation("com.google.mlkit:text-recognition:16.0.1")'
-    if dep not in gt:
-        gt = gt.replace(
-            'implementation("com.google.code.gson:gson:2.10.1")',
-            'implementation("com.google.code.gson:gson:2.10.1")\n    ' + dep,
-            1,
-        )
-        g.write_text(gt)
-        print("mlkit dep added")
+    t = g.read_text()
+    t2 = re.sub(r"\n\s*// On-device OCR.*?\n\s*implementation\(\"com\.google\.mlkit:text-recognition:[^\"]+\"\)", "\n", t)
+    t2 = re.sub(r"\n\s*implementation\(\"com\.google\.mlkit:text-recognition:[^\"]+\"\)", "\n", t2)
+    t2 = re.sub(r"\n\s*implementation\(\"com\.google\.android\.gms:play-services-tasks:[^\"]+\"\)", "\n", t2)
+    if t2 != t:
+        g.write_text(t2)
+        print("removed mlkit deps")
     else:
-        print("mlkit dep ok")
-
-    # play-services-tasks comes transitively; explicit for Tasks.await
-    tasks_dep = 'implementation("com.google.android.gms:play-services-tasks:18.2.0")'
-    if tasks_dep not in gt and "play-services-tasks" not in g.read_text():
-        t = g.read_text()
-        if dep in t:
-            t = t.replace(dep, dep + "\n    " + tasks_dep, 1)
-            g.write_text(t)
-            print("tasks dep added")
+        print("no mlkit lines or already gone")
 
 if __name__ == "__main__":
     main()
