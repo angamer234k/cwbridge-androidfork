@@ -222,7 +222,17 @@ object BridgeControl {
                 svc != null -> svc.pressCtrlT()
                 else -> false
             }
-            if (!ctrl) { results += "$d: Ctrl+T failed"; continue }
+            if (!ctrl) {
+                // CatWeb tab bar "+" (wiki: opens new tab). Adjust if needed.
+                val plusX = 92f
+                val plusY = 4f
+                val tapped = svc?.clickAtPercent(plusX, plusY) == true
+                LogBuffer.w("Control", "Ctrl+T failed — tapping + @$plusX%,$plusY% ok=$tapped")
+                if (!tapped) {
+                    results += "$d: Ctrl+T and + tap failed"
+                    continue
+                }
+            }
             try { Thread.sleep(400) } catch (_: InterruptedException) {}
             val tapped = svc?.clickAtPercent(urlBarXPct, urlBarYPct) == true
             if (!tapped) { results += "$d: URL-bar tap failed"; continue }
