@@ -295,11 +295,11 @@ object BridgeControl {
     fun loadAutoOpenDomains(context: Context): List<String> {
         return try {
             com.cwbridge.android.data.UserFileStore.init(context.applicationContext)
-            val raw = com.cwbridge.android.data.UserFileStore.settingsGet(
+            val raw = com.cwbridge.android.data.UserFileStore.getSetting(
                 context.applicationContext,
                 "auto_open_domains",
                 "",
-            )
+            ) ?: ""
             raw.lines().flatMap { it.split(",", ";") }.map { it.trim() }.filter { it.isNotEmpty() }
         } catch (t: Throwable) {
             LogBuffer.w("Control", "loadAutoOpenDomains: ${t.message}")
@@ -309,7 +309,7 @@ object BridgeControl {
 
     fun saveAutoOpenDomains(context: Context, domains: List<String>) {
         com.cwbridge.android.data.UserFileStore.init(context.applicationContext)
-        com.cwbridge.android.data.UserFileStore.settingsPut(
+        com.cwbridge.android.data.UserFileStore.putSetting(
             context.applicationContext,
             "auto_open_domains",
             domains.joinToString("\n"),
