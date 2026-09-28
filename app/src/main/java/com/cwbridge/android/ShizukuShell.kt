@@ -2,6 +2,8 @@ package com.cwbridge.android
 
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.view.InputDevice
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import com.cwbridge.android.bridge.LogBuffer
 import java.io.BufferedReader
@@ -136,58 +138,115 @@ object ShizukuShell {
      *  2) hold Ctrl (DOWN), press T, release Ctrl
      *  3) fail — caller shows the error
      */
+
+    /**
+     * Real key injection through IInputManager as shell uid (Shizuku).
+     * The plain `input` shell command often reports exit 0 but games never see meta keys.
+     * KeyMapper / Input Leaf use this same path.
+     */
+    fun injectKeyEventShell(event: KeyEvent): Boolean {
+        if (!isReady()) return false
+        return try {
+            val raw = rikka.shizuku.SystemServiceHelper.getSystemService("input")
+                ?: return false.also { LogBuffer.w("Shizuku", "no input service") }
+            val wrapped = rikka.shizuku.ShizukuBinderWrapper(raw)
+            val stub = Class.forName("android.hardware.input.IInputManager\$Stub")
+            val asInterface = stub.getMethod("asInterface", android.os.IBinder::class.java)
+            val im = asInterface.invoke(null, wrapped) ?: return false
+            val inject = im.javaClass.methods.firstOrNull { m ->
+                m.name == "injectInputEvent" && m.parameterTypes.size >= 2
+            } ?: return false.also { LogBuffer.w("Shizuku", "injectInputEvent missing") }
+            // mode 0 = ASYNC, 2 = WAIT_FOR_FINISH
+            val result = inject.invoke(im, event, 0)
+            val ok = result == null || result == true || result == 0
+            if (!ok) LogBuffer.w("Shizuku", "injectInputEvent returned $result")
+            ok
+        } catch (t: Throwable) {
+            LogBuffer.w("Shizuku", "injectKeyEventShell: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
+
+    /** Hold Ctrl, press [keyCode], release Ctrl — via IInputManager. */
+    fun injectCtrlChordShell(keyCode: Int): Boolean {
+        val downTime = android.os.SystemClock.uptimeMillis()
+        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        fun ev(action: Int, code: Int, metaState: Int, whenMs: Long): KeyEvent =
+            KeyEvent(
+                downTime, whenMs, action, code, 0, metaState,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+                KeyEvent.FLAG_FROM_SYSTEM,
+                InputDevice.SOURCE_KEYBOARD,
+            )
+        var t = downTime
+        val seq = listOf(
+            ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, meta, t),
+            ev(KeyEvent.ACTION_DOWN, keyCode, meta, t + 15),
+            ev(KeyEvent.ACTION_UP, keyCode, meta, t + 30),
+            ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, t + 45),
+        )
+        for (e in seq) {
+            if (!injectKeyEventShell(e)) return false
+            try { Thread.sleep(12) } catch (_: InterruptedException) {}
+        }
+        return true
+    }
+
+    /**
+     * Ctrl+T:
+     *  1) IInputManager chord (real inject as shell)
+     *  2) input keycombination fallbacks
+     *  3) hold-style shell scripts
+     */
     fun pressCtrlT(): Boolean = pressCtrlKey(KeyEvent.KEYCODE_T, "T")
 
-    /** Ctrl+1..9 — same sequence as Ctrl+T. */
     fun pressCtrlNumber(n: Int): Boolean {
-        val key = 7 + n.coerceIn(1, 9) // KEYCODE_0=7, KEYCODE_1=8
+        val key = 7 + n.coerceIn(1, 9)
         return pressCtrlKey(key, n.coerceIn(1, 9).toString())
     }
 
     private fun pressCtrlKey(keyCode: Int, label: String): Boolean {
         focusRoblox()
-        try { Thread.sleep(300) } catch (_: InterruptedException) {}
+        try { Thread.sleep(250) } catch (_: InterruptedException) {}
 
-        // --- phase 1: normal chord key events ---
+        // Phase 1: real IInputManager inject (this is what actually reaches games)
+        if (injectCtrlChordShell(keyCode)) {
+            LogBuffer.i("Shizuku", "Ctrl+$label OK via IInputManager")
+            return true
+        }
+        LogBuffer.w("Shizuku", "Ctrl+$label IInputManager failed — trying input cmds")
+
+        // Phase 2: normal keycombination
         val normal = listOf(
             "cmd input keycombination 113 $keyCode",
             "input keycombination 113 $keyCode",
             "cmd input keycombination 114 $keyCode",
             "input keycombination 114 $keyCode",
-            "cmd input keycombination KEYCODE_CTRL_LEFT $keyCode",
-            "input keycombination KEYCODE_CTRL_LEFT $keyCode",
         )
         for (cmd in normal) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label normal: $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label normal $cmd exit=$code ${out.take(50)}")
             if (code == 0 && outLooksOk(out)) {
-                LogBuffer.i("Shizuku", "Ctrl+$label OK (normal) via $cmd")
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (keycombination)")
                 return true
             }
         }
 
-        // --- phase 2: hold Ctrl, press key, release Ctrl ---
-        // input cannot truly "hold" across processes, so we chain DOWN-ish longpress
-        // then the key, then an explicit Ctrl up where supported.
-        val holdScripts = listOf(
-            // longpress Ctrl then key (best-effort hold)
+        // Phase 3: hold-style
+        val hold = listOf(
             "input keyevent --longpress 113; input keyevent $keyCode",
             "cmd input keyevent --longpress 113; cmd input keyevent $keyCode",
-            "input keyevent --longpress KEYCODE_CTRL_LEFT; input keyevent $keyCode",
-            // background Ctrl longpress overlapping the key
-            "input keyevent --longpress 113 & sleep 0.05; input keyevent $keyCode; wait",
-            "cmd input keyevent --longpress 113 & sleep 0.05; cmd input keyevent $keyCode; wait",
         )
-        for (cmd in holdScripts) {
+        for (cmd in hold) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label hold: $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label hold $cmd exit=$code ${out.take(50)}")
             if (code == 0 && outLooksOk(out)) {
-                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold) via $cmd")
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold script)")
                 return true
             }
         }
 
-        LogBuffer.e("Shizuku", "Ctrl+$label FAILED — all normal + hold methods exhausted")
+        LogBuffer.e("Shizuku", "Ctrl+$label FAILED all inject paths")
         return false
     }
 
@@ -204,7 +263,7 @@ object ShizukuShell {
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(50)}")
             if (code == 0) return
         }
     }

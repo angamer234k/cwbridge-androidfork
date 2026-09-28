@@ -163,23 +163,18 @@ class TapService : AccessibilityService() {
 
     fun pressCtrlT(): Boolean {
         LogBuffer.i("A11y", "pressCtrlT")
-        if (ShizukuShell.isReady()) {
-            if (ShizukuShell.pressCtrlT()) {
-                LogBuffer.i("A11y", "pressCtrlT Shizuku OK")
-                return true
-            }
-            LogBuffer.w("A11y", "pressCtrlT Shizuku exhausted normal+hold")
-        } else {
-            LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
+        if (ShizukuShell.isReady() && ShizukuShell.pressCtrlT()) {
+            LogBuffer.i("A11y", "pressCtrlT via Shizuku IInputManager/cmds OK")
+            return true
         }
-        // Local hold: Ctrl DOWN, T DOWN/UP, Ctrl UP
         if (injectCtrlChord(KeyEvent.KEYCODE_T)) {
-            LogBuffer.i("A11y", "pressCtrlT local hold inject OK")
+            LogBuffer.i("A11y", "pressCtrlT local inject OK")
             return true
         }
         LogBuffer.e("A11y", "pressCtrlT FAILED")
         return false
     }
+
 
 
     fun injectCtrlChord(keyCode: Int): Boolean {
