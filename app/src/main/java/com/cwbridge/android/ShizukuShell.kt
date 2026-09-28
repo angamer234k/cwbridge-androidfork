@@ -130,36 +130,35 @@ object ShizukuShell {
     }
 
     fun pressCtrlT(): Boolean {
-        // Bring Roblox to front — keys go nowhere if another app is focused.
         focusRoblox()
-        try { Thread.sleep(350) } catch (_: InterruptedException) {}
+        try { Thread.sleep(400) } catch (_: InterruptedException) {}
 
-        // keycombination is the real chord. Exit 0 is not always trustworthy on OEMs,
-        // so try several forms and always report what ran.
         val cmds = listOf(
             "cmd input keycombination 113 48",
             "input keycombination 113 48",
             "cmd input keycombination 114 48",
             "input keycombination 114 48",
-            // Some builds want symbolic names (ignored if unsupported)
             "cmd input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
             "input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
+            "cmd input keycombination 113 48 0",
+            "input keyevent --longpress 113 48",
         )
-        var anyZero = false
-        for (cmd in cmds) {
-            val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "pressCtrlT cmd=$cmd exit=$code ${out.take(100)}")
-            if (code == 0) anyZero = true
+        // Retry every method up to 3 rounds until one reports exit 0 AND empty stderr-ish.
+        repeat(3) { round ->
+            for (cmd in cmds) {
+                val (code, out) = exec(cmd)
+                LogBuffer.i("Shizuku", "Ctrl+T r$round cmd=$cmd exit=$code ${out.take(80)}")
+                if (code == 0 && !out.contains("Error", ignoreCase = true) &&
+                    !out.contains("Unknown", ignoreCase = true)
+                ) {
+                    LogBuffer.i("Shizuku", "Ctrl+T SUCCESS via $cmd")
+                    return true
+                }
+            }
+            try { Thread.sleep(200) } catch (_: InterruptedException) {}
         }
-        // Fallback: short Ctrl hold via two keyevents with no gap (best-effort)
-        if (!anyZero) {
-            val (c1, o1) = exec("input keyevent KEYCODE_CTRL_LEFT")
-            LogBuffer.i("Shizuku", "fallback CTRL exit=$c1 $o1")
-            val (c2, o2) = exec("input keyevent KEYCODE_T")
-            LogBuffer.i("Shizuku", "fallback T exit=$c2 $o2")
-            anyZero = c1 == 0 && c2 == 0
-        }
-        return anyZero
+        LogBuffer.w("Shizuku", "Ctrl+T all methods failed after retries")
+        return false
     }
 
     fun focusRoblox(packageName: String = "com.roblox.client") {
