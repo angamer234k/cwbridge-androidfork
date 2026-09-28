@@ -2,6 +2,7 @@ package com.cwbridge.android.server
 
 import android.content.Context
 import com.cwbridge.android.bridge.LogBuffer
+import com.cwbridge.android.data.UserFileStore
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
@@ -20,40 +21,36 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ServerAuth {
 
-    private const val PREFS = "cwbridge_server_auth"
     private const val KEY_PASSWORD = "password"
     private const val KEY_ENABLED = "enabled"
     private const val SESSION_TTL_MS = 24L * 60 * 60 * 1000
     private const val TOKEN_BYTES = 24
 
-    private lateinit var prefs: android.content.SharedPreferences
     private val sessions = ConcurrentHashMap<String, Long>()
 
     fun init(context: Context) {
-        if (!::prefs.isInitialized) {
-            prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        }
+        UserFileStore.init(context)
     }
 
     /** Master switch for web remote control. */
     fun isEnabled(context: Context): Boolean {
         init(context)
-        return prefs.getBoolean(KEY_ENABLED, true)
+        return UserFileStore.getBool(context, KEY_ENABLED, true)
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
         init(context)
-        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+        UserFileStore.putBool(context, KEY_ENABLED, enabled)
         LogBuffer.i("Auth", "remote control ${if (enabled) "enabled" else "disabled"}")
     }
 
     /** The generated password. Created on first use and then stable. */
     fun password(context: Context): String {
         init(context)
-        val existing = prefs.getString(KEY_PASSWORD, null)
+        val existing = UserFileStore.getSetting(context, KEY_PASSWORD)
         if (!existing.isNullOrEmpty()) return existing
         val generated = generatePassword()
-        prefs.edit().putString(KEY_PASSWORD, generated).apply()
+        UserFileStore.putSetting(context, KEY_PASSWORD, generated)
         LogBuffer.i("Auth", "generated new server password")
         return generated
     }
@@ -61,7 +58,7 @@ object ServerAuth {
     fun regeneratePassword(context: Context): String {
         init(context)
         val generated = generatePassword()
-        prefs.edit().putString(KEY_PASSWORD, generated).apply()
+        UserFileStore.putSetting(context, KEY_PASSWORD, generated)
         sessions.clear()
         LogBuffer.i("Auth", "password regenerated — all sessions dropped")
         return generated
