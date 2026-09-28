@@ -382,16 +382,15 @@ class LocalHttpServer(
             "restart-bridge" -> BridgeControl.restartBridge()
             "restart-roblox" -> BridgeControl.restartRoblox(context)
             "ctrl-t" -> {
-                val keyOk = when {
-                    svc != null -> svc.pressCtrlT()
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    else -> false
-                }
-                if (keyOk) "Ctrl+T sent (key path)"
-                else if (ShizukuShell.isReady() && ShizukuShell.openNewTabByPlusTap())
-                    "Ctrl+T keys failed — tapped CatWeb + button instead"
+                // On mobile CatWeb, Ctrl+T does nothing (PC-only). Use tabs-count → +.
+                if (ShizukuShell.isReady() && ShizukuShell.openNewTabByPlusTap())
+                    "Opened new tab via CatWeb tabs-count → + (mobile flow)"
+                else if (svc != null && svc.pressCtrlT())
+                    "Ctrl+T sent (key path — PC CatWeb only)"
+                else if (ShizukuShell.isReady() && ShizukuShell.pressCtrlT())
+                    "Ctrl+T sent (key path — PC CatWeb only)"
                 else
-                    "ERROR: Ctrl+T keys and + button all failed — check console"
+                    "ERROR: mobile new-tab failed — tap the tabs-count button manually once and retry"
             }
             "enter" -> {
                 val ok = when {

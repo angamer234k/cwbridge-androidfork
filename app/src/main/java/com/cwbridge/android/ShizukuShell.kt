@@ -298,6 +298,15 @@ object ShizukuShell {
         return false
     }
 
+    /**
+     * CatWeb mobile new-tab flow (NOT Chrome):
+     *  1) Tap the tabs-count button (square with a number, right of the URL/star)
+     *  2) Wait for the tab overview
+     *  3) Tap "+" in the overview
+     *
+     * Ctrl+T is PC-only per CatDocs — never rely on it on phones.
+     * Coords are % of screen; landscape is assumed (CatWeb is landscape-only).
+     */
     fun openNewTabByPlusTap(): Boolean {
         focusRoblox()
         try { Thread.sleep(200) } catch (_: InterruptedException) {}
@@ -307,66 +316,51 @@ object ShizukuShell {
         val w = sizeMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
         val h = sizeMatch?.groupValues?.getOrNull(2)?.toIntOrNull() ?: 0
         LogBuffer.i("Shizuku", "screen ${w}x$h (wm size exit=$szCode)")
-        if (w <= 0 || h <= 0) {
-            LogBuffer.w("Shizuku", "cannot resolve screen size — skip + taps")
-            return false
-        }
+        if (w <= 0 || h <= 0) return false
 
-        // Short phones: CatWeb auto-hides the tab bar. Pull it back into view.
-        revealCatWebChrome(w, h)
-
-        // (x%, y%) candidates for "+" once chrome is visible
-        val spots = listOf(
-            92f to 4f, 96f to 4f, 88f to 4f,
-            92f to 6f, 94f to 5f, 90f to 3f,
-            92f to 8f, 96f to 8f, 88f to 8f,  // a bit lower after reveal
-            50f to 4f,
-            85f to 8f, 97f to 8f,
-            92f to 10f, 94f to 12f,
+        // Step 1: tabs-count button (the "1" / "2" square right of address bar)
+        // From user photo: roughly right side of top chrome, left of screen edge.
+        val tabsCountSpots = listOf(
+            88f to 7f, 90f to 7f, 86f to 7f,
+            88f to 9f, 90f to 9f, 85f to 8f,
+            92f to 7f, 84f to 10f,
         )
-        var anyOk = false
-        for ((xp, yp) in spots) {
+        var hitTabs = false
+        for ((xp, yp) in tabsCountSpots) {
             val x = ((xp / 100f) * w).toInt()
             val y = ((yp / 100f) * h).toInt()
             val (code, out) = exec("input tap $x $y")
-            LogBuffer.i("Shizuku", "+ tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(40)}")
-            if (code == 0) anyOk = true
-            try { Thread.sleep(120) } catch (_: InterruptedException) {}
+            LogBuffer.i("Shizuku", "tabs-count tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(30)}")
+            if (code == 0) hitTabs = true
+            try { Thread.sleep(80) } catch (_: InterruptedException) {}
         }
-        LogBuffer.i("Shizuku", "openNewTabByPlusTap done anyOk=$anyOk")
-        return anyOk
-    }
+        if (!hitTabs) {
+            LogBuffer.w("Shizuku", "tabs-count taps all failed")
+            return false
+        }
+        // Let tab overview animate in
+        try { Thread.sleep(600) } catch (_: InterruptedException) {}
 
-    /**
-     * CatWeb on small-Y phones hides the tab strip. Common reveals:
-     *  1) swipe down from the top edge (pull chrome)
-     *  2) short tap near the top center (focus UI)
-     *  3) second slower swipe a bit deeper
-     */
-    private fun revealCatWebChrome(w: Int, h: Int) {
-        val midX = w / 2
-        val topY = maxOf(2, (h * 0.01f).toInt())
-        val pullY = maxOf(80, (h * 0.12f).toInt())
-        val pullY2 = maxOf(120, (h * 0.18f).toInt())
-
-        // Swipe down from top (gesture to expand browser chrome)
-        val swipes = listOf(
-            "input swipe $midX $topY $midX $pullY 180",
-            "input swipe $midX $topY $midX $pullY2 280",
-            // slight diagonal in case of edge-gesture conflict
-            "input swipe ${midX - 40} $topY ${midX - 40} $pullY 200",
+        // Step 2: "+" inside the tab overview (usually top-right or bottom-right)
+        val plusSpots = listOf(
+            92f to 8f, 95f to 8f, 88f to 8f,
+            92f to 12f, 95f to 12f,
+            92f to 92f, 95f to 92f, 88f to 90f,  // bottom variants
+            50f to 92f,  // some UIs center a big +
+            92f to 50f,
         )
-        for (cmd in swipes) {
-            val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "reveal chrome: $cmd exit=$code ${out.take(40)}")
-            try { Thread.sleep(250) } catch (_: InterruptedException) {}
+        var hitPlus = false
+        for ((xp, yp) in plusSpots) {
+            val x = ((xp / 100f) * w).toInt()
+            val y = ((yp / 100f) * h).toInt()
+            val (code, out) = exec("input tap $x $y")
+            LogBuffer.i("Shizuku", "tab-overview + tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(30)}")
+            if (code == 0) hitPlus = true
+            try { Thread.sleep(100) } catch (_: InterruptedException) {}
         }
-
-        // Tap top center — some layouts expand on tap instead of swipe
-        val tapY = maxOf(4, (h * 0.02f).toInt())
-        val (tc, to) = exec("input tap $midX $tapY")
-        LogBuffer.i("Shizuku", "reveal tap top-center ($midX,$tapY) exit=$tc ${to.take(40)}")
-        try { Thread.sleep(350) } catch (_: InterruptedException) {}
+        try { Thread.sleep(500) } catch (_: InterruptedException) {}
+        LogBuffer.i("Shizuku", "openNewTab mobile flow done tabs=$hitTabs plus=$hitPlus")
+        return hitTabs // overview opened; + may still have landed on one of the taps
     }
 
 

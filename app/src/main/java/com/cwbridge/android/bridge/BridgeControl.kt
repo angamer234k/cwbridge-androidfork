@@ -217,27 +217,27 @@ object BridgeControl {
             val d = raw.trim()
             if (d.isEmpty()) continue
             LogBuffer.i("Control", "openDomains [${i + 1}/${domains.size}] $d")
-            // Prefer + button taps (Roblox mobile rarely accepts synthetic Ctrl)
+            // CatWeb mobile: tabs-count → + (Ctrl+T is PC-only per CatDocs)
             var opened = false
             if (ShizukuShell.isReady()) {
                 opened = ShizukuShell.openNewTabByPlusTap()
-                if (!opened) opened = ShizukuShell.pressCtrlT()
             }
             if (!opened && svc != null) {
-                // a11y multi-spot +
-                for ((px, py) in listOf(
-                    92f to 4f, 96f to 4f, 88f to 5f, 94f to 6f, 50f to 4f
-                )) {
+                // a11y: tabs-count region then +
+                for ((px, py) in listOf(88f to 7f, 90f to 8f, 86f to 9f)) {
                     if (svc.clickAtPercent(px, py)) {
-                        LogBuffer.i("Control", "+ a11y tap @$px%,$py%")
+                        LogBuffer.i("Control", "tabs-count a11y @$px%,$py%")
                         opened = true
                         break
                     }
                 }
-                if (!opened) opened = svc.pressCtrlT()
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
+                for ((px, py) in listOf(92f to 8f, 95f to 12f, 92f to 92f, 50f to 92f)) {
+                    svc.clickAtPercent(px, py)
+                }
             }
             if (!opened) {
-                results += "$d: new-tab failed (keys + + button)"
+                results += "$d: new-tab failed (tabs-count / +)"
                 continue
             }
             try { Thread.sleep(400) } catch (_: InterruptedException) {}
