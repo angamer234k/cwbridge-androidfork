@@ -8,6 +8,19 @@ package com.cwbridge.android.bridge
  *   • finished   ← loading done → overlay goes green
  */
 object CatWebTracker {
+
+    /** Fired once when CatWeb prints finished — used to open domains on load. */
+    @Volatile
+    private var readyCallback: (() -> Unit)? = null
+
+    @Volatile
+    private var readyFired: Boolean = false
+
+    fun setOnReadyOnce(cb: (() -> Unit)?) {
+        readyCallback = cb
+        readyFired = false
+    }
+
     @Volatile
     var seenBoot: Boolean = false
         private set
@@ -23,6 +36,7 @@ object CatWebTracker {
     fun reset() {
         seenBoot = false
         ready = false
+        readyFired = false
         lastLine = ""
     }
 
@@ -49,6 +63,14 @@ object CatWebTracker {
         if (finished) {
             ready = true
             BridgeStatus.set(OverlayState.ACTIVE, "CatWeb ready")
+            if (!readyFired) {
+                readyFired = true
+                try {
+                    readyCallback?.invoke()
+                } catch (t: Throwable) {
+                    LogBuffer.e("CatWeb", "onReady: ${t.message}")
+                }
+            }
         } else if (!ready) {
             val detail = when {
                 lower.contains("waiting for server") -> "Waiting for server…"

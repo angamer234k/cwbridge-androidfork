@@ -55,6 +55,13 @@ object AntiDisconnect {
         ) {
             LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
             noteActivity()
+            val hasReconnect = lower.contains("reconnect")
+            if (!hasReconnect) {
+                // Dead disconnect (no reconnect affordance in the log line).
+                // OCR path will refine this; for now count + mark waiting.
+                val n = BridgeControl.bumpDisconnectFailsafe()
+                LogBuffer.w("AntiDC", "no reconnect hint — failsafe=$n")
+            }
             if (BridgeStatus.state != OverlayState.ERROR) {
                 BridgeStatus.set(OverlayState.WAITING, "Reconnecting…")
             }

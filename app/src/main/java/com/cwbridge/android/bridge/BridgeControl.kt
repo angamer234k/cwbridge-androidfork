@@ -259,4 +259,61 @@ object BridgeControl {
         results += if (ctrl1) "Ctrl+1 ok" else "Ctrl+1 failed"
         return results.joinToString("; ")
     }
+
+
+    /** How many forced Roblox relaunches after a dead disconnect (no Reconnect). */
+    @Volatile
+    var disconnectFailsafe: Int = 0
+        private set
+
+    fun bumpDisconnectFailsafe(): Int {
+        disconnectFailsafe += 1
+        LogBuffer.w("Control", "disconnect failsafe now=$disconnectFailsafe")
+        return disconnectFailsafe
+    }
+
+    fun resetDisconnectFailsafe() {
+        disconnectFailsafe = 0
+    }
+
+    /**
+     * Called when CatWeb logs "finished". Opens domains saved for auto-load
+     * by focusing the URL bar (no Ctrl+T — mobile CatWeb is not Chrome).
+     */
+    fun openDomainsOnCwLoad(context: Context): String {
+        val domains = loadAutoOpenDomains(context)
+        if (domains.isEmpty()) {
+            LogBuffer.i("Control", "CW load: no auto-open domains configured")
+            return "no auto-open domains"
+        }
+        LogBuffer.i("Control", "CW load: opening ${domains.size} domain(s)")
+        // First domain: just navigate current tab via URL bar.
+        // Further domains: try tabs-count → + then URL bar.
+        return openDomains(domains)
+    }
+
+    fun loadAutoOpenDomains(context: Context): List<String> {
+        return try {
+            com.cwbridge.android.data.UserFileStore.init(context.applicationContext)
+            val raw = com.cwbridge.android.data.UserFileStore.settingsGet(
+                context.applicationContext,
+                "auto_open_domains",
+                "",
+            )
+            raw.lines().flatMap { it.split(",", ";") }.map { it.trim() }.filter { it.isNotEmpty() }
+        } catch (t: Throwable) {
+            LogBuffer.w("Control", "loadAutoOpenDomains: ${t.message}")
+            emptyList()
+        }
+    }
+
+    fun saveAutoOpenDomains(context: Context, domains: List<String>) {
+        com.cwbridge.android.data.UserFileStore.init(context.applicationContext)
+        com.cwbridge.android.data.UserFileStore.settingsPut(
+            context.applicationContext,
+            "auto_open_domains",
+            domains.joinToString("\n"),
+        )
+    }
+
 }

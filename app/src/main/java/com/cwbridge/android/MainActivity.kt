@@ -681,6 +681,18 @@ class MainActivity : AppCompatActivity() {
             }
             bridgeRunning = true
             CatWebTracker.reset()
+            CatWebTracker.setOnReadyOnce {
+                Thread {
+                    try {
+                        // Small settle delay after "finished"
+                        Thread.sleep(800)
+                        val msg = BridgeControl.openDomainsOnCwLoad(applicationContext)
+                        LogBuffer.i("CWBridge", "domains on CW load: $msg")
+                    } catch (t: Throwable) {
+                        LogBuffer.e("CWBridge", "domains on CW load: ${t.message}")
+                    }
+                }.start()
+            }
             AntiDisconnect.start(bridgeScope)
             ensureLogcatRunning()
             BridgeControl.scheduleOpenCatWebIfNeeded(applicationContext, 10_000L)
