@@ -152,7 +152,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   <div class="card" id="diagnoseCard">
     <h2>Diagnose</h2>
     <div class="row">
-      <button onclick="runDiagnose()">Diagnose issues</button>
+      <button type="button" id="btnDiagnose" onclick="runDiagnose();return false;">Diagnose issues</button>
     </div>
     <ul id="diagOut" class="diag"></ul>
   </div>
@@ -267,22 +267,26 @@ async function doLogin() {
     msg('loginMsg', '');
     
 async function runDiagnose() {
-  var ul = D('diagOut'); ul.innerHTML = '<li>checking…</li>';
+  var ul = D('diagOut');
+  if (!ul) { alert('diagOut missing'); return; }
+  ul.innerHTML = '<li>checking...</li>';
   try {
     var s = await api('/api/diagnose');
     var items = [];
-    items.push(li(s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound' : ''));
-    items.push(li(s.shizukuReady, 'Shizuku ready', s.shizuku || ''));
-    items.push(li(true, 'Screenshot: ' + s.screenshot, ''));
-    items.push(li(true, 'Android SDK ' + s.androidSdk, ''));
-    (s.issues || []).forEach(function(i){ items.push('<li class="bad">• ' + esc(i) + '</li>'); });
-    if (!s.issues || !s.issues.length) items.push('<li class="ok">• no blocking issues</li>');
+    function row(ok, label, extra) {
+      return '<li class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? '[OK] ' : '[FAIL] ') + esc(label)
+        + (extra ? ' (' + esc(extra) + ')' : '') + '</li>';
+    }
+    items.push(row(!!s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound' : ''));
+    items.push(row(!!s.shizukuReady, 'Shizuku ready', s.shizuku || ''));
+    items.push(row(true, 'Screenshot: ' + (s.screenshot || ''), ''));
+    items.push(row(true, 'Android SDK ' + s.androidSdk, ''));
+    (s.issues || []).forEach(function(i){ items.push('<li class="bad">- ' + esc(i) + '</li>'); });
+    if (!s.issues || !s.issues.length) items.push('<li class="ok">- no blocking issues</li>');
     ul.innerHTML = items.join('');
-  } catch (e) { ul.innerHTML = '<li class="bad">' + esc(e.message) + '</li>'; }
-}
-function li(ok, label, extra) {
-  return '<li class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ ' : '✗ ') + esc(label)
-    + (extra ? ' <span style="color:var(--muted)">(' + esc(extra) + ')</span>' : '') + '</li>';
+  } catch (e) {
+    ul.innerHTML = '<li class="bad">' + esc(e.message || e) + '</li>';
+  }
 }
 async function openDomains() {
   var raw = D('domainList').value;

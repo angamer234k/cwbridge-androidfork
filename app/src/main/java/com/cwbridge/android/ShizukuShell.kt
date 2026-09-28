@@ -130,17 +130,48 @@ object ShizukuShell {
     }
 
     fun pressCtrlT(): Boolean {
+        // Bring Roblox to front — keys go nowhere if another app is focused.
+        focusRoblox()
+        try { Thread.sleep(350) } catch (_: InterruptedException) {}
+
+        // keycombination is the real chord. Exit 0 is not always trustworthy on OEMs,
+        // so try several forms and always report what ran.
         val cmds = listOf(
+            "cmd input keycombination 113 48",
             "input keycombination 113 48",
+            "cmd input keycombination 114 48",
             "input keycombination 114 48",
-            "input keyevent --longpress 113 48",
+            // Some builds want symbolic names (ignored if unsupported)
+            "cmd input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
+            "input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
+        )
+        var anyZero = false
+        for (cmd in cmds) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "pressCtrlT cmd=$cmd exit=$code ${out.take(100)}")
+            if (code == 0) anyZero = true
+        }
+        // Fallback: short Ctrl hold via two keyevents with no gap (best-effort)
+        if (!anyZero) {
+            val (c1, o1) = exec("input keyevent KEYCODE_CTRL_LEFT")
+            LogBuffer.i("Shizuku", "fallback CTRL exit=$c1 $o1")
+            val (c2, o2) = exec("input keyevent KEYCODE_T")
+            LogBuffer.i("Shizuku", "fallback T exit=$c2 $o2")
+            anyZero = c1 == 0 && c2 == 0
+        }
+        return anyZero
+    }
+
+    fun focusRoblox(packageName: String = "com.roblox.client") {
+        val cmds = listOf(
+            "monkey -p $packageName -c android.intent.category.LAUNCHER 1",
+            "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName",
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "pressCtrlT cmd=$cmd exit=$code ${out.take(80)}")
-            if (code == 0) return true
+            LogBuffer.i("Shizuku", "focusRoblox cmd=$cmd exit=$code ${out.take(80)}")
+            if (code == 0) return
         }
-        return false
     }
 
     fun pressCtrlNumber(n: Int): Boolean {

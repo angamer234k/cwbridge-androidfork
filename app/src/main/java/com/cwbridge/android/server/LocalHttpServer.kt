@@ -383,11 +383,12 @@ class LocalHttpServer(
             "restart-roblox" -> BridgeControl.restartRoblox(context)
             "ctrl-t" -> {
                 val ok = when {
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
                     svc != null -> svc.pressCtrlT()
+                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
                     else -> false
                 }
-                if (ok) "Ctrl+T sent" else "Ctrl+T failed"
+                if (ok) "Ctrl+T sent (focus Roblox first if nothing happened)"
+                else "Ctrl+T failed — open Roblox, grant Shizuku, check console logs"
             }
             "enter" -> {
                 val ok = when {

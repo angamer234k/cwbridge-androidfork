@@ -163,34 +163,39 @@ class TapService : AccessibilityService() {
 
     fun pressCtrlT(): Boolean {
         LogBuffer.i("A11y", "pressCtrlT")
+        var shizukuOk = false
         if (ShizukuShell.isReady()) {
-            val ok = ShizukuShell.pressCtrlT()
-            LogBuffer.i("A11y", "pressCtrlT via Shizuku ok=$ok")
-            if (ok) return true
+            shizukuOk = ShizukuShell.pressCtrlT()
+            LogBuffer.i("A11y", "pressCtrlT via Shizuku ok=$shizukuOk")
         } else {
             LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
         }
-        val ok = injectCtrlChord(KeyEvent.KEYCODE_T)
-        if (ok) {
-            LogBuffer.i("A11y", "pressCtrlT inject ok=true")
-            return true
-        }
-        LogBuffer.w("A11y", "pressCtrlT failed — start Shizuku + grant CWBridge in Shizuku app")
+        // Always also try local inject — some OEMs report exit 0 for keycombination but deliver nothing.
+        val injectOk = injectCtrlChord(KeyEvent.KEYCODE_T)
+        LogBuffer.i("A11y", "pressCtrlT inject ok=$injectOk")
+        if (shizukuOk || injectOk) return true
+        LogBuffer.w("A11y", "pressCtrlT failed — Roblox focused? Shizuku granted?")
         return false
     }
 
     fun injectCtrlChord(keyCode: Int): Boolean {
-        val now = SystemClock.uptimeMillis()
+        val downTime = SystemClock.uptimeMillis()
         val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        fun ev(action: Int, code: Int, metaState: Int, whenMs: Long) =
+            KeyEvent(downTime, whenMs, action, code, 0, metaState, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD)
+        var t = downTime
         val events = listOf(
-            KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
+            ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, meta, t),
+            ev(KeyEvent.ACTION_DOWN, keyCode, meta, t + 20),
+            ev(KeyEvent.ACTION_UP, keyCode, meta, t + 40),
+            ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, t + 50),
         )
         for (e in events) {
-            if (!injectKeyEvent(e)) return false
-            try { Thread.sleep(8) } catch (_: InterruptedException) {}
+            if (!injectKeyEvent(e)) {
+                LogBuffer.w("A11y", "injectCtrlChord failed on key=${e.keyCode} action=${e.action}")
+                return false
+            }
+            try { Thread.sleep(15) } catch (_: InterruptedException) {}
         }
         return true
     }
