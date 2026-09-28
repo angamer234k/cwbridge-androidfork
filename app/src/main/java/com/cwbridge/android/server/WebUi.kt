@@ -126,8 +126,8 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
   <div class="card">
     <h2>Remote control</h2>
     <div class="row">
-      <button type="button" onclick="ctl(\'restart-bridge\')">Restart bridge</button>
-      <button type="button" onclick="ctl(\'restart-roblox\')">Restart Roblox</button>
+      <button type="button" onclick="ctl('restart-bridge')">Restart bridge</button>
+      <button type="button" onclick="ctl('restart-roblox')">Restart Roblox</button>
       <button type="button" onclick="toggleBridge()">Toggle bridge</button>
       <!--SCREENSHOT_BUTTON-->
     </div>
@@ -141,9 +141,9 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
     <h2>Keys</h2>
     <p class="hint">Roblox must be on-screen. Ctrl+T tries many inject methods until one reports success.</p>
     <div class="row">
-      <button type="button" onclick="ctl(\'ctrl-t\')">Ctrl+T</button>
-      <button type="button" onclick="ctl(\'enter\')">Enter</button>
-      <button type="button" class="ghost" onclick="ctl(\'clipboard\')">Read clipboard</button>
+      <button type="button" onclick="ctl('ctrl-t')">Ctrl+T</button>
+      <button type="button" onclick="ctl('enter')">Enter</button>
+      <button type="button" class="ghost" onclick="ctl('clipboard')">Read clipboard</button>
     </div>
   </div>
 
@@ -247,8 +247,8 @@ const D = function(id){ return document.getElementById(id); };
 let NEEDS_LOGIN = false;
 
 function esc(s){
-  return String(s == null ? "" : s).replace(/[&<>"\']/g, function(c){
-    return ({"&":"&","<":"<",">":">","\"":""","\'":"&#39;"})[c];
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'})[c];
   });
 }
 function msg(id, text, cls){
@@ -410,10 +410,10 @@ async function refreshServices(){
       var id = esc(v.id || v.name);
       return "<div class=\"svc\"><strong>" + esc(v.name) + "</strong>" +
         " <span class=\"badge " + (v.enabled ? "on" : "off") + "\">" + (v.enabled ? "ON" : "OFF") + "</span>" +
-        " <button type=\"button\" class=\"soft\" onclick=\"runService(\'" + id + "\')\">Run</button>" +
+        " <button type=\"button\" class=\"soft\" onclick=\"runService(\'" + id + "')\">Run</button>" +
         " <button type=\"button\" class=\"ghost\" onclick=\"toggleService(\'" + id + "\'," + (!v.enabled) + ")\">" +
         (v.enabled ? "Disable" : "Enable") + "</button>" +
-        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(\'" + id + "\')\">Delete</button></div>";
+        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(\'" + id + "')\">Delete</button></div>";
     }).join("") || "<div class=\"hint\">No services yet</div>";
   }catch(e){}
 }
@@ -453,7 +453,7 @@ async function refreshStore(){
     D("storeRows").innerHTML = rows.map(function(d){
       return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
         esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
-        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(\'" + esc(d.domain) + "\')\">Clear</button></td></tr>";
+        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(\'" + esc(d.domain) + "')\">Clear</button></td></tr>";
     }).join("") || "<tr><td colspan=\"5\" style=\"color:var(--muted)\">empty</td></tr>";
   }catch(e){}
 }
