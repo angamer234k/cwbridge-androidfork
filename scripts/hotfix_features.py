@@ -1,234 +1,610 @@
 #!/usr/bin/env python3
-"""Fix Ctrl+T (focus Roblox + real key inject) and diagnose button JS."""
+"""Rewrite WebUi (working JS + cleaner UI), harden Ctrl+T."""
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def patch_shizuku() -> None:
+WEBUI = r'''package com.cwbridge.android.server
+
+/**
+ * Built-in control panel. Split into PART_* raw strings so check-webui.js can
+ * reconstruct and syntax-check the inline JS at CI time.
+ */
+object WebUi {
+
+    private val PART_A: String = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>CWBridge</title>
+<style>
+:root{
+  --bg:#0c0e12; --panel:#151922; --panel2:#1b2030; --line:rgba(255,255,255,.08);
+  --text:#eef1f7; --muted:#8b93a7; --accent:#6ea8fe; --accent2:#5b8def;
+  --ok:#3dd68c; --warn:#f5a524; --danger:#f76c6c; --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-text-size-adjust:100%}
+a{color:var(--accent)}
+.hide{display:none!important}
+header{
+  position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
+  background:rgba(12,14,18,.88);border-bottom:1px solid var(--line);
+  padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.brand{font-weight:700;letter-spacing:.02em}
+.chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  padding:4px 10px;border-radius:999px;background:var(--panel2);color:var(--muted)}
+.chip.ACTIVE{background:rgba(61,214,140,.15);color:var(--ok)}
+.chip.WAITING{background:rgba(245,165,36,.15);color:var(--warn)}
+.chip.ERROR{background:rgba(247,108,108,.15);color:var(--danger)}
+.chip.IDLE{background:var(--panel2);color:var(--muted)}
+.detail{color:var(--muted);font-size:12px;flex:1;min-width:120px}
+main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:12px}
+.card{
+  background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--line);border-radius:var(--radius);padding:14px 14px 12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
+.card h2{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+button,.btn{
+  appearance:none;border:0;border-radius:12px;padding:11px 14px;min-height:44px;
+  font:inherit;font-weight:650;cursor:pointer;color:#0b1020;background:var(--accent);
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+button:active{transform:scale(.98)}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+button.soft{background:rgba(110,168,254,.14);color:var(--accent)}
+button.danger{background:rgba(247,108,108,.18);color:var(--danger)}
+button.block{width:100%}
+input,textarea,select{
+  width:100%;background:#0f131b;border:1px solid var(--line);border-radius:12px;
+  color:var(--text);padding:11px 12px;font:inherit;min-height:44px;
+}
+textarea{min-height:96px;resize:vertical}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+.field{flex:1;min-width:120px}
+.msg{margin-top:8px;font-size:13px;color:var(--muted);word-break:break-word}
+.msg.good{color:var(--ok)}.msg.err{color:var(--danger)}
+pre{
+  margin:0;background:#0b0f16;border:1px solid var(--line);border-radius:12px;
+  padding:12px;max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  color:#b7c7ff;white-space:pre-wrap;word-break:break-word;
+}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.svc{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.svc:last-child{border-bottom:0}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.06)}
+.badge.on{color:var(--ok)}.badge.off{color:var(--warn)}
+#shotImg{max-width:100%;border-radius:12px;border:1px solid var(--line);margin-top:8px}
+.hint{font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.4}
+ul.diag{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
+ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
+.footer{text-align:center;color:var(--muted);font-size:11px;padding:8px 0 24px}
+</style>
+</head>
+<body>
+""".trimIndent()
+
+    private val PART_B: String = """
+<div id="login" class="hide">
+  <main>
+    <div class="card">
+      <h2>Unlock remote access</h2>
+      <p class="hint">Not on the same LAN as the phone — enter the password shown in the app under Server.</p>
+      <div class="row">
+        <div class="field"><input id="pw" type="password" placeholder="Server password" autocomplete="current-password"></div>
+        <button type="button" onclick="doLogin()">Unlock</button>
+      </div>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+  </main>
+</div>
+
+<div id="app">
+<header>
+  <div class="brand">CWBridge</div>
+  <span id="pill" class="chip IDLE">-</span>
+  <span id="detail" class="detail"></span>
+  <button type="button" class="ghost" onclick="logout()">Lock</button>
+</header>
+<main>
+  <div class="card">
+    <h2>Status</h2>
+    <div class="row">
+      <button type="button" class="soft" onclick="runDiagnose()">Diagnose</button>
+      <button type="button" class="ghost" onclick="refreshAll()">Refresh</button>
+    </div>
+    <ul id="diagOut" class="diag"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Remote control</h2>
+    <div class="row">
+      <button type="button" onclick="ctl(\'restart-bridge\')">Restart bridge</button>
+      <button type="button" onclick="ctl(\'restart-roblox\')">Restart Roblox</button>
+      <button type="button" onclick="toggleBridge()">Toggle bridge</button>
+      <!--SCREENSHOT_BUTTON-->
+    </div>
+    <div id="ctlMsg" class="msg"></div>
+    <div id="shotBox"></div>
+  </div>
+""".trimIndent()
+
+    private val PART_C: String = """
+  <div class="card">
+    <h2>Keys</h2>
+    <p class="hint">Roblox must be on-screen. Ctrl+T tries many inject methods until one reports success.</p>
+    <div class="row">
+      <button type="button" onclick="ctl(\'ctrl-t\')">Ctrl+T</button>
+      <button type="button" onclick="ctl(\'enter\')">Enter</button>
+      <button type="button" class="ghost" onclick="ctl(\'clipboard\')">Read clipboard</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Open domains</h2>
+    <p class="hint">One domain per line. Flow: Ctrl+T, tap URL bar (X/Y %), type domain, Enter, wait, then Ctrl+1. Needs Shizuku.</p>
+    <textarea id="domainList" placeholder="example.rbx"></textarea>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>URL bar X%</label><input id="urlX" value="50" inputmode="decimal"></div>
+      <div class="field"><label>URL bar Y%</label><input id="urlY" value="6" inputmode="decimal"></div>
+      <button type="button" onclick="openDomains()">Open all</button>
+    </div>
+    <div id="domMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Send invoke</h2>
+    <div class="row">
+      <div class="field"><input id="inv" placeholder="tap 50 85 | paste hello | save key value"></div>
+      <button type="button" onclick="sendInvoke()">Send</button>
+    </div>
+    <div id="invMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Tap</h2>
+    <div class="grid2">
+      <div class="field"><label>X%</label><input id="tx" value="50" inputmode="decimal"></div>
+      <div class="field"><label>Y%</label><input id="ty" value="50" inputmode="decimal"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" onclick="tapPercent()">Tap %</button>
+      <button type="button" class="ghost" onclick="tapPx()">Tap px</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><input id="ttext" placeholder="Button text (a11y tree)"></div>
+      <button type="button" class="ghost" onclick="tapText()">Tap text</button>
+    </div>
+    <div id="tapMsg" class="msg"></div>
+  </div>
+""".trimIndent()
+
+    private val PART_D: String = """
+  <div class="card">
+    <h2>Services</h2>
+    <div id="svcList"></div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><input id="svcName" placeholder="New service name"></div>
+      <button type="button" onclick="createService()">Create</button>
+    </div>
+    <div id="svcMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Storage</h2>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Domain</th><th>Keys</th><th>Used</th><th>Limit</th><th></th></tr></thead>
+      <tbody id="storeRows"></tbody></table>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><input id="qDomain" placeholder="name.rbx"></div>
+      <div class="field"><input id="qLimit" placeholder="2MB"></div>
+      <button type="button" class="ghost" onclick="setLimit()">Set limit</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><input id="sDomain" placeholder="domain"></div>
+      <div class="field"><input id="sKey" placeholder="key"></div>
+      <div class="field"><input id="sVal" placeholder="value"></div>
+      <button type="button" onclick="saveKey()">Save</button>
+    </div>
+    <div id="storeMsg" class="msg"></div>
+  </div>
+""".trimIndent()
+
+    private val PART_E: String = """
+  <div class="card">
+    <h2>Variables</h2>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody id="varRows"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Console</h2>
+    <pre id="console">-</pre>
+    <div class="row" style="margin-top:10px">
+      <button type="button" class="ghost" onclick="refreshConsole()">Refresh</button>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--muted)">
+        <input type="checkbox" id="auto" checked style="width:auto;min-height:0"> auto
+      </label>
+    </div>
+  </div>
+</main>
+<div class="footer">CWBridge web panel</div>
+</div>
+""".trimIndent()
+
+    private val PART_F: String = """
+<script>
+const D = function(id){ return document.getElementById(id); };
+let NEEDS_LOGIN = false;
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"\']/g, function(c){
+    return ({"&":"&","<":"<",">":">","\"":""","\'":"&#39;"})[c];
+  });
+}
+function msg(id, text, cls){
+  var el = D(id); if(!el) return;
+  el.className = "msg" + (cls ? (" " + cls) : "");
+  el.textContent = text || "";
+}
+function showLogin(){
+  NEEDS_LOGIN = true;
+  D("login").classList.remove("hide");
+  D("app").classList.add("hide");
+}
+function revealApp(){
+  NEEDS_LOGIN = false;
+  D("login").classList.add("hide");
+  D("app").classList.remove("hide");
+}
+
+async function api(path, opts){
+  var res = await fetch(path, Object.assign({credentials:"same-origin"}, opts || {}));
+  if(res.status === 401){ showLogin(); throw new Error("locked"); }
+  var ct = res.headers.get("content-type") || "";
+  if(ct.indexOf("application/json") < 0){
+    if(!res.ok) throw new Error(await res.text());
+    return res;
+  }
+  var data = await res.json();
+  if(!res.ok) throw new Error(data.error || ("error " + res.status));
+  return data;
+}
+function post(path, body){
+  return api(path, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {})
+  });
+}
+
+async function doLogin(){
+  try{
+    await post("/api/login", {password: D("pw").value});
+    msg("loginMsg", "");
+    revealApp();
+    refreshAll();
+  }catch(e){ msg("loginMsg", e.message, "err"); }
+}
+async function logout(){
+  try{ await post("/api/logout"); }catch(e){}
+  showLogin();
+}
+
+async function refreshStatus(){
+  try{
+    var s = await api("/api/status");
+    revealApp();
+    var p = D("pill");
+    p.textContent = s.state || "-";
+    p.className = "chip " + (s.state || "IDLE");
+    D("detail").textContent = s.detail || "";
+  }catch(e){
+    if(String(e.message) === "locked") return;
+  }
+}
+
+async function runDiagnose(){
+  var ul = D("diagOut");
+  ul.innerHTML = "<li>checking...</li>";
+  try{
+    var s = await api("/api/diagnose");
+    var items = [];
+    function row(ok, label, extra){
+      return "<li class=\"" + (ok ? "ok" : "bad") + "\">" +
+        (ok ? "[OK] " : "[FAIL] ") + esc(label) +
+        (extra ? " (" + esc(extra) + ")" : "") + "</li>";
+    }
+    items.push(row(!!s.a11yBound, "Accessibility bound",
+      s.a11yListed && !s.a11yBound ? "listed but not bound" : ""));
+    items.push(row(!!s.shizukuReady, "Shizuku ready", s.shizuku || ""));
+    items.push(row(true, "Screenshot: " + (s.screenshot || ""), ""));
+    items.push(row(true, "Android SDK " + s.androidSdk, ""));
+    (s.issues || []).forEach(function(i){
+      items.push("<li class=\"bad\">- " + esc(i) + "</li>");
+    });
+    if(!s.issues || !s.issues.length){
+      items.push("<li class=\"ok\">- no blocking issues</li>");
+    }
+    ul.innerHTML = items.join("");
+  }catch(e){
+    ul.innerHTML = "<li class=\"bad\">" + esc(e.message) + "</li>";
+  }
+}
+
+async function openDomains(){
+  var raw = D("domainList").value || "";
+  var x = parseFloat(D("urlX").value); if(isNaN(x)) x = 50;
+  var y = parseFloat(D("urlY").value); if(isNaN(y)) y = 6;
+  msg("domMsg", "opening...", "");
+  try{
+    var r = await post("/api/domains", {domains: raw, urlBarX: x, urlBarY: y});
+    msg("domMsg", r.message || "done", "good");
+  }catch(e){ msg("domMsg", e.message, "err"); }
+}
+
+async function ctl(action){
+  msg("ctlMsg", "working...", "");
+  try{
+    var r = await api("/api/control/" + action);
+    msg("ctlMsg", r.message || "ok", "good");
+    refreshConsole();
+  }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+async function toggleBridge(){
+  try{
+    var r = await post("/api/bridge/toggle");
+    msg("ctlMsg", r.message, "good");
+    refreshStatus();
+  }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+async function loadShot(){
+  msg("ctlMsg", "capturing...", "");
+  try{
+    var res = await api("/api/screenshot");
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    D("shotBox").innerHTML = "<img id=\"shotImg\" alt=\"screenshot\" src=\"" + url + "\">";
+    msg("ctlMsg", "screenshot ok", "good");
+  }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+async function sendInvoke(){
+  try{
+    var r = await post("/api/invoke", {line: D("inv").value});
+    msg("invMsg", r.message || "ok", "good");
+  }catch(e){ msg("invMsg", e.message, "err"); }
+}
+async function tapPercent(){
+  try{
+    var r = await post("/api/tap", {mode:"percent", x: parseFloat(D("tx").value), y: parseFloat(D("ty").value)});
+    msg("tapMsg", r.message, "good");
+  }catch(e){ msg("tapMsg", e.message, "err"); }
+}
+async function tapPx(){
+  try{
+    var r = await post("/api/tap", {mode:"px", x: parseFloat(D("tx").value), y: parseFloat(D("ty").value)});
+    msg("tapMsg", r.message, "good");
+  }catch(e){ msg("tapMsg", e.message, "err"); }
+}
+async function tapText(){
+  try{
+    var r = await post("/api/tap", {mode:"text", text: D("ttext").value});
+    msg("tapMsg", r.message, "good");
+  }catch(e){ msg("tapMsg", e.message, "err"); }
+}
+
+async function refreshServices(){
+  try{
+    var s = await api("/api/services");
+    var list = s.services || [];
+    D("svcList").innerHTML = list.map(function(v){
+      var id = esc(v.id || v.name);
+      return "<div class=\"svc\"><strong>" + esc(v.name) + "</strong>" +
+        " <span class=\"badge " + (v.enabled ? "on" : "off") + "\">" + (v.enabled ? "ON" : "OFF") + "</span>" +
+        " <button type=\"button\" class=\"soft\" onclick=\"runService(\'" + id + "\')\">Run</button>" +
+        " <button type=\"button\" class=\"ghost\" onclick=\"toggleService(\'" + id + "\'," + (!v.enabled) + ")\">" +
+        (v.enabled ? "Disable" : "Enable") + "</button>" +
+        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(\'" + id + "\')\">Delete</button></div>";
+    }).join("") || "<div class=\"hint\">No services yet</div>";
+  }catch(e){}
+}
+async function createService(){
+  try{
+    var r = await post("/api/services", {name: D("svcName").value});
+    msg("svcMsg", r.message || "created", "good");
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function runService(id){
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(id) + "/run");
+    msg("svcMsg", r.message || "running", "good");
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function toggleService(id, enabled){
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(id) + "/toggle", {enabled: enabled});
+    msg("svcMsg", r.message || "ok", "good");
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function deleteService(id){
+  if(!confirm("Delete service?")) return;
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(id) + "/delete");
+    msg("svcMsg", r.message || "deleted", "good");
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+
+async function refreshStore(){
+  try{
+    var s = await api("/api/store");
+    var rows = s.domains || [];
+    D("storeRows").innerHTML = rows.map(function(d){
+      return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
+        esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
+        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(\'" + esc(d.domain) + "\')\">Clear</button></td></tr>";
+    }).join("") || "<tr><td colspan=\"5\" style=\"color:var(--muted)\">empty</td></tr>";
+  }catch(e){}
+}
+async function setLimit(){
+  try{
+    var r = await post("/api/limits", {domain: D("qDomain").value, limit: D("qLimit").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function saveKey(){
+  try{
+    var r = await post("/api/store", {domain: D("sDomain").value, key: D("sKey").value, value: D("sVal").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function clearDomain(d){
+  if(!confirm("Clear " + d + "?")) return;
+  try{
+    var r = await post("/api/store/clear", {domain: d});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function refreshVars(){
+  try{
+    var s = await api("/api/vars");
+    var keys = Object.keys(s.vars || {});
+    D("varRows").innerHTML = keys.map(function(k){
+      return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
+    }).join("") || "<tr><td colspan=\"2\" style=\"color:var(--muted)\">none</td></tr>";
+  }catch(e){}
+}
+async function refreshConsole(){
+  try{
+    var s = await api("/api/logs");
+    D("console").textContent = (s.lines || []).join("\n") || "(no lines)";
+  }catch(e){}
+}
+function refreshAll(){
+  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
+}
+setInterval(function(){
+  if(NEEDS_LOGIN) return;
+  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
+}, 3000);
+refreshAll();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
+
+    fun page(showScreenshot: Boolean): String = FULL.replace(
+        SCREENSHOT_MARKER,
+        if (showScreenshot) SCREENSHOT_BUTTON else "",
+    )
+
+    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
+    private const val SCREENSHOT_BUTTON =
+        """<button type="button" class="ghost" onclick="loadShot()">Screenshot</button>"""
+}
+'''
+
+def write_webui() -> None:
+    path = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
+    path.write_text(WEBUI)
+    print("WebUi rewritten", path.stat().st_size)
+
+def patch_ctrl_t() -> None:
     p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
     t = p.read_text()
-    m = re.search(r"    fun pressCtrlT\(\): Boolean \{.*?\n    \}\n\n    fun pressCtrlNumber", t, re.S)
-    if not m:
-        # try without blank line
-        m = re.search(r"    fun pressCtrlT\(\): Boolean \{.*?\n    \}\n    fun pressCtrlNumber", t, re.S)
-    if not m:
-        raise SystemExit("pressCtrlT block not found")
+    # Replace pressCtrlT with aggressive retry loop
+    start = t.find("    fun pressCtrlT(): Boolean {")
+    if start < 0:
+        raise SystemExit("pressCtrlT missing")
+    end = t.find("    fun focusRoblox", start)
+    if end < 0:
+        end = t.find("    fun pressCtrlNumber", start)
+    if end < 0:
+        raise SystemExit("end marker missing")
 
-    repl = r'''    fun pressCtrlT(): Boolean {
-        // Bring Roblox to front — keys go nowhere if another app is focused.
+    new = '''    fun pressCtrlT(): Boolean {
         focusRoblox()
-        try { Thread.sleep(350) } catch (_: InterruptedException) {}
+        try { Thread.sleep(400) } catch (_: InterruptedException) {}
 
-        // keycombination is the real chord. Exit 0 is not always trustworthy on OEMs,
-        // so try several forms and always report what ran.
         val cmds = listOf(
             "cmd input keycombination 113 48",
             "input keycombination 113 48",
             "cmd input keycombination 114 48",
             "input keycombination 114 48",
-            // Some builds want symbolic names (ignored if unsupported)
             "cmd input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
             "input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
+            "cmd input keycombination 113 48 0",
+            "input keyevent --longpress 113 48",
         )
-        var anyZero = false
-        for (cmd in cmds) {
-            val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "pressCtrlT cmd=$cmd exit=$code ${out.take(100)}")
-            if (code == 0) anyZero = true
+        // Retry every method up to 3 rounds until one reports exit 0 AND empty stderr-ish.
+        repeat(3) { round ->
+            for (cmd in cmds) {
+                val (code, out) = exec(cmd)
+                LogBuffer.i("Shizuku", "Ctrl+T r$round cmd=$cmd exit=$code ${out.take(80)}")
+                if (code == 0 && !out.contains("Error", ignoreCase = true) &&
+                    !out.contains("Unknown", ignoreCase = true)
+                ) {
+                    LogBuffer.i("Shizuku", "Ctrl+T SUCCESS via $cmd")
+                    return true
+                }
+            }
+            try { Thread.sleep(200) } catch (_: InterruptedException) {}
         }
-        // Fallback: short Ctrl hold via two keyevents with no gap (best-effort)
-        if (!anyZero) {
-            val (c1, o1) = exec("input keyevent KEYCODE_CTRL_LEFT")
-            LogBuffer.i("Shizuku", "fallback CTRL exit=$c1 $o1")
-            val (c2, o2) = exec("input keyevent KEYCODE_T")
-            LogBuffer.i("Shizuku", "fallback T exit=$c2 $o2")
-            anyZero = c1 == 0 && c2 == 0
-        }
-        return anyZero
+        LogBuffer.w("Shizuku", "Ctrl+T all methods failed after retries")
+        return false
     }
 
-    fun focusRoblox(packageName: String = "com.roblox.client") {
+'''
+    # Keep focusRoblox if present, else include it
+    if "fun focusRoblox" not in t[end:end+80]:
+        # end points at pressCtrlNumber maybe
+        pass
+    p.write_text(t[:start] + new + t[end:])
+    print("Ctrl+T retry hardened")
+
+    # Ensure focusRoblox exists
+    t2 = p.read_text()
+    if "fun focusRoblox" not in t2:
+        insert_at = t2.find("    fun pressCtrlNumber")
+        focus = '''    fun focusRoblox(packageName: String = "com.roblox.client") {
         val cmds = listOf(
             "monkey -p $packageName -c android.intent.category.LAUNCHER 1",
             "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName",
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "focusRoblox cmd=$cmd exit=$code ${out.take(80)}")
+            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(60)}")
             if (code == 0) return
         }
     }
 
-    fun pressCtrlNumber'''
-
-    t = t[: m.start()] + repl + t[m.end() :]
-    # pressCtrlNumber also needs focus for tabs — leave as is
-    p.write_text(t)
-    print("ShizukuShell pressCtrlT improved")
-
-def patch_tapservice() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/TapService.kt"
-    t = p.read_text()
-    # Improve injectCtrlChord timing and use WAIT mode when possible
-    old = """    fun injectCtrlChord(keyCode: Int): Boolean {
-        val now = SystemClock.uptimeMillis()
-        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
-        val events = listOf(
-            KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-            KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD),
-        )
-        for (e in events) {
-            if (!injectKeyEvent(e)) return false
-            try { Thread.sleep(8) } catch (_: InterruptedException) {}
-        }
-        return true
-    }"""
-    new = """    fun injectCtrlChord(keyCode: Int): Boolean {
-        val downTime = SystemClock.uptimeMillis()
-        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
-        fun ev(action: Int, code: Int, metaState: Int, whenMs: Long) =
-            KeyEvent(downTime, whenMs, action, code, 0, metaState, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, KeyEvent.FLAG_FROM_SYSTEM, InputDevice.SOURCE_KEYBOARD)
-        var t = downTime
-        val events = listOf(
-            ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, meta, t),
-            ev(KeyEvent.ACTION_DOWN, keyCode, meta, t + 20),
-            ev(KeyEvent.ACTION_UP, keyCode, meta, t + 40),
-            ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, t + 50),
-        )
-        for (e in events) {
-            if (!injectKeyEvent(e)) {
-                LogBuffer.w("A11y", "injectCtrlChord failed on key=${e.keyCode} action=${e.action}")
-                return false
-            }
-            try { Thread.sleep(15) } catch (_: InterruptedException) {}
-        }
-        return true
-    }"""
-    if old in t:
-        t = t.replace(old, new, 1)
-        print("injectCtrlChord improved")
-    else:
-        print("WARN: injectCtrlChord pattern miss")
-
-    # pressCtrlT: try a11y inject even when Shizuku claims success (OEM lie)
-    old2 = """    fun pressCtrlT(): Boolean {
-        LogBuffer.i("A11y", "pressCtrlT")
-        if (ShizukuShell.isReady()) {
-            val ok = ShizukuShell.pressCtrlT()
-            LogBuffer.i("A11y", "pressCtrlT via Shizuku ok=$ok")
-            if (ok) return true
-        } else {
-            LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
-        }
-        val ok = injectCtrlChord(KeyEvent.KEYCODE_T)
-        if (ok) {
-            LogBuffer.i("A11y", "pressCtrlT inject ok=true")
-            return true
-        }
-        LogBuffer.w("A11y", "pressCtrlT failed — start Shizuku + grant CWBridge in Shizuku app")
-        return false
-    }"""
-    new2 = """    fun pressCtrlT(): Boolean {
-        LogBuffer.i("A11y", "pressCtrlT")
-        var shizukuOk = false
-        if (ShizukuShell.isReady()) {
-            shizukuOk = ShizukuShell.pressCtrlT()
-            LogBuffer.i("A11y", "pressCtrlT via Shizuku ok=$shizukuOk")
-        } else {
-            LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
-        }
-        // Always also try local inject — some OEMs report exit 0 for keycombination but deliver nothing.
-        val injectOk = injectCtrlChord(KeyEvent.KEYCODE_T)
-        LogBuffer.i("A11y", "pressCtrlT inject ok=$injectOk")
-        if (shizukuOk || injectOk) return true
-        LogBuffer.w("A11y", "pressCtrlT failed — Roblox focused? Shizuku granted?")
-        return false
-    }"""
-    if old2 in t:
-        t = t.replace(old2, new2, 1)
-        print("pressCtrlT dual-path")
-    else:
-        print("WARN: pressCtrlT pattern miss")
-
-    p.write_text(t)
-
-def patch_webui_diagnose() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
-    t = p.read_text()
-    # Replace diagnose JS with simpler ASCII-only version that also wires the button
-    m = re.search(r"async function runDiagnose\(\) \{.*?async function openDomains", t, re.S)
-    if not m:
-        raise SystemExit("runDiagnose block not found")
-    repl = r'''async function runDiagnose() {
-  var ul = D('diagOut');
-  if (!ul) { alert('diagOut missing'); return; }
-  ul.innerHTML = '<li>checking...</li>';
-  try {
-    var s = await api('/api/diagnose');
-    var items = [];
-    function row(ok, label, extra) {
-      return '<li class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? '[OK] ' : '[FAIL] ') + esc(label)
-        + (extra ? ' (' + esc(extra) + ')' : '') + '</li>';
-    }
-    items.push(row(!!s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound' : ''));
-    items.push(row(!!s.shizukuReady, 'Shizuku ready', s.shizuku || ''));
-    items.push(row(true, 'Screenshot: ' + (s.screenshot || ''), ''));
-    items.push(row(true, 'Android SDK ' + s.androidSdk, ''));
-    (s.issues || []).forEach(function(i){ items.push('<li class="bad">- ' + esc(i) + '</li>'); });
-    if (!s.issues || !s.issues.length) items.push('<li class="ok">- no blocking issues</li>');
-    ul.innerHTML = items.join('');
-  } catch (e) {
-    ul.innerHTML = '<li class="bad">' + esc(e.message || e) + '</li>';
-  }
-}
-async function openDomains'''
-    t = t[: m.start()] + repl + t[m.end() :]
-
-    # Also change button to use addEventListener-friendly id
-    t = t.replace(
-        '<button onclick="runDiagnose()">Diagnose issues</button>',
-        '<button type="button" id="btnDiagnose" onclick="runDiagnose();return false;">Diagnose issues</button>',
-        1,
-    )
-    p.write_text(t)
-    print("diagnose JS fixed")
-
-def patch_control_message() -> None:
-    """Return more detail from ctrl-t API."""
-    p = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
-    t = p.read_text()
-    old = '''            "ctrl-t" -> {
-                val ok = when {
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    svc != null -> svc.pressCtrlT()
-                    else -> false
-                }
-                if (ok) "Ctrl+T sent" else "Ctrl+T failed"
-            }'''
-    new = '''            "ctrl-t" -> {
-                val ok = when {
-                    svc != null -> svc.pressCtrlT()
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    else -> false
-                }
-                if (ok) "Ctrl+T sent (focus Roblox first if nothing happened)"
-                else "Ctrl+T failed — open Roblox, grant Shizuku, check console logs"
-            }'''
-    if old in t:
-        t = t.replace(old, new, 1)
-        p.write_text(t)
-        print("ctrl-t API message")
-    else:
-        print("WARN: ctrl-t block miss")
+'''
+        if insert_at > 0:
+            p.write_text(t2[:insert_at] + focus + t2[insert_at:])
+            print("focusRoblox added")
 
 def main() -> None:
-    patch_shizuku()
-    patch_tapservice()
-    patch_webui_diagnose()
-    patch_control_message()
+    write_webui()
+    patch_ctrl_t()
     print("done")
 
 if __name__ == "__main__":
