@@ -332,8 +332,8 @@ class LocalHttpServer(
 
     private fun openDomainsJson(body: String): String {
         val raw = jsonString(body, "domains")
-        val domains = raw.split(',', '
-', ';').map { it.trim() }.filter { it.isNotEmpty() }
+        val domains = raw.split(Regex("[,
+;]")).map { it.trim() }.filter { it.isNotEmpty() }
         if (domains.isEmpty()) return json(mapOf("error" to "domains required"))
         val x = (jsonDouble(body, "urlBarX") ?: 50.0).toFloat()
         val y = (jsonDouble(body, "urlBarY") ?: 6.0).toFloat()
