@@ -20,6 +20,7 @@ import com.cwbridge.android.bridge.AntiDisconnect
 import com.cwbridge.android.bridge.BridgeControl
 import com.cwbridge.android.bridge.BridgeStatus
 import com.cwbridge.android.bridge.CatWebTracker
+import com.cwbridge.android.bridge.DisconnectOcrWatch
 import com.cwbridge.android.bridge.LogBuffer
 import com.cwbridge.android.bridge.LogcatReader
 import com.cwbridge.android.bridge.OverlayState
@@ -103,12 +104,15 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshUi()
         ensureLogcatRunning()
+            DisconnectOcrWatch.start(bridgeScope, applicationContext)
+            BridgeControl.resetDisconnectFailsafe()
         if (OverlayService.canDrawOverlays(this)) OverlayService.start(this)
         AntiDisconnect.noteActivity()
     }
 
     override fun onPause() {
         if (!bridgeRunning) {
+            DisconnectOcrWatch.stop()
             logcatReader.stop()
         }
         super.onPause()
@@ -644,6 +648,28 @@ class MainActivity : AppCompatActivity() {
     private fun toggleService(service: Service) {
         ServiceRepository.updateService(service.copy(isEnabled = !service.isEnabled))
         refreshServices()
+    }
+
+    
+    private fun stopBridgeWithError(message: String) {
+        runOnUiThread {
+            if (bridgeRunning) {
+                // mirror stop branch of toggleBridge
+                bridgeRunning = false
+                BridgeControl.cancelOpenCatWeb()
+                DisconnectOcrWatch.stop()
+                try { logcatReader.stop() } catch (_: Throwable) {}
+                try { invokeEngine.stop() } catch (_: Throwable) {}
+                try { AntiDisconnect.stop() } catch (_: Throwable) {}
+                refreshBridgeUi()
+            }
+            BridgeStatus.set(OverlayState.ERROR, message.take(48))
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Bridge stopped")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show()
+        }
     }
 
     private fun toggleBridge() {

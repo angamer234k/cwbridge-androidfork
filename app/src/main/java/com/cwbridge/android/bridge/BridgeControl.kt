@@ -22,6 +22,7 @@ object BridgeControl {
     /** Hooks MainActivity installs so the server can drive the running bridge. */
     interface Hooks {
         fun restartBridge()
+        fun stopBridgeWithError(message: String)
     }
 
     @Volatile
@@ -286,10 +287,9 @@ object BridgeControl {
             LogBuffer.i("Control", "CW load: no auto-open domains configured")
             return "no auto-open domains"
         }
-        LogBuffer.i("Control", "CW load: opening ${domains.size} domain(s)")
-        // First domain: just navigate current tab via URL bar.
-        // Further domains: try tabs-count → + then URL bar.
-        return openDomains(domains)
+        val one = domains.take(1)
+        LogBuffer.i("Control", "CW load: opening single domain ${one.firstOrNull()}")
+        return openSingleDomainOnLoad(one.first())
     }
 
     fun loadAutoOpenDomains(context: Context): List<String> {
@@ -314,6 +314,71 @@ object BridgeControl {
             "auto_open_domains",
             domains.joinToString("\n"),
         )
+    }
+
+
+    /**
+     * Navigate the current CatWeb tab to [domain] via OCR URL bar
+     * (region X 5-90%, Y 0-50%). No new-tab / multi-tab logic.
+     */
+    fun openSingleDomainOnLoad(domain: String): String {
+        val d = domain.trim()
+        if (d.isEmpty()) return "empty domain"
+        val ctx = try {
+            // TapService is an Application-context-ish service; prefer its context
+            TapService.instance ?: return "$d: no accessibility (need CWBridge Tap)"
+        } catch (_: Throwable) {
+            return "$d: no accessibility"
+        }
+        val appCtx = ctx.applicationContext
+
+        // OCR: "Search or type a URL" (case-insensitive substring)
+        val hit = ScreenOcr.findText(
+            appCtx,
+            "search or type a url",
+            x0Pct = 5f,
+            x1Pct = 90f,
+            y0Pct = 0f,
+            y1Pct = 50f,
+        ) ?: ScreenOcr.findText(
+            appCtx,
+            "type a url",
+            x0Pct = 5f,
+            x1Pct = 90f,
+            y0Pct = 0f,
+            y1Pct = 50f,
+        ) ?: ScreenOcr.findText(
+            appCtx,
+            "search or type",
+            x0Pct = 5f,
+            x1Pct = 90f,
+            y0Pct = 0f,
+            y1Pct = 50f,
+        )
+
+        val tapped = if (hit != null) {
+            ctx.clickAt(hit.centerX, hit.centerY)
+        } else {
+            // Fallback: classic percent URL bar
+            LogBuffer.w("Control", "OCR URL bar miss — percent fallback 50%,6%")
+            ctx.clickAtPercent(50f, 6f)
+        }
+        if (!tapped) return "$d: URL bar tap failed"
+        try { Thread.sleep(400) } catch (_: InterruptedException) {}
+
+        val typed = if (ShizukuShell.isReady()) {
+            ShizukuShell.inputText(d)
+        } else {
+            ctx.sendText(d)
+        }
+        if (!typed) return "$d: type failed"
+        try { Thread.sleep(200) } catch (_: InterruptedException) {}
+
+        val enter = when {
+            ShizukuShell.isReady() -> ShizukuShell.pressEnter()
+            else -> ctx.pressEnter()
+        }
+        return if (enter) "$d: ok (OCR URL bar)" else "$d: Enter failed"
     }
 
 }
