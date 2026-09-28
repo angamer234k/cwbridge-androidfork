@@ -1,125 +1,92 @@
 #!/usr/bin/env python3
-"""Remove ML Kit dep; ScreenOcr stubs until CI can compile ML Kit cleanly."""
+"""Strip OCR modules that break CI; keep single-domain + failsafe-5 stop."""
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-STUB = r'''package com.cwbridge.android.bridge
-
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Rect
-import com.cwbridge.android.ShizukuShell
-import com.cwbridge.android.TapService
-import java.io.File
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
-
-/**
- * Screen capture helper. OCR (ML Kit) temporarily stubbed so releases build;
- * URL-bar open falls back to percent coords. Disconnect OCR logs a skip.
- */
-object ScreenOcr {
-
-    data class Hit(
-        val text: String,
-        val centerX: Float,
-        val centerY: Float,
-        val bounds: Rect,
-    )
-
-    fun capture(context: Context): Bitmap? {
-        if (ShizukuShell.isReady()) {
-            val dir = context.getExternalFilesDir(null) ?: context.cacheDir
-            val file = File(dir, "cw_screencap.png")
-            try {
-                if (file.exists()) file.delete()
-            } catch (_: Throwable) {
-            }
-            val path = file.absolutePath
-            val (code, out) = ShizukuShell.exec("screencap -p \"$path\" && chmod 644 \"$path\"")
-            LogBuffer.i("OCR", "screencap exit=$code exists=${file.exists()} size=${file.length()} ${out.take(40)}")
-            if (code == 0 && file.exists() && file.length() > 100L) {
-                return try {
-                    BitmapFactory.decodeFile(path)
-                } catch (t: Throwable) {
-                    LogBuffer.w("OCR", "decode: ${t.message}")
-                    null
-                }
-            }
-        }
-        val svc = TapService.instance ?: return null
-        val latch = CountDownLatch(1)
-        val box = AtomicReference<Bitmap?>(null)
-        svc.screenshot { bmp ->
-            box.set(bmp)
-            latch.countDown()
-        }
-        try {
-            latch.await(6, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {
-        }
-        return box.get()
-    }
-
-    fun findText(
-        context: Context,
-        query: String,
-        x0Pct: Float = 0f,
-        x1Pct: Float = 100f,
-        y0Pct: Float = 0f,
-        y1Pct: Float = 100f,
-    ): Hit? {
-        // ML Kit not linked in this build — force coordinate fallbacks
-        LogBuffer.w("OCR", "stub: no ML Kit — miss for \"$query\" (region X$x0Pct-$x1Pct Y$y0Pct-$y1Pct)")
-        // Still exercise capture path so logs show if screencap works
-        try {
-            capture(context)?.recycle()
-        } catch (_: Throwable) {
-        }
-        return null
-    }
-
-    fun regionContains(
-        context: Context,
-        needle: String,
-        x0Pct: Float,
-        x1Pct: Float,
-        y0Pct: Float,
-        y1Pct: Float,
-    ): Boolean = findText(context, needle, x0Pct, x1Pct, y0Pct, y1Pct) != null
-
-    fun centerSquarePct(context: Context, sizePx: Int): FloatArray {
-        val dm = context.resources.displayMetrics
-        val w = dm.widthPixels.coerceAtLeast(1)
-        val h = dm.heightPixels.coerceAtLeast(1)
-        val side = sizePx.coerceAtMost(minOf(w, h))
-        val x0 = ((w - side) / 2f) / w * 100f
-        val y0 = ((h - side) / 2f) / h * 100f
-        val x1 = x0 + side.toFloat() / w * 100f
-        val y1 = y0 + side.toFloat() / h * 100f
-        return floatArrayOf(x0, x1, y0, y1)
-    }
-}
-'''
-
 def main() -> None:
-    (ROOT / "app/src/main/java/com/cwbridge/android/bridge/ScreenOcr.kt").write_text(STUB)
-    print("ScreenOcr stubbed")
+    # Delete OCR sources
+    for rel in [
+        "app/src/main/java/com/cwbridge/android/bridge/ScreenOcr.kt",
+        "app/src/main/java/com/cwbridge/android/bridge/DisconnectOcrWatch.kt",
+    ]:
+        p = ROOT / rel
+        if p.exists():
+            p.unlink()
+            print("deleted", rel)
 
-    g = ROOT / "app/build.gradle.kts"
-    t = g.read_text()
-    t2 = re.sub(r"\n\s*// On-device OCR.*?\n\s*implementation\(\"com\.google\.mlkit:text-recognition:[^\"]+\"\)", "\n", t)
-    t2 = re.sub(r"\n\s*implementation\(\"com\.google\.mlkit:text-recognition:[^\"]+\"\)", "\n", t2)
-    t2 = re.sub(r"\n\s*implementation\(\"com\.google\.android\.gms:play-services-tasks:[^\"]+\"\)", "\n", t2)
-    if t2 != t:
-        g.write_text(t2)
-        print("removed mlkit deps")
-    else:
-        print("no mlkit lines or already gone")
+    # MainActivity: remove DisconnectOcrWatch references
+    ma = ROOT / "app/src/main/java/com/cwbridge/android/MainActivity.kt"
+    t = ma.read_text()
+    t = t.replace("import com.cwbridge.android.bridge.DisconnectOcrWatch\n", "")
+    t = t.replace("            DisconnectOcrWatch.start(bridgeScope, applicationContext)\n", "")
+    t = t.replace("            DisconnectOcrWatch.stop()\n", "")
+    t = t.replace("            DisconnectOcrWatch.stop()\n", "")  # again if duplicated
+    t = t.replace("                DisconnectOcrWatch.stop()\n", "")
+    # stopBridgeWithError body may still reference it
+    t = t.replace("DisconnectOcrWatch.stop()\n", "")
+    ma.write_text(t)
+    print("MainActivity cleaned")
+
+    # BridgeControl: openSingleDomain without ScreenOcr
+    bc = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
+    t = bc.read_text()
+    # Replace openSingleDomainOnLoad body to percent-only
+    start = t.find("    fun openSingleDomainOnLoad")
+    if start >= 0:
+        end = t.find("\n    fun ", start + 5)
+        if end < 0:
+            end = t.rfind("}")
+        fn = r'''    fun openSingleDomainOnLoad(domain: String): String {
+        val d = domain.trim()
+        if (d.isEmpty()) return "empty domain"
+        val svc = TapService.instance
+            ?: return "$d: no accessibility (need CWBridge Tap)"
+        // Percent URL bar (OCR deferred — ML Kit blocked CI)
+        val tapped = svc.clickAtPercent(50f, 6f)
+        if (!tapped) return "$d: URL bar tap failed"
+        try { Thread.sleep(400) } catch (_: InterruptedException) {}
+        val typed = if (ShizukuShell.isReady()) ShizukuShell.inputText(d) else svc.sendText(d)
+        if (!typed) return "$d: type failed"
+        try { Thread.sleep(200) } catch (_: InterruptedException) {}
+        val enter = if (ShizukuShell.isReady()) ShizukuShell.pressEnter() else svc.pressEnter()
+        return if (enter) "$d: ok" else "$d: Enter failed"
+    }
+
+'''
+        t = t[:start] + fn + t[end:]
+        bc.write_text(t)
+        print("openSingleDomain percent-only")
+
+    # Cap failsafe at 5 in bump + stop bridge
+    if "MAX_FAILSAFE" not in t and "fun bumpDisconnectFailsafe" in bc.read_text():
+        t = bc.read_text()
+        old = '''    fun bumpDisconnectFailsafe(): Int {
+        disconnectFailsafe += 1
+        LogBuffer.w("Control", "disconnect failsafe now=$disconnectFailsafe")
+        return disconnectFailsafe
+    }'''
+        new = '''    private const val MAX_FAILSAFE = 5
+
+    fun bumpDisconnectFailsafe(): Int {
+        disconnectFailsafe += 1
+        LogBuffer.w("Control", "disconnect failsafe now=$disconnectFailsafe/$MAX_FAILSAFE")
+        if (disconnectFailsafe >= MAX_FAILSAFE) {
+            val msg =
+                "Bridge stopped: Roblox disconnected $disconnectFailsafe times " +
+                    "without recovery (failsafe limit $MAX_FAILSAFE). " +
+                    "Open Roblox/CatWeb manually, then start the bridge again."
+            stopBridgeWithError(msg)
+        }
+        return disconnectFailsafe
+    }'''
+        if old in t:
+            t = t.replace(old, new, 1)
+            bc.write_text(t)
+            print("failsafe max 5 + stop")
+
+    # AntiDisconnect should not reference OCR
+    print("done")
 
 if __name__ == "__main__":
     main()
