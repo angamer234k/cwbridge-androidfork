@@ -274,18 +274,24 @@ object ShizukuShell {
      * KEY_LEFTCTRL=29. SYN_REPORT after each. Shell may lack write on some OEMs.
      */
     private fun sendeventCtrlChord(linuxKey: Int, label: String): Boolean {
-        // Discover devices; try each. Permission denied is expected on some.
-        val script = """
-devs=$(ls /dev/input/event* 2>/dev/null)
-ok=0
-for dev in $devs; do
-  if sendevent "$dev" 1 29 1 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 $linuxKey 1 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 $linuxKey 0 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null &&      sendevent "$dev" 1 29 0 2>/dev/null &&      sendevent "$dev" 0 0 0 2>/dev/null; then
-    echo "OK $dev"
-    ok=1
-  fi
-done
-exit $((1-ok))
-""".trimIndent()
+        // Hardware-level EV_KEY via sendevent. Escape shell vars carefully for Kotlin.
+        val lk = linuxKey
+        val script = (
+            "ok=0; " +
+            "for dev in /dev/input/event*; do " +
+            "[ -e "\$dev" ] || continue; " +
+            "sendevent "\$dev" 1 29 1 2>/dev/null || continue; " +
+            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
+            "sendevent "\$dev" 1 " + lk + " 1 2>/dev/null || continue; " +
+            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
+            "sendevent "\$dev" 1 " + lk + " 0 2>/dev/null; " +
+            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
+            "sendevent "\$dev" 1 29 0 2>/dev/null; " +
+            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
+            "echo OK \$dev; ok=1; break; " +
+            "done; " +
+            "[ \$ok -eq 1 ]"
+        )
         val (code, out) = exec(script)
         LogBuffer.i("Shizuku", "sendevent Ctrl+$label exit=$code ${out.take(120)}")
         if (code == 0 && out.contains("OK")) {
