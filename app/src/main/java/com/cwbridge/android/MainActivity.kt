@@ -104,8 +104,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshUi()
         ensureLogcatRunning()
-            DisconnectOcrWatch.start(bridgeScope, applicationContext)
-            BridgeControl.resetDisconnectFailsafe()
         if (OverlayService.canDrawOverlays(this)) OverlayService.start(this)
         AntiDisconnect.noteActivity()
     }
@@ -660,6 +658,7 @@ class MainActivity : AppCompatActivity() {
                 DisconnectOcrWatch.stop()
                 try { logcatReader.stop() } catch (_: Throwable) {}
                 try { invokeEngine.stop() } catch (_: Throwable) {}
+                try { executionEngine.stop() } catch (_: Throwable) {}
                 try { AntiDisconnect.stop() } catch (_: Throwable) {}
                 refreshUi()
             }
@@ -676,6 +675,7 @@ class MainActivity : AppCompatActivity() {
         if (bridgeRunning) {
             bridgeRunning = false
             BridgeControl.cancelOpenCatWeb()
+            DisconnectOcrWatch.stop()
             logcatReader.stop()
             invokeEngine.stop()
             executionEngine.stop()
@@ -721,6 +721,8 @@ class MainActivity : AppCompatActivity() {
             }
             AntiDisconnect.start(bridgeScope)
             ensureLogcatRunning()
+            DisconnectOcrWatch.start(bridgeScope, applicationContext)
+            BridgeControl.resetDisconnectFailsafe()
             BridgeControl.scheduleOpenCatWebIfNeeded(applicationContext, 10_000L)
             invokeEngine.start()
             invokeEngine.focusXPct = 50f
