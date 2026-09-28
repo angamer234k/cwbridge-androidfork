@@ -364,6 +364,26 @@ object ShizukuShell {
     }
 
 
+
+    private fun outLooksOk(out: String): Boolean {
+        if (out.isBlank()) return true
+        val bad = listOf("Error", "Unknown", "not found", "No such", "Exception", "denied")
+        return bad.none { out.contains(it, ignoreCase = true) }
+    }
+
+    fun focusRoblox(packageName: String = "com.roblox.client") {
+        if (!isReady()) return
+        val cmds = listOf(
+            "monkey -p $packageName -c android.intent.category.LAUNCHER 1",
+            "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName",
+        )
+        for (cmd in cmds) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(50)}")
+            if (code == 0) return
+        }
+    }
+
     fun pressEnter(): Boolean {
         val enter = KeyEvent.KEYCODE_ENTER
         val attempts = listOf(
