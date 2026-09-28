@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Rect
 import com.cwbridge.android.ShizukuShell
 import com.cwbridge.android.TapService
+import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -16,39 +17,37 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Screen capture + on-device OCR.
- * Prefer Shizuku `screencap` (works on many FLAG_SECURE games); fall back to a11y.
+ * Prefer Shizuku `screencap` (often works on FLAG_SECURE games); fall back to a11y.
  */
 object ScreenOcr {
 
     data class Hit(
         val text: String,
-        /** Absolute screen px of the bounding-box center. */
         val centerX: Float,
         val centerY: Float,
         val bounds: Rect,
     )
 
     fun capture(context: Context): Bitmap? {
-        // 1) Shizuku screencap into app external files (shell can usually write here)
         if (ShizukuShell.isReady()) {
             val dir = context.getExternalFilesDir(null) ?: context.cacheDir
             val file = File(dir, "cw_screencap.png")
             try {
                 if (file.exists()) file.delete()
-            } catch (_: Throwable) {}
+            } catch (_: Throwable) {
+            }
             val path = file.absolutePath
             val (code, out) = ShizukuShell.exec("screencap -p \"$path\" && chmod 644 \"$path\"")
-            LogBuffer.i("OCR", "screencap exit=$code exists=${file.exists()} ${out.take(60)}")
-            if (code == 0 && file.exists() && file.length() > 100) {
+            LogBuffer.i("OCR", "screencap exit=$code exists=${file.exists()} size=${file.length()} ${out.take(40)}")
+            if (code == 0 && file.exists() && file.length() > 100L) {
                 return try {
                     BitmapFactory.decodeFile(path)
                 } catch (t: Throwable) {
-                    LogBuffer.w("OCR", "decode screencap: ${t.message}")
+                    LogBuffer.w("OCR", "decode: ${t.message}")
                     null
                 }
             }
         }
-        // 2) Accessibility screenshot (often blocked by FLAG_SECURE on Roblox)
         val svc = TapService.instance ?: return null
         val latch = CountDownLatch(1)
         val box = AtomicReference<Bitmap?>(null)
@@ -63,15 +62,6 @@ object ScreenOcr {
         return box.get()
     }
 
-    /**
-     * Find [query] (case-insensitive, substring) inside an optional percent crop of the screen.
-     * Returns the best hit (longest match) or null.
-     *
-     * @param x0Pct left edge % (0-100)
-     * @param x1Pct right edge %
-     * @param y0Pct top edge %
-     * @param y1Pct bottom edge %
-     */
     fun findText(
         context: Context,
         query: String,
@@ -82,63 +72,61 @@ object ScreenOcr {
     ): Hit? {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return null
-        val full = capture(context) ?: run {
-            LogBuffer.w("OCR", "no bitmap — cannot OCR \"$query\"")
+        val full = capture(context)
+        if (full == null) {
+            LogBuffer.w("OCR", "no bitmap for \"$query\"")
             return null
         }
-        val w = full.width
-        val h = full.height
-        val left = ((x0Pct / 100f) * w).toInt().coerceIn(0, w - 1)
-        val top = ((y0Pct / 100f) * h).toInt().coerceIn(0, h - 1)
-        val right = ((x1Pct / 100f) * w).toInt().coerceIn(left + 1, w)
-        val bottom = ((y1Pct / 100f) * h).toInt().coerceIn(top + 1, h)
-        val cropW = right - left
-        val cropH = bottom - top
-        val crop = try {
-            Bitmap.createBitmap(full, left, top, cropW, cropH)
-        } catch (t: Throwable) {
-            LogBuffer.w("OCR", "crop failed: ${t.message}")
-            full
-        }.also {
-            if (it !== full) {
-                // keep full for now; recycle later
+        try {
+            val w = full.width
+            val h = full.height
+            if (w < 2 || h < 2) return null
+            val left = ((x0Pct / 100f) * w).toInt().coerceIn(0, w - 1)
+            val top = ((y0Pct / 100f) * h).toInt().coerceIn(0, h - 1)
+            val right = ((x1Pct / 100f) * w).toInt().coerceIn(left + 1, w)
+            val bottom = ((y1Pct / 100f) * h).toInt().coerceIn(top + 1, h)
+            val crop = try {
+                Bitmap.createBitmap(full, left, top, right - left, bottom - top)
+            } catch (t: Throwable) {
+                LogBuffer.w("OCR", "crop: ${t.message}")
+                full
+            }
+            val hits = recognizeAll(crop)
+            if (crop !== full) {
+                try {
+                    crop.recycle()
+                } catch (_: Throwable) {
+                }
+            }
+            var best: Hit? = null
+            for (raw in hits) {
+                if (!raw.text.lowercase().contains(q)) continue
+                val b = Rect(
+                    raw.bounds.left + left,
+                    raw.bounds.top + top,
+                    raw.bounds.right + left,
+                    raw.bounds.bottom + top,
+                )
+                val hit = Hit(raw.text, b.exactCenterX(), b.exactCenterY(), b)
+                if (best == null || hit.text.length > best.text.length) best = hit
+            }
+            if (best != null) {
+                LogBuffer.i(
+                    "OCR",
+                    "hit \"${best.text.take(40)}\" @ (${best.centerX.toInt()},${best.centerY.toInt()}) q=\"$query\"",
+                )
+            } else {
+                LogBuffer.w("OCR", "no hit for \"$query\" region X$x0Pct-$x1Pct Y$y0Pct-$y1Pct")
+            }
+            return best
+        } finally {
+            try {
+                full.recycle()
+            } catch (_: Throwable) {
             }
         }
-        val hits = recognizeAll(crop)
-        var best: Hit? = null
-        for (raw in hits) {
-            if (!raw.text.lowercase().contains(q)) continue
-            // map crop-local bounds → full screen
-            val b = Rect(
-                raw.bounds.left + left,
-                raw.bounds.top + top,
-                raw.bounds.right + left,
-                raw.bounds.bottom + top,
-            )
-            val hit = Hit(
-                text = raw.text,
-                centerX = b.exactCenterX(),
-                centerY = b.exactCenterY(),
-                bounds = b,
-            )
-            if (best == null || hit.text.length > best.text.length) best = hit
-        }
-        if (crop !== full) {
-            try { crop.recycle() } catch (_: Throwable) {}
-        }
-        try { full.recycle() } catch (_: Throwable) {}
-        if (best != null) {
-            LogBuffer.i(
-                "OCR",
-                "hit \"${best.text.take(40)}\" @ (${best.centerX.toInt()},${best.centerY.toInt()}) for q=\"$query\"",
-            )
-        } else {
-            LogBuffer.w("OCR", "no hit for \"$query\" in region X$x0Pct-$x1Pct Y$y0Pct-$y1Pct")
-        }
-        return best
     }
 
-    /** True if any OCR line in the region contains [needle] (case-insensitive). */
     fun regionContains(
         context: Context,
         needle: String,
@@ -148,45 +136,33 @@ object ScreenOcr {
         y1Pct: Float,
     ): Boolean = findText(context, needle, x0Pct, x1Pct, y0Pct, y1Pct) != null
 
-    /** OCR the whole image; return line-level hits in image-local coords. */
     private fun recognizeAll(bitmap: Bitmap): List<Hit> {
-        val latch = CountDownLatch(1)
-        val out = AtomicReference<List<Hit>>(emptyList())
-        try {
+        return try {
             val image = InputImage.fromBitmap(bitmap, 0)
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
-            recognizer.process(image)
-                .addOnSuccessListener { result ->
-                    val list = mutableListOf<Hit>()
-                    for (block in result.textBlocks) {
-                        for (line in block.lines) {
-                            val box = line.boundingBox ?: continue
-                            list += Hit(
-                                text = line.text,
-                                centerX = box.exactCenterX(),
-                                centerY = box.exactCenterY(),
-                                bounds = Rect(box),
-                            )
-                        }
-                    }
-                    out.set(list)
-                    latch.countDown()
+            val result = Tasks.await(recognizer.process(image), 12, TimeUnit.SECONDS)
+            val list = ArrayList<Hit>()
+            for (block in result.textBlocks) {
+                for (line in block.lines) {
+                    val box = line.boundingBox ?: continue
+                    list.add(
+                        Hit(
+                            text = line.text,
+                            centerX = box.exactCenterX(),
+                            centerY = box.exactCenterY(),
+                            bounds = Rect(box),
+                        ),
+                    )
                 }
-                .addOnFailureListener { e ->
-                    LogBuffer.w("OCR", "mlkit failed: ${e.message}")
-                    latch.countDown()
-                }
-            latch.await(12, TimeUnit.SECONDS)
+            }
+            list
         } catch (t: Throwable) {
-            LogBuffer.w("OCR", "recognizeAll: ${t.message}")
-            latch.countDown()
+            LogBuffer.w("OCR", "recognizeAll: ${t.javaClass.simpleName}: ${t.message}")
+            emptyList()
         }
-        return out.get()
     }
 
-    /** Center crop percent for a fixed pixel square (e.g. 750x750) on current screen. */
     fun centerSquarePct(context: Context, sizePx: Int): FloatArray {
-        // returns floatArrayOf(x0, x1, y0, y1) in percent
         val dm = context.resources.displayMetrics
         val w = dm.widthPixels.coerceAtLeast(1)
         val h = dm.heightPixels.coerceAtLeast(1)

@@ -71,6 +71,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     // On-device OCR for CatWeb URL bar + disconnect dialog
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.android.gms:play-services-tasks:18.2.0")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
