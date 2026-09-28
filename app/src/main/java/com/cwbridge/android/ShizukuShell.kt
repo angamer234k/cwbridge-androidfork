@@ -301,56 +301,74 @@ object ShizukuShell {
     fun openNewTabByPlusTap(): Boolean {
         focusRoblox()
         try { Thread.sleep(200) } catch (_: InterruptedException) {}
-        // (x%, y%) candidates for the + control
-        val spots = listOf(
-            92f to 4f, 96f to 4f, 88f to 4f,
-            92f to 6f, 94f to 5f, 90f to 3f,
-            50f to 4f, // some layouts center the +
-            85f to 8f, 97f to 8f,
-        )
-        // Prefer shell input tap (works without a11y)
+
         val (szCode, szOut) = exec("wm size")
         val sizeMatch = Regex("""(\d+)x(\d+)""").find(szOut)
         val w = sizeMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
         val h = sizeMatch?.groupValues?.getOrNull(2)?.toIntOrNull() ?: 0
         LogBuffer.i("Shizuku", "screen ${w}x$h (wm size exit=$szCode)")
-        if (w > 0 && h > 0) {
-            for ((xp, yp) in spots) {
-                val x = ((xp / 100f) * w).toInt()
-                val y = ((yp / 100f) * h).toInt()
-                val (code, out) = exec("input tap $x $y")
-                LogBuffer.i("Shizuku", "+ tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(40)}")
-                if (code == 0) {
-                    try { Thread.sleep(350) } catch (_: InterruptedException) {}
-                    // We cannot verify a new tab opened; treat first successful tap as best effort
-                    // and continue through a couple so at least one hits
-                }
-            }
-            // Report success if any tap exited 0
-            LogBuffer.i("Shizuku", "openNewTabByPlusTap: finished multi-tap sequence")
-            return true
+        if (w <= 0 || h <= 0) {
+            LogBuffer.w("Shizuku", "cannot resolve screen size — skip + taps")
+            return false
         }
-        return false
-    }
 
+        // Short phones: CatWeb auto-hides the tab bar. Pull it back into view.
+        revealCatWebChrome(w, h)
 
-    private fun outLooksOk(out: String): Boolean {
-        if (out.isBlank()) return true
-        val bad = listOf("Error", "Unknown", "not found", "No such", "Exception", "denied")
-        return bad.none { out.contains(it, ignoreCase = true) }
-    }
-
-    fun focusRoblox(packageName: String = "com.roblox.client") {
-        val cmds = listOf(
-            "monkey -p $packageName -c android.intent.category.LAUNCHER 1",
-            "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName",
+        // (x%, y%) candidates for "+" once chrome is visible
+        val spots = listOf(
+            92f to 4f, 96f to 4f, 88f to 4f,
+            92f to 6f, 94f to 5f, 90f to 3f,
+            92f to 8f, 96f to 8f, 88f to 8f,  // a bit lower after reveal
+            50f to 4f,
+            85f to 8f, 97f to 8f,
+            92f to 10f, 94f to 12f,
         )
-        for (cmd in cmds) {
-            val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(50)}")
-            if (code == 0) return
+        var anyOk = false
+        for ((xp, yp) in spots) {
+            val x = ((xp / 100f) * w).toInt()
+            val y = ((yp / 100f) * h).toInt()
+            val (code, out) = exec("input tap $x $y")
+            LogBuffer.i("Shizuku", "+ tap ${xp}% ${yp}% -> ($x,$y) exit=$code ${out.take(40)}")
+            if (code == 0) anyOk = true
+            try { Thread.sleep(120) } catch (_: InterruptedException) {}
         }
+        LogBuffer.i("Shizuku", "openNewTabByPlusTap done anyOk=$anyOk")
+        return anyOk
     }
+
+    /**
+     * CatWeb on small-Y phones hides the tab strip. Common reveals:
+     *  1) swipe down from the top edge (pull chrome)
+     *  2) short tap near the top center (focus UI)
+     *  3) second slower swipe a bit deeper
+     */
+    private fun revealCatWebChrome(w: Int, h: Int) {
+        val midX = w / 2
+        val topY = maxOf(2, (h * 0.01f).toInt())
+        val pullY = maxOf(80, (h * 0.12f).toInt())
+        val pullY2 = maxOf(120, (h * 0.18f).toInt())
+
+        // Swipe down from top (gesture to expand browser chrome)
+        val swipes = listOf(
+            "input swipe $midX $topY $midX $pullY 180",
+            "input swipe $midX $topY $midX $pullY2 280",
+            // slight diagonal in case of edge-gesture conflict
+            "input swipe ${midX - 40} $topY ${midX - 40} $pullY 200",
+        )
+        for (cmd in swipes) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "reveal chrome: $cmd exit=$code ${out.take(40)}")
+            try { Thread.sleep(250) } catch (_: InterruptedException) {}
+        }
+
+        // Tap top center — some layouts expand on tap instead of swipe
+        val tapY = maxOf(4, (h * 0.02f).toInt())
+        val (tc, to) = exec("input tap $midX $tapY")
+        LogBuffer.i("Shizuku", "reveal tap top-center ($midX,$tapY) exit=$tc ${to.take(40)}")
+        try { Thread.sleep(350) } catch (_: InterruptedException) {}
+    }
+
 
     fun pressEnter(): Boolean {
         val enter = KeyEvent.KEYCODE_ENTER
