@@ -35,6 +35,14 @@ object BridgeControl {
         hooks = h
     }
 
+    fun stopBridgeWithError(message: String) {
+        try {
+            hooks?.stopBridgeWithError(message)
+        } catch (t: Throwable) {
+            LogBuffer.e("Control", "stopBridgeWithError: ${t.message}")
+        }
+    }
+
     fun setExecutionEngine(engine: ExecutionEngine?) {
         executionEngine = engine
     }
