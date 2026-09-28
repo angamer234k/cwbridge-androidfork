@@ -86,7 +86,15 @@ class TapService : AccessibilityService() {
 
                     override fun onFailure(errorCode: Int) {
                         exec.shutdown()
-                        LogBuffer.w("A11y", "takeScreenshot failed code=$errorCode")
+                        val why = when (errorCode) {
+                            1 -> "INTERNAL_ERROR"
+                            2 -> "NO_ACCESSIBILITY_ACCESS"
+                            3 -> "INTERVAL_TOO_SHORT"
+                            4 -> "INVALID_DISPLAY"
+                            5 -> "INVALID_WINDOW"
+                            else -> "code=$errorCode"
+                        }
+                        LogBuffer.w("A11y", "takeScreenshot failed: $why (FLAG_SECURE apps like Roblox cannot be captured)")
                         callback(null)
                     }
                 },

@@ -223,6 +223,8 @@ class LocalHttpServer(
             path == "/favicon.ico" -> respond(out, 204, "", "image/x-icon")
 
             path == "/api/status" -> respond(out, 200, statusJson())
+            path == "/api/diagnose" -> respond(out, 200, diagnoseJson())
+            path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))
 
             path == "/api/logs" -> respond(out, 200, logsJson())
 
@@ -288,6 +290,55 @@ class LocalHttpServer(
     }
 
     // ---- handlers ---------------------------------------------------------
+
+
+    private fun diagnoseJson(): String {
+        val a11yBound = TapService.isConnected()
+        val a11yListed = try {
+            val cn = android.content.ComponentName(context, TapService::class.java)
+            val enabled = android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: ""
+            enabled.split(':').any {
+                android.content.ComponentName.unflattenFromString(it.trim()) == cn
+            }
+        } catch (_: Throwable) { false }
+        val shot = when {
+            !BridgeControl.screenshotSupported() -> "unsupported (need Android 11+)"
+            !a11yBound -> "needs CWBridge Tap connected"
+            else -> "supported (FLAG_SECURE games still fail)"
+        }
+        val issues = mutableListOf<String>()
+        if (!a11yBound) {
+            issues += if (a11yListed) "A11y listed but not bound — toggle Tap off/on"
+            else "Enable CWBridge Tap"
+        }
+        if (!ShizukuShell.isReady()) issues += "Shizuku not ready — open Shizuku and grant CWBridge"
+        if (!BridgeControl.screenshotSupported()) issues += "Screenshot needs Android 11+"
+        return json(
+            mapOf(
+                "a11yBound" to a11yBound,
+                "a11yListed" to a11yListed,
+                "shizuku" to ShizukuShell.statusLine(),
+                "shizukuReady" to ShizukuShell.isReady(),
+                "screenshot" to shot,
+                "androidSdk" to android.os.Build.VERSION.SDK_INT,
+                "issues" to issues,
+                "ok" to issues.isEmpty(),
+            ),
+        )
+    }
+
+    private fun openDomainsJson(body: String): String {
+        val raw = jsonString(body, "domains")
+        val domains = raw.split(',', '
+', ';').map { it.trim() }.filter { it.isNotEmpty() }
+        if (domains.isEmpty()) return json(mapOf("error" to "domains required"))
+        val x = (jsonDouble(body, "urlBarX") ?: 50.0).toFloat()
+        val y = (jsonDouble(body, "urlBarY") ?: 6.0).toFloat()
+        return json(mapOf("message" to BridgeControl.openDomains(domains, x, y)))
+    }
 
     private fun statusJson(): String = json(
         mapOf(

@@ -60,6 +60,23 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06
 .shot{width:100%;border-radius:10px;border:1px solid var(--line);background:#000}
 #login{max-width:360px;margin:14vh auto}
 .hide{display:none!important}
+
+/* mobile-v213 */
+@media (max-width:700px){
+  main{padding:10px;gap:12px}
+  .card{padding:12px;border-radius:14px}
+  header{padding:10px 12px;gap:8px}
+  button{padding:12px 14px;font-size:14px;min-height:44px;flex:1 1 auto}
+  input{padding:12px;font-size:16px;width:100%}
+  .row{gap:8px}
+  .row > *{flex:1 1 120px}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  pre{max-height:240px;font-size:12px}
+}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#shotImg{max-width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
+.diag{font-size:13px;line-height:1.45;margin:10px 0 0;padding-left:18px;color:var(--muted)}
+.diag .ok{color:var(--ok)}.diag .bad{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -131,6 +148,30 @@ th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06
 """.trimIndent()
 
     private val PART_C: String = """
+
+  <div class="card" id="diagnoseCard">
+    <h2>Diagnose</h2>
+    <div class="row">
+      <button onclick="runDiagnose()">Diagnose issues</button>
+    </div>
+    <ul id="diagOut" class="diag"></ul>
+  </div>
+
+  <div class="card" id="domainsCard">
+    <h2>Open domains (Ctrl+T)</h2>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">
+      One domain per line. Ctrl+T, tap URL bar by coordinates (Roblox has no a11y tree),
+      type domain, Enter, then Ctrl+1. Needs Shizuku.
+    </p>
+    <textarea id="domainList" rows="4" placeholder="catweb.rbx"
+      style="width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;color:#fff;padding:10px;font:inherit"></textarea>
+    <div class="row" style="margin-top:8px">
+      <label>URL X% <input id="urlX" value="50" style="width:70px"></label>
+      <label>Y% <input id="urlY" value="6" style="width:70px"></label>
+      <button onclick="openDomains()">Open all</button>
+    </div>
+    <div id="domMsg" class="msg"></div>
+  </div>
   <div class="card">
     <h2>Services</h2>
     <div id="svcList"></div>
@@ -224,7 +265,37 @@ async function doLogin() {
     await post('/api/login', {password: D('pw').value});
     revealApp();
     msg('loginMsg', '');
-    refreshAll();
+    
+async function runDiagnose() {
+  var ul = D('diagOut'); ul.innerHTML = '<li>checking…</li>';
+  try {
+    var s = await api('/api/diagnose');
+    var items = [];
+    items.push(li(s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound' : ''));
+    items.push(li(s.shizukuReady, 'Shizuku ready', s.shizuku || ''));
+    items.push(li(true, 'Screenshot: ' + s.screenshot, ''));
+    items.push(li(true, 'Android SDK ' + s.androidSdk, ''));
+    (s.issues || []).forEach(function(i){ items.push('<li class="bad">• ' + esc(i) + '</li>'); });
+    if (!s.issues || !s.issues.length) items.push('<li class="ok">• no blocking issues</li>');
+    ul.innerHTML = items.join('');
+  } catch (e) { ul.innerHTML = '<li class="bad">' + esc(e.message) + '</li>'; }
+}
+function li(ok, label, extra) {
+  return '<li class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ ' : '✗ ') + esc(label)
+    + (extra ? ' <span style="color:var(--muted)">(' + esc(extra) + ')</span>' : '') + '</li>';
+}
+async function openDomains() {
+  var raw = D('domainList').value;
+  var x = parseFloat(D('urlX').value) || 50;
+  var y = parseFloat(D('urlY').value) || 6;
+  msg('domMsg', 'opening…', '');
+  try {
+    var r = await post('/api/domains', { domains: raw, urlBarX: x, urlBarY: y });
+    msg('domMsg', r.message, 'good');
+  } catch (e) { msg('domMsg', e.message, 'err'); }
+}
+
+refreshAll();
   } catch (e) { msg('loginMsg', e.message, 'err'); }
 }
 

@@ -130,30 +130,33 @@ object ShizukuShell {
     }
 
     fun pressCtrlT(): Boolean {
-        val ctrl = KeyEvent.KEYCODE_CTRL_LEFT
-        val tKey = KeyEvent.KEYCODE_T
-        val attempts = listOf(
-            "input keycombination $ctrl $tKey",
-            "cmd input keycombination $ctrl $tKey",
-            "toybox input keycombination $ctrl $tKey",
+        val cmds = listOf(
             "input keycombination 113 48",
-            "cmd input keycombination 113 48",
-            "input keyevent --longpress $ctrl $tKey",
-            "input keyevent $ctrl $tKey",
-            "input keyevent 113 48",
+            "input keycombination 114 48",
+            "input keyevent --longpress 113 48",
         )
-        for (cmd in attempts) {
-            LogBuffer.i("Shizuku", "try: $cmd")
+        for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "  exit=$code out=${out.take(120).ifBlank { "(empty)" }}")
-            if (code == 0) {
-                LogBuffer.i("Shizuku", "Ctrl+T OK via: $cmd")
-                return true
-            }
+            LogBuffer.i("Shizuku", "pressCtrlT cmd=$cmd exit=$code ${out.take(80)}")
+            if (code == 0) return true
         }
-        LogBuffer.w("Shizuku", "all Ctrl+T strategies failed — ${statusLine()}")
         return false
     }
+
+    fun pressCtrlNumber(n: Int): Boolean {
+        val key = 7 + n.coerceIn(1, 9)
+        val cmds = listOf(
+            "input keycombination 113 $key",
+            "input keycombination 114 $key",
+        )
+        for (cmd in cmds) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "pressCtrl+$n cmd=$cmd exit=$code ${out.take(60)}")
+            if (code == 0) return true
+        }
+        return false
+    }
+
 
     fun pressEnter(): Boolean {
         val enter = KeyEvent.KEYCODE_ENTER

@@ -184,14 +184,62 @@ object BridgeControl {
                 LogBuffer.w("Control", "Shizuku not ready — cannot force-stop Roblox")
                 return "force-stop needs Shizuku (open the Shizuku app and grant CWBridge)"
             }
-            context.packageManager.getLaunchIntentForPackage(packageName)?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(it)
+            val launch = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launch)
                 "Roblox restarting"
-            } ?: "Roblox installed but no launch intent"
+            } else {
+                LogBuffer.w("Control", "no launch intent for $packageName — CatWeb deeplink")
+                openCatWeb(context)
+            }
         } catch (t: Throwable) {
             LogBuffer.e("Control", "restartRoblox: ${t.message}")
             "restart failed: ${t.message}"
         }
+    }
+
+
+    /**
+     * Open domains in CatWeb: Ctrl+T, tap URL bar by percent coords, type, Enter.
+     * Roblox is OpenGL so the a11y tree is empty. Ends with Ctrl+1 on first tab.
+     */
+    fun openDomains(
+        domains: List<String>,
+        urlBarXPct: Float = 50f,
+        urlBarYPct: Float = 6f,
+        pauseMs: Long = 1000L,
+    ): String {
+        if (domains.isEmpty()) return "no domains"
+        val svc = TapService.instance
+        val results = mutableListOf<String>()
+        for ((i, raw) in domains.withIndex()) {
+            val d = raw.trim()
+            if (d.isEmpty()) continue
+            LogBuffer.i("Control", "openDomains [${i + 1}/${domains.size}] $d")
+            val ctrl = when {
+                ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                svc != null -> svc.pressCtrlT()
+                else -> false
+            }
+            if (!ctrl) { results += "$d: Ctrl+T failed"; continue }
+            try { Thread.sleep(400) } catch (_: InterruptedException) {}
+            val tapped = svc?.clickAtPercent(urlBarXPct, urlBarYPct) == true
+            if (!tapped) { results += "$d: URL-bar tap failed"; continue }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {}
+            val typed = ShizukuShell.isReady() && ShizukuShell.inputText(d)
+            if (!typed) { results += "$d: type failed (need Shizuku)"; continue }
+            try { Thread.sleep(200) } catch (_: InterruptedException) {}
+            val enter = when {
+                ShizukuShell.isReady() -> ShizukuShell.pressEnter()
+                svc != null -> svc.pressEnter()
+                else -> false
+            }
+            results += if (enter) "$d: ok" else "$d: Enter failed"
+            try { Thread.sleep(pauseMs) } catch (_: InterruptedException) {}
+        }
+        val ctrl1 = ShizukuShell.isReady() && ShizukuShell.pressCtrlNumber(1)
+        results += if (ctrl1) "Ctrl+1 ok" else "Ctrl+1 failed"
+        return results.joinToString("; ")
     }
 }
