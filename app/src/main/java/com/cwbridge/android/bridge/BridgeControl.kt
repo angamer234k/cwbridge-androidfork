@@ -267,9 +267,18 @@ object BridgeControl {
     var disconnectFailsafe: Int = 0
         private set
 
+    private const val MAX_FAILSAFE = 5
+
     fun bumpDisconnectFailsafe(): Int {
         disconnectFailsafe += 1
-        LogBuffer.w("Control", "disconnect failsafe now=$disconnectFailsafe")
+        LogBuffer.w("Control", "disconnect failsafe now=$disconnectFailsafe/$MAX_FAILSAFE")
+        if (disconnectFailsafe >= MAX_FAILSAFE) {
+            val msg =
+                "Bridge stopped: Roblox disconnected $disconnectFailsafe times " +
+                    "without recovery (failsafe limit $MAX_FAILSAFE). " +
+                    "Open Roblox/CatWeb manually, then start the bridge again."
+            stopBridgeWithError(msg)
+        }
         return disconnectFailsafe
     }
 
@@ -324,61 +333,17 @@ object BridgeControl {
     fun openSingleDomainOnLoad(domain: String): String {
         val d = domain.trim()
         if (d.isEmpty()) return "empty domain"
-        val ctx = try {
-            // TapService is an Application-context-ish service; prefer its context
-            TapService.instance ?: return "$d: no accessibility (need CWBridge Tap)"
-        } catch (_: Throwable) {
-            return "$d: no accessibility"
-        }
-        val appCtx = ctx.applicationContext
-
-        // OCR: "Search or type a URL" (case-insensitive substring)
-        val hit = ScreenOcr.findText(
-            appCtx,
-            "search or type a url",
-            x0Pct = 5f,
-            x1Pct = 90f,
-            y0Pct = 0f,
-            y1Pct = 50f,
-        ) ?: ScreenOcr.findText(
-            appCtx,
-            "type a url",
-            x0Pct = 5f,
-            x1Pct = 90f,
-            y0Pct = 0f,
-            y1Pct = 50f,
-        ) ?: ScreenOcr.findText(
-            appCtx,
-            "search or type",
-            x0Pct = 5f,
-            x1Pct = 90f,
-            y0Pct = 0f,
-            y1Pct = 50f,
-        )
-
-        val tapped = if (hit != null) {
-            ctx.clickAt(hit.centerX, hit.centerY)
-        } else {
-            // Fallback: classic percent URL bar
-            LogBuffer.w("Control", "OCR URL bar miss — percent fallback 50%,6%")
-            ctx.clickAtPercent(50f, 6f)
-        }
+        val svc = TapService.instance
+            ?: return "$d: no accessibility (need CWBridge Tap)"
+        // Percent URL bar (OCR deferred — ML Kit blocked CI)
+        val tapped = svc.clickAtPercent(50f, 6f)
         if (!tapped) return "$d: URL bar tap failed"
         try { Thread.sleep(400) } catch (_: InterruptedException) {}
-
-        val typed = if (ShizukuShell.isReady()) {
-            ShizukuShell.inputText(d)
-        } else {
-            ctx.sendText(d)
-        }
+        val typed = if (ShizukuShell.isReady()) ShizukuShell.inputText(d) else svc.sendText(d)
         if (!typed) return "$d: type failed"
         try { Thread.sleep(200) } catch (_: InterruptedException) {}
-
-        val enter = when {
-            ShizukuShell.isReady() -> ShizukuShell.pressEnter()
-            else -> ctx.pressEnter()
-        }
-        return if (enter) "$d: ok (OCR URL bar)" else "$d: Enter failed"
+        val enter = if (ShizukuShell.isReady()) ShizukuShell.pressEnter() else svc.pressEnter()
+        return if (enter) "$d: ok" else "$d: Enter failed"
     }
 
 }
