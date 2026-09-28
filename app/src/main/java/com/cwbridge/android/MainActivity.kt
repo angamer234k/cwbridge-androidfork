@@ -773,18 +773,15 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("CWBridge Tap not running")
             .setMessage(
-                "Settings says Tap is enabled, but the service is not connected." +
-                    "
+                """
+                Settings says Tap is enabled, but the service is not connected.
 
-This is common on Xiaomi / Redmi / MIUI:" +
-                    "
-1. Open Accessibility settings" +
-                    "
-2. Turn CWBridge Tap OFF, wait 2s, turn ON" +
-                    "
-3. Disable battery restrictions for CWBridge" +
-                    "
-4. Force-stop CWBridge, then reopen the app",
+                This is common on Xiaomi / Redmi / MIUI:
+                1. Open Accessibility settings
+                2. Turn CWBridge Tap OFF, wait 2s, turn ON
+                3. Disable battery restrictions for CWBridge
+                4. Force-stop CWBridge, then reopen the app
+                """.trimIndent(),
             )
             .setPositiveButton("Open settings") { _, _ -> openAccessibilitySettings() }
             .setNegativeButton("Later", null)
