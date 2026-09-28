@@ -1,54 +1,53 @@
 #!/usr/bin/env python3
-"""v2.13: mobile WebUi polish, diagnose API, screenshot errors, Roblox deeplink, domain open."""
+"""v2.13 features: mobile UI, diagnose, screenshot detail, roblox deeplink, domains."""
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def read(p: Path) -> str:
-    return p.read_text()
+def read(rel: str) -> str:
+    return (ROOT / rel).read_text()
 
-def write(p: Path, t: str) -> None:
-    p.write_text(t)
-    print(f"wrote {p.relative_to(ROOT)}")
+def write(rel: str, text: str) -> None:
+    (ROOT / rel).write_text(text)
+    print("wrote", rel)
 
 def patch_bridge_control() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
-    t = read(p)
+    rel = "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
+    t = read(rel)
 
-    old = '''            context.packageManager.getLaunchIntentForPackage(packageName)?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(it)
-                "Roblox restarting"
-            } ?: "Roblox installed but no launch intent"'''
-
-    new = '''            // Prefer launcher intent; if missing (some OEMs / sideload), use CatWeb deeplink.
-            val launch = context.packageManager.getLaunchIntentForPackage(packageName)
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(launch)
-                "Roblox restarting"
-            } else {
-                LogBuffer.w("Control", "no launch intent for $packageName — CatWeb deeplink")
-                openCatWeb(context)
-            }'''
-
+    old = (
+        "            context.packageManager.getLaunchIntentForPackage(packageName)?.let {\n"
+        "                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)\n"
+        "                context.startActivity(it)\n"
+        "                \"Roblox restarting\"\n"
+        "            } ?: \"Roblox installed but no launch intent\""
+    )
+    new = (
+        "            val launch = context.packageManager.getLaunchIntentForPackage(packageName)\n"
+        "            if (launch != null) {\n"
+        "                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)\n"
+        "                context.startActivity(launch)\n"
+        "                \"Roblox restarting\"\n"
+        "            } else {\n"
+        "                LogBuffer.w(\"Control\", \"no launch intent for $packageName — CatWeb deeplink\")\n"
+        "                openCatWeb(context)\n"
+        "            }"
+    )
     if old in t:
         t = t.replace(old, new, 1)
-        print("restartRoblox deeplink fallback")
-    elif "no launch intent for" in t:
+        print("restartRoblox deeplink")
+    elif "CatWeb deeplink" in t:
         print("restartRoblox already patched")
     else:
-        print("WARN: restartRoblox block not found")
+        print("WARN: restartRoblox pattern missing")
 
-    # Add openDomains sequence if missing
     if "fun openDomains" not in t:
-        insert = '''
+        method = '''
 
     /**
-     * Open each domain in CatWeb via Ctrl+T → tap URL bar (coords) → type → Enter.
-     * Roblox is OpenGL so the a11y tree is empty; taps are percent-based.
-     * After all tabs: Ctrl+1 focuses the first.
+     * Open domains in CatWeb: Ctrl+T, tap URL bar by percent coords, type, Enter.
+     * Roblox is OpenGL so the a11y tree is empty. Ends with Ctrl+1 on first tab.
      */
     fun openDomains(
         domains: List<String>,
@@ -68,26 +67,13 @@ def patch_bridge_control() -> None:
                 svc != null -> svc.pressCtrlT()
                 else -> false
             }
-            if (!ctrl) {
-                results += "$d: Ctrl+T failed"
-                continue
-            }
+            if (!ctrl) { results += "$d: Ctrl+T failed"; continue }
             try { Thread.sleep(400) } catch (_: InterruptedException) {}
             val tapped = svc?.clickAtPercent(urlBarXPct, urlBarYPct) == true
-            if (!tapped) {
-                results += "$d: URL-bar tap failed"
-                continue
-            }
+            if (!tapped) { results += "$d: URL-bar tap failed"; continue }
             try { Thread.sleep(300) } catch (_: InterruptedException) {}
-            val typed = if (ShizukuShell.isReady()) {
-                ShizukuShell.inputText(d)
-            } else {
-                false
-            }
-            if (!typed) {
-                results += "$d: type failed (need Shizuku for text)"
-                continue
-            }
+            val typed = ShizukuShell.isReady() && ShizukuShell.inputText(d)
+            if (!typed) { results += "$d: type failed (need Shizuku)"; continue }
             try { Thread.sleep(200) } catch (_: InterruptedException) {}
             val enter = when {
                 ShizukuShell.isReady() -> ShizukuShell.pressEnter()
@@ -97,64 +83,32 @@ def patch_bridge_control() -> None:
             results += if (enter) "$d: ok" else "$d: Enter failed"
             try { Thread.sleep(pauseMs) } catch (_: InterruptedException) {}
         }
-        // Focus first tab
-        val ctrl1 = if (ShizukuShell.isReady()) ShizukuShell.pressCtrlNumber(1) else false
+        val ctrl1 = ShizukuShell.isReady() && ShizukuShell.pressCtrlNumber(1)
         results += if (ctrl1) "Ctrl+1 ok" else "Ctrl+1 failed"
         return results.joinToString("; ")
     }
 '''
-        # insert before closing brace of object
-        t = t.rstrip() + "\n" + insert + "\n}\n"
-        # remove duplicate closing if any
-        while t.count("\n}\n") > 1 and t.rstrip().endswith("}'):
-            pass
-        # Fix: we may have doubled the final }
-        # Original ended with }
-        # Better approach: replace last standalone }
-        if t.count("object BridgeControl") == 1:
-            # strip trailing braces and re-add once
-            body = t[: t.rfind("fun restartRoblox")]
-            # simpler: just append method before final }
-            t = read(p)
-            if "fun openDomains" not in t:
-                t = t.rstrip()
-                if t.endswith("}"):
-                    t = t[:-1] + insert + "\n}\n"
-                print("added openDomains")
-            else:
-                print("openDomains exists")
-        write(p, t)
-        return
-
-    write(p, t)
+        t = t.rstrip()
+        if t.endswith("}"):
+            t = t[:-1] + method + "}\n"
+            print("added openDomains")
+    write(rel, t)
 
 def patch_shizuku() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
-    t = read(p)
+    rel = "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
+    t = read(rel)
     if "pressCtrlNumber" in t:
-        print("ShizukuShell already has pressCtrlNumber")
+        print("ShizukuShell already patched")
         return
-
-    # Strengthen pressCtrlT and add pressCtrlNumber
-    old = '''    fun pressCtrlT(): Boolean {
-'''
-    # Find the existing function and replace whole thing
-    m = re.search(
-        r"    fun pressCtrlT\(\): Boolean \{.*?\n    \}\n",
-        t,
-        re.S,
-    )
+    m = re.search(r"    fun pressCtrlT\(\): Boolean \{.*?\n    \}\n", t, re.S)
     if not m:
-        print("WARN: pressCtrlT not found")
+        print("WARN: pressCtrlT missing")
         return
-
     repl = '''    fun pressCtrlT(): Boolean {
-        // Try several input forms — OEM keyboards differ.
         val cmds = listOf(
-            "input keycombination 113 48",          // CTRL_LEFT + T
-            "input keycombination 114 48",          // CTRL_RIGHT + T
+            "input keycombination 113 48",
+            "input keycombination 114 48",
             "input keyevent --longpress 113 48",
-            "input text '' && input keycombination 113 48",
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
@@ -164,9 +118,8 @@ def patch_shizuku() -> None:
         return false
     }
 
-    /** Ctrl+1..9 for tab focus (KEYCODE_1 = 8). */
     fun pressCtrlNumber(n: Int): Boolean {
-        val key = 7 + n.coerceIn(1, 9) // KEYCODE_0=7, KEYCODE_1=8
+        val key = 7 + n.coerceIn(1, 9)
         val cmds = listOf(
             "input keycombination 113 $key",
             "input keycombination 114 $key",
@@ -178,70 +131,56 @@ def patch_shizuku() -> None:
         }
         return false
     }
+
 '''
     t = t[: m.start()] + repl + t[m.end() :]
-    write(p, t)
+    write(rel, t)
     print("ShizukuShell Ctrl improved")
 
-def patch_tapservice_screenshot() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/TapService.kt"
-    t = read(p)
-    old = '''                    override fun onFailure(errorCode: Int) {
-                        exec.shutdown()
-                        LogBuffer.w("A11y", "takeScreenshot failed code=$errorCode")
-                        callback(null)
-                    }'''
-    new = '''                    override fun onFailure(errorCode: Int) {
-                        exec.shutdown()
-                        val why = when (errorCode) {
-                            1 -> "INTERNAL_ERROR"
-                            2 -> "NO_ACCESSIBILITY_ACCESS"
-                            3 -> "INTERVAL_TOO_SHORT"
-                            4 -> "INVALID_DISPLAY"
-                            5 -> "INVALID_WINDOW"
-                            else -> "code=$errorCode"
-                        }
-                        // Roblox (and many games) set FLAG_SECURE → system refuses capture.
-                        LogBuffer.w("A11y", "takeScreenshot failed: $why (games with FLAG_SECURE cannot be captured)")
-                        callback(null)
-                    }'''
+def patch_screenshot() -> None:
+    rel = "app/src/main/java/com/cwbridge/android/TapService.kt"
+    t = read(rel)
+    old = (
+        "                    override fun onFailure(errorCode: Int) {\n"
+        "                        exec.shutdown()\n"
+        "                        LogBuffer.w(\"A11y\", \"takeScreenshot failed code=$errorCode\")\n"
+        "                        callback(null)\n"
+        "                    }"
+    )
+    new = (
+        "                    override fun onFailure(errorCode: Int) {\n"
+        "                        exec.shutdown()\n"
+        "                        val why = when (errorCode) {\n"
+        "                            1 -> \"INTERNAL_ERROR\"\n"
+        "                            2 -> \"NO_ACCESSIBILITY_ACCESS\"\n"
+        "                            3 -> \"INTERVAL_TOO_SHORT\"\n"
+        "                            4 -> \"INVALID_DISPLAY\"\n"
+        "                            5 -> \"INVALID_WINDOW\"\n"
+        "                            else -> \"code=$errorCode\"\n"
+        "                        }\n"
+        "                        LogBuffer.w(\"A11y\", \"takeScreenshot failed: $why (FLAG_SECURE apps like Roblox cannot be captured)\")\n"
+        "                        callback(null)\n"
+        "                    }"
+    )
     if old in t:
-        t = t.replace(old, new, 1)
-        write(p, t)
-        print("screenshot error detail")
+        write(rel, t.replace(old, new, 1))
+        print("screenshot errors")
     else:
-        print("screenshot onFailure already patched or missing")
+        print("screenshot already patched or pattern miss")
 
-def patch_http_server() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
-    t = read(p)
+def patch_http() -> None:
+    rel = "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
+    t = read(rel)
 
-    # diagnose route
     if 'path == "/api/diagnose"' not in t:
-        anchor = '            path == "/api/status" -> respond(out, 200, statusJson())'
-        if anchor not in t:
-            print("WARN: status route not found")
-        else:
-            t = t.replace(
-                anchor,
-                anchor
-                + "\n"
-                + '            path == "/api/diagnose" -> respond(out, 200, diagnoseJson())',
-                1,
-            )
-            print("added /api/diagnose route")
-
-    if 'path == "/api/domains"' not in t:
-        anchor = '            path == "/api/status" -> respond(out, 200, statusJson())'
-        # insert after diagnose if present
-        if 'path == "/api/diagnose"' in t:
-            t = t.replace(
-                'path == "/api/diagnose" -> respond(out, 200, diagnoseJson())',
-                'path == "/api/diagnose" -> respond(out, 200, diagnoseJson())\n'
-                '            path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))',
-                1,
-            )
-            print("added /api/domains route")
+        t = t.replace(
+            'path == "/api/status" -> respond(out, 200, statusJson())',
+            'path == "/api/status" -> respond(out, 200, statusJson())\n'
+            '            path == "/api/diagnose" -> respond(out, 200, diagnoseJson())\n'
+            '            path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))',
+            1,
+        )
+        print("api routes")
 
     if "fun diagnoseJson" not in t:
         helper = '''
@@ -257,21 +196,23 @@ def patch_http_server() -> None:
                 android.content.ComponentName.unflattenFromString(it.trim()) == cn
             }
         } catch (_: Throwable) { false }
-        val shizuku = ShizukuShell.statusLine()
         val shot = when {
             !BridgeControl.screenshotSupported() -> "unsupported (need Android 11+)"
             !a11yBound -> "needs CWBridge Tap connected"
-            else -> "supported (games with FLAG_SECURE still fail)"
+            else -> "supported (FLAG_SECURE games still fail)"
         }
         val issues = mutableListOf<String>()
-        if (!a11yBound) issues += if (a11yListed) "A11y listed but not bound — toggle Tap off/on" else "Enable CWBridge Tap"
+        if (!a11yBound) {
+            issues += if (a11yListed) "A11y listed but not bound — toggle Tap off/on"
+            else "Enable CWBridge Tap"
+        }
         if (!ShizukuShell.isReady()) issues += "Shizuku not ready — open Shizuku and grant CWBridge"
         if (!BridgeControl.screenshotSupported()) issues += "Screenshot needs Android 11+"
         return json(
             mapOf(
                 "a11yBound" to a11yBound,
                 "a11yListed" to a11yListed,
-                "shizuku" to shizuku,
+                "shizuku" to ShizukuShell.statusLine(),
                 "shizukuReady" to ShizukuShell.isReady(),
                 "screenshot" to shot,
                 "androidSdk" to android.os.Build.VERSION.SDK_INT,
@@ -284,30 +225,22 @@ def patch_http_server() -> None:
     private fun openDomainsJson(body: String): String {
         val raw = jsonString(body, "domains")
         val domains = raw.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }
-        if (domains.isEmpty()) return json(mapOf("error" to "domains required (comma or newline separated)"))
+        if (domains.isEmpty()) return json(mapOf("error" to "domains required"))
         val x = (jsonDouble(body, "urlBarX") ?: 50.0).toFloat()
         val y = (jsonDouble(body, "urlBarY") ?: 6.0).toFloat()
-        val msg = BridgeControl.openDomains(domains, x, y)
-        return json(mapOf("message" to msg))
+        return json(mapOf("message" to BridgeControl.openDomains(domains, x, y)))
     }
-'''
-        # insert before class end - find private fun statusJson
-        if "private fun statusJson" in t:
-            t = t.replace("    private fun statusJson", helper + "\n    private fun statusJson", 1)
-            print("added diagnoseJson + openDomainsJson")
 
-    # Better screenshot error message
-    t2 = t.replace(
-        'shot.fold(\n',
-        'shot.fold(\n',  # noop keep
-    )
-    write(p, t)
+'''
+        t = t.replace("    private fun statusJson", helper + "    private fun statusJson", 1)
+        print("diagnose helpers")
+
+    write(rel, t)
 
 def patch_webui() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
-    t = read(p)
+    rel = "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
+    t = read(rel)
 
-    # Mobile-friendlier CSS overrides injected into PART_A style
     if "/* mobile-v213 */" not in t:
         css = """
 /* mobile-v213 */
@@ -316,23 +249,20 @@ def patch_webui() -> None:
   .card{padding:12px;border-radius:14px}
   header{padding:10px 12px;gap:8px}
   button{padding:12px 14px;font-size:14px;min-height:44px;flex:1 1 auto}
-  input{padding:12px 12px;font-size:16px;width:100%}
+  input{padding:12px;font-size:16px;width:100%}
   .row{gap:8px}
   .row > *{flex:1 1 120px}
   table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
   pre{max-height:240px;font-size:12px}
-  h1{font-size:15px}
 }
 button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #shotImg{max-width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
-.diag{font-size:13px;line-height:1.45}
-.diag li{margin:4px 0}
+.diag{font-size:13px;line-height:1.45;margin:10px 0 0;padding-left:18px;color:var(--muted)}
 .diag .ok{color:var(--ok)}.diag .bad{color:var(--danger)}
 """
         t = t.replace("</style>", css + "</style>", 1)
-        print("mobile CSS")
+        print("mobile css")
 
-    # Add diagnose + domains cards before Services if not present
     if 'id="diagnoseCard"' not in t:
         block = '''
   <div class="card" id="diagnoseCard">
@@ -340,47 +270,45 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     <div class="row">
       <button onclick="runDiagnose()">Diagnose issues</button>
     </div>
-    <ul id="diagOut" class="diag" style="margin:10px 0 0;padding-left:18px;color:var(--muted)"></ul>
+    <ul id="diagOut" class="diag"></ul>
   </div>
 
   <div class="card" id="domainsCard">
     <h2>Open domains (Ctrl+T)</h2>
     <p style="color:var(--muted);font-size:12px;margin:0 0 8px">
-      One domain per line. Uses Ctrl+T, taps the URL bar by coordinates
-      (Roblox has no a11y tree), types the domain, presses Enter, then Ctrl+1.
-      Needs Shizuku for keys/text.
+      One domain per line. Ctrl+T, tap URL bar by coordinates (Roblox has no a11y tree),
+      type domain, Enter, then Ctrl+1. Needs Shizuku.
     </p>
-    <textarea id="domainList" rows="4" placeholder="catweb.rbx&#10;mysite.rbx"
+    <textarea id="domainList" rows="4" placeholder="catweb.rbx"
       style="width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;color:#fff;padding:10px;font:inherit"></textarea>
     <div class="row" style="margin-top:8px">
-      <label>URL bar X% <input id="urlX" value="50" style="width:70px"></label>
+      <label>URL X% <input id="urlX" value="50" style="width:70px"></label>
       <label>Y% <input id="urlY" value="6" style="width:70px"></label>
       <button onclick="openDomains()">Open all</button>
     </div>
     <div id="domMsg" class="msg"></div>
   </div>
 '''
-        # Insert before Services card
-        marker = '  <div class="card">\n    <h2>Services</h2>'
+        marker = "  <div class=\"card\">\n    <h2>Services</h2>"
         if marker in t:
             t = t.replace(marker, block + marker, 1)
-            print("diagnose + domains cards")
+            print("cards")
         else:
-            print("WARN: Services card not found")
+            print("WARN: Services marker missing")
 
     if "async function runDiagnose" not in t:
         js = '''
 async function runDiagnose() {
-  const ul = D('diagOut'); ul.innerHTML = '<li>checking…</li>';
+  var ul = D('diagOut'); ul.innerHTML = '<li>checking…</li>';
   try {
-    const s = await api('/api/diagnose');
-    const items = [];
-    items.push(li(s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound — toggle Tap off/on' : ''));
-    items.push(li(s.shizukuReady, 'Shizuku ready', s.shizuku));
+    var s = await api('/api/diagnose');
+    var items = [];
+    items.push(li(s.a11yBound, 'Accessibility bound', s.a11yListed && !s.a11yBound ? 'listed but not bound' : ''));
+    items.push(li(s.shizukuReady, 'Shizuku ready', s.shizuku || ''));
     items.push(li(true, 'Screenshot: ' + s.screenshot, ''));
     items.push(li(true, 'Android SDK ' + s.androidSdk, ''));
     (s.issues || []).forEach(function(i){ items.push('<li class="bad">• ' + esc(i) + '</li>'); });
-    if (!s.issues || !s.issues.length) items.push('<li class="ok">• no blocking issues detected</li>');
+    if (!s.issues || !s.issues.length) items.push('<li class="ok">• no blocking issues</li>');
     ul.innerHTML = items.join('');
   } catch (e) { ul.innerHTML = '<li class="bad">' + esc(e.message) + '</li>'; }
 }
@@ -389,32 +317,31 @@ function li(ok, label, extra) {
     + (extra ? ' <span style="color:var(--muted)">(' + esc(extra) + ')</span>' : '') + '</li>';
 }
 async function openDomains() {
-  const raw = D('domainList').value;
-  const x = parseFloat(D('urlX').value) || 50;
-  const y = parseFloat(D('urlY').value) || 6;
+  var raw = D('domainList').value;
+  var x = parseFloat(D('urlX').value) || 50;
+  var y = parseFloat(D('urlY').value) || 6;
   msg('domMsg', 'opening…', '');
   try {
-    const r = await post('/api/domains', { domains: raw, urlBarX: x, urlBarY: y });
+    var r = await post('/api/domains', { domains: raw, urlBarX: x, urlBarY: y });
     msg('domMsg', r.message, 'good');
   } catch (e) { msg('domMsg', e.message, 'err'); }
 }
 '''
-        # inject before refreshAll();
         if "refreshAll();" in t:
             t = t.replace("refreshAll();", js + "\nrefreshAll();", 1)
-            print("diagnose/domains JS")
+            print("js")
         else:
-            print("WARN: refreshAll not found")
+            print("WARN: refreshAll missing")
 
-    write(p, t)
+    write(rel, t)
 
 def main() -> None:
     patch_bridge_control()
     patch_shizuku()
-    patch_tapservice_screenshot()
-    patch_http_server()
+    patch_screenshot()
+    patch_http()
     patch_webui()
-    print("hotfix done")
+    print("done")
 
 if __name__ == "__main__":
     main()
