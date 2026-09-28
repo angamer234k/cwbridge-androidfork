@@ -274,24 +274,21 @@ object ShizukuShell {
      * KEY_LEFTCTRL=29. SYN_REPORT after each. Shell may lack write on some OEMs.
      */
     private fun sendeventCtrlChord(linuxKey: Int, label: String): Boolean {
-        // Hardware-level EV_KEY via sendevent. Escape shell vars carefully for Kotlin.
         val lk = linuxKey
-        val script = (
-            "ok=0; " +
-            "for dev in /dev/input/event*; do " +
-            "[ -e "\$dev" ] || continue; " +
-            "sendevent "\$dev" 1 29 1 2>/dev/null || continue; " +
-            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
-            "sendevent "\$dev" 1 " + lk + " 1 2>/dev/null || continue; " +
-            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
-            "sendevent "\$dev" 1 " + lk + " 0 2>/dev/null; " +
-            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
-            "sendevent "\$dev" 1 29 0 2>/dev/null; " +
-            "sendevent "\$dev" 0 0 0 2>/dev/null; " +
-            "echo OK \$dev; ok=1; break; " +
-            "done; " +
-            "[ \$ok -eq 1 ]"
-        )
+        // Shell vars written as ${'$'}name so Kotlin does not interpolate them.
+        val script =
+            "ok=0; for dev in /dev/input/event*; do " +
+            "[ -e ${'$'}dev ] || continue; " +
+            "sendevent ${'$'}dev 1 29 1 2>/dev/null || continue; " +
+            "sendevent ${'$'}dev 0 0 0 2>/dev/null; " +
+            "sendevent ${'$'}dev 1 " + lk + " 1 2>/dev/null || continue; " +
+            "sendevent ${'$'}dev 0 0 0 2>/dev/null; " +
+            "sendevent ${'$'}dev 1 " + lk + " 0 2>/dev/null; " +
+            "sendevent ${'$'}dev 0 0 0 2>/dev/null; " +
+            "sendevent ${'$'}dev 1 29 0 2>/dev/null; " +
+            "sendevent ${'$'}dev 0 0 0 2>/dev/null; " +
+            "echo OK ${'$'}dev; ok=1; break; done; " +
+            "[ ${'$'}ok -eq 1 ]"
         val (code, out) = exec(script)
         LogBuffer.i("Shizuku", "sendevent Ctrl+$label exit=$code ${out.take(120)}")
         if (code == 0 && out.contains("OK")) {
@@ -301,10 +298,6 @@ object ShizukuShell {
         return false
     }
 
-    /**
-     * Open a CatWeb new tab by tapping the "+" on the tab bar.
-     * Tries several percent positions (phones / tablets / notches differ).
-     */
     fun openNewTabByPlusTap(): Boolean {
         focusRoblox()
         try { Thread.sleep(200) } catch (_: InterruptedException) {}
