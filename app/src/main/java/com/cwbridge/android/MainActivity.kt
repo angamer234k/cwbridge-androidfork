@@ -657,9 +657,18 @@ class MainActivity : AppCompatActivity() {
             LogBuffer.i("CWBridge", "bridge stopped")
         } else {
             if (!TapService.isConnected()) {
-                LogBuffer.e("CWBridge", "refusing start: Accessibility service is off")
-                Toast.makeText(this, "Enable CWBridge Tap first", Toast.LENGTH_SHORT).show()
-                openAccessibilitySettings()
+                val listed = isAccessibilityEnabled()
+                LogBuffer.e(
+                    "CWBridge",
+                    if (listed) "a11y listed ON but TapService not bound (MIUI often kills it)"
+                    else "Accessibility service is off",
+                )
+                if (listed) {
+                    showAccessibilityReconnectDialog()
+                } else {
+                    Toast.makeText(this, "Enable CWBridge Tap first", Toast.LENGTH_SHORT).show()
+                    openAccessibilitySettings()
+                }
                 refreshUi()
                 return
             }
@@ -688,9 +697,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         binding.btnStartStop.text = if (bridgeRunning) "Stop bridge" else "Start bridge"
-        val a11y = isAccessibilityEnabled()
-        binding.a11yState.text = if (a11y) "A11y ON" else "A11y OFF"
-        binding.a11yState.setTextColor(ContextCompat.getColor(this, if (a11y) R.color.ok else R.color.warn))
+        val a11yListed = isAccessibilityEnabled()
+        val a11yBound = TapService.isConnected()
+        binding.a11yState.text = when {
+            a11yBound -> "A11y ON"
+            a11yListed -> "A11y listed (not bound)"
+            else -> "A11y OFF"
+        }
+        binding.a11yState.setTextColor(
+            ContextCompat.getColor(
+                this,
+                when {
+                    a11yBound -> R.color.ok
+                    a11yListed -> R.color.warn
+                    else -> R.color.warn
+                },
+            ),
+        )
         binding.statusPill.text = if (bridgeRunning) "Bridge ON" else "Bridge OFF"
         binding.statusPill.setTextColor(ContextCompat.getColor(this, if (bridgeRunning) R.color.ok else R.color.warn))
         binding.logcatState.text = if (logcatReader.hasPermission()) "logcat OK" else "logcat needs grant"
@@ -700,7 +723,10 @@ class MainActivity : AppCompatActivity() {
         refreshServerUi()
         when {
             !bridgeRunning -> BridgeStatus.set(OverlayState.IDLE, "Bridge off")
-            !(TapService.isConnected() || a11y) -> BridgeStatus.set(OverlayState.ERROR, "Accessibility off")
+            !TapService.isConnected() -> BridgeStatus.set(
+                OverlayState.ERROR,
+                if (a11yListed) "A11y not bound — toggle Tap off/on" else "Accessibility off",
+            )
             !logcatReader.hasPermission() -> BridgeStatus.set(OverlayState.WAITING, "Need READ_LOGS")
             CatWebTracker.ready -> BridgeStatus.set(OverlayState.ACTIVE, "CatWeb ready")
             CatWebTracker.seenBoot -> BridgeStatus.set(
