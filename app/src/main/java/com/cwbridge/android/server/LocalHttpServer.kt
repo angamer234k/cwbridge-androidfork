@@ -387,8 +387,8 @@ class LocalHttpServer(
                     ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
                     else -> false
                 }
-                if (ok) "Ctrl+T sent (focus Roblox first if nothing happened)"
-                else "Ctrl+T failed — open Roblox, grant Shizuku, check console logs"
+                if (ok) "Ctrl+T sent"
+                else "ERROR: Ctrl+T failed after normal keys + hold-Ctrl methods — is Roblox focused? Shizuku granted?"
             }
             "enter" -> {
                 val ok = when {

@@ -129,36 +129,72 @@ object ShizukuShell {
         }
     }
 
-    fun pressCtrlT(): Boolean {
-        focusRoblox()
-        try { Thread.sleep(400) } catch (_: InterruptedException) {}
 
-        val cmds = listOf(
-            "cmd input keycombination 113 48",
-            "input keycombination 113 48",
-            "cmd input keycombination 114 48",
-            "input keycombination 114 48",
-            "cmd input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
-            "input keycombination KEYCODE_CTRL_LEFT KEYCODE_T",
-            "cmd input keycombination 113 48 0",
-            "input keyevent --longpress 113 48",
+    /**
+     * Ctrl+T sequence:
+     *  1) normal keycombination / keyevent chords
+     *  2) hold Ctrl (DOWN), press T, release Ctrl
+     *  3) fail — caller shows the error
+     */
+    fun pressCtrlT(): Boolean = pressCtrlKey(KeyEvent.KEYCODE_T, "T")
+
+    /** Ctrl+1..9 — same sequence as Ctrl+T. */
+    fun pressCtrlNumber(n: Int): Boolean {
+        val key = 7 + n.coerceIn(1, 9) // KEYCODE_0=7, KEYCODE_1=8
+        return pressCtrlKey(key, n.coerceIn(1, 9).toString())
+    }
+
+    private fun pressCtrlKey(keyCode: Int, label: String): Boolean {
+        focusRoblox()
+        try { Thread.sleep(300) } catch (_: InterruptedException) {}
+
+        // --- phase 1: normal chord key events ---
+        val normal = listOf(
+            "cmd input keycombination 113 $keyCode",
+            "input keycombination 113 $keyCode",
+            "cmd input keycombination 114 $keyCode",
+            "input keycombination 114 $keyCode",
+            "cmd input keycombination KEYCODE_CTRL_LEFT $keyCode",
+            "input keycombination KEYCODE_CTRL_LEFT $keyCode",
         )
-        // Retry every method up to 3 rounds until one reports exit 0 AND empty stderr-ish.
-        repeat(3) { round ->
-            for (cmd in cmds) {
-                val (code, out) = exec(cmd)
-                LogBuffer.i("Shizuku", "Ctrl+T r$round cmd=$cmd exit=$code ${out.take(80)}")
-                if (code == 0 && !out.contains("Error", ignoreCase = true) &&
-                    !out.contains("Unknown", ignoreCase = true)
-                ) {
-                    LogBuffer.i("Shizuku", "Ctrl+T SUCCESS via $cmd")
-                    return true
-                }
+        for (cmd in normal) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "Ctrl+$label normal: $cmd exit=$code ${out.take(60)}")
+            if (code == 0 && outLooksOk(out)) {
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (normal) via $cmd")
+                return true
             }
-            try { Thread.sleep(200) } catch (_: InterruptedException) {}
         }
-        LogBuffer.w("Shizuku", "Ctrl+T all methods failed after retries")
+
+        // --- phase 2: hold Ctrl, press key, release Ctrl ---
+        // input cannot truly "hold" across processes, so we chain DOWN-ish longpress
+        // then the key, then an explicit Ctrl up where supported.
+        val holdScripts = listOf(
+            // longpress Ctrl then key (best-effort hold)
+            "input keyevent --longpress 113; input keyevent $keyCode",
+            "cmd input keyevent --longpress 113; cmd input keyevent $keyCode",
+            "input keyevent --longpress KEYCODE_CTRL_LEFT; input keyevent $keyCode",
+            // background Ctrl longpress overlapping the key
+            "input keyevent --longpress 113 & sleep 0.05; input keyevent $keyCode; wait",
+            "cmd input keyevent --longpress 113 & sleep 0.05; cmd input keyevent $keyCode; wait",
+        )
+        for (cmd in holdScripts) {
+            val (code, out) = exec(cmd)
+            LogBuffer.i("Shizuku", "Ctrl+$label hold: $cmd exit=$code ${out.take(60)}")
+            if (code == 0 && outLooksOk(out)) {
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold) via $cmd")
+                return true
+            }
+        }
+
+        LogBuffer.e("Shizuku", "Ctrl+$label FAILED — all normal + hold methods exhausted")
         return false
+    }
+
+    private fun outLooksOk(out: String): Boolean {
+        if (out.isBlank()) return true
+        val bad = listOf("Error", "Unknown", "not found", "No such", "Exception", "denied")
+        return bad.none { out.contains(it, ignoreCase = true) }
     }
 
     fun focusRoblox(packageName: String = "com.roblox.client") {
@@ -168,25 +204,10 @@ object ShizukuShell {
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "focusRoblox cmd=$cmd exit=$code ${out.take(80)}")
+            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(60)}")
             if (code == 0) return
         }
     }
-
-    fun pressCtrlNumber(n: Int): Boolean {
-        val key = 7 + n.coerceIn(1, 9)
-        val cmds = listOf(
-            "input keycombination 113 $key",
-            "input keycombination 114 $key",
-        )
-        for (cmd in cmds) {
-            val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "pressCtrl+$n cmd=$cmd exit=$code ${out.take(60)}")
-            if (code == 0) return true
-        }
-        return false
-    }
-
 
     fun pressEnter(): Boolean {
         val enter = KeyEvent.KEYCODE_ENTER
