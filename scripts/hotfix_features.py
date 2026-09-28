@@ -1,69 +1,119 @@
 #!/usr/bin/env python3
-"""Ctrl chord: 1) normal key events 2) hold Ctrl then key 3) hard fail."""
+"""Inject Ctrl chords via Shizuku IInputManager (shell uid). Fallback: tap + button."""
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CTRL_BLOCK = r'''
+SHIZUKU_INJECT = r'''
     /**
-     * Ctrl+T sequence:
-     *  1) normal keycombination / keyevent chords
-     *  2) hold Ctrl (DOWN), press T, release Ctrl
-     *  3) fail — caller shows the error
+     * Real key injection through IInputManager as shell uid (Shizuku).
+     * The plain `input` shell command often reports exit 0 but games never see meta keys.
+     * KeyMapper / Input Leaf use this same path.
+     */
+    fun injectKeyEventShell(event: KeyEvent): Boolean {
+        if (!isReady()) return false
+        return try {
+            val raw = rikka.shizuku.SystemServiceHelper.getSystemService("input")
+                ?: return false.also { LogBuffer.w("Shizuku", "no input service") }
+            val wrapped = rikka.shizuku.ShizukuBinderWrapper(raw)
+            val stub = Class.forName("android.hardware.input.IInputManager\$Stub")
+            val asInterface = stub.getMethod("asInterface", android.os.IBinder::class.java)
+            val im = asInterface.invoke(null, wrapped) ?: return false
+            val inject = im.javaClass.methods.firstOrNull { m ->
+                m.name == "injectInputEvent" && m.parameterTypes.size >= 2
+            } ?: return false.also { LogBuffer.w("Shizuku", "injectInputEvent missing") }
+            // mode 0 = ASYNC, 2 = WAIT_FOR_FINISH
+            val result = inject.invoke(im, event, 0)
+            val ok = result == null || result == true || result == 0
+            if (!ok) LogBuffer.w("Shizuku", "injectInputEvent returned $result")
+            ok
+        } catch (t: Throwable) {
+            LogBuffer.w("Shizuku", "injectKeyEventShell: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
+
+    /** Hold Ctrl, press [keyCode], release Ctrl — via IInputManager. */
+    fun injectCtrlChordShell(keyCode: Int): Boolean {
+        val downTime = android.os.SystemClock.uptimeMillis()
+        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        fun ev(action: Int, code: Int, metaState: Int, whenMs: Long): KeyEvent =
+            KeyEvent(
+                downTime, whenMs, action, code, 0, metaState,
+                KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+                KeyEvent.FLAG_FROM_SYSTEM,
+                InputDevice.SOURCE_KEYBOARD,
+            )
+        var t = downTime
+        val seq = listOf(
+            ev(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, meta, t),
+            ev(KeyEvent.ACTION_DOWN, keyCode, meta, t + 15),
+            ev(KeyEvent.ACTION_UP, keyCode, meta, t + 30),
+            ev(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, t + 45),
+        )
+        for (e in seq) {
+            if (!injectKeyEventShell(e)) return false
+            try { Thread.sleep(12) } catch (_: InterruptedException) {}
+        }
+        return true
+    }
+
+    /**
+     * Ctrl+T:
+     *  1) IInputManager chord (real inject as shell)
+     *  2) input keycombination fallbacks
+     *  3) hold-style shell scripts
      */
     fun pressCtrlT(): Boolean = pressCtrlKey(KeyEvent.KEYCODE_T, "T")
 
-    /** Ctrl+1..9 — same sequence as Ctrl+T. */
     fun pressCtrlNumber(n: Int): Boolean {
-        val key = 7 + n.coerceIn(1, 9) // KEYCODE_0=7, KEYCODE_1=8
+        val key = 7 + n.coerceIn(1, 9)
         return pressCtrlKey(key, n.coerceIn(1, 9).toString())
     }
 
     private fun pressCtrlKey(keyCode: Int, label: String): Boolean {
         focusRoblox()
-        try { Thread.sleep(300) } catch (_: InterruptedException) {}
+        try { Thread.sleep(250) } catch (_: InterruptedException) {}
 
-        // --- phase 1: normal chord key events ---
+        // Phase 1: real IInputManager inject (this is what actually reaches games)
+        if (injectCtrlChordShell(keyCode)) {
+            LogBuffer.i("Shizuku", "Ctrl+$label OK via IInputManager")
+            return true
+        }
+        LogBuffer.w("Shizuku", "Ctrl+$label IInputManager failed — trying input cmds")
+
+        // Phase 2: normal keycombination
         val normal = listOf(
             "cmd input keycombination 113 $keyCode",
             "input keycombination 113 $keyCode",
             "cmd input keycombination 114 $keyCode",
             "input keycombination 114 $keyCode",
-            "cmd input keycombination KEYCODE_CTRL_LEFT $keyCode",
-            "input keycombination KEYCODE_CTRL_LEFT $keyCode",
         )
         for (cmd in normal) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label normal: $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label normal $cmd exit=$code ${out.take(50)}")
             if (code == 0 && outLooksOk(out)) {
-                LogBuffer.i("Shizuku", "Ctrl+$label OK (normal) via $cmd")
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (keycombination)")
                 return true
             }
         }
 
-        // --- phase 2: hold Ctrl, press key, release Ctrl ---
-        // input cannot truly "hold" across processes, so we chain DOWN-ish longpress
-        // then the key, then an explicit Ctrl up where supported.
-        val holdScripts = listOf(
-            // longpress Ctrl then key (best-effort hold)
+        // Phase 3: hold-style
+        val hold = listOf(
             "input keyevent --longpress 113; input keyevent $keyCode",
             "cmd input keyevent --longpress 113; cmd input keyevent $keyCode",
-            "input keyevent --longpress KEYCODE_CTRL_LEFT; input keyevent $keyCode",
-            // background Ctrl longpress overlapping the key
-            "input keyevent --longpress 113 & sleep 0.05; input keyevent $keyCode; wait",
-            "cmd input keyevent --longpress 113 & sleep 0.05; cmd input keyevent $keyCode; wait",
         )
-        for (cmd in holdScripts) {
+        for (cmd in hold) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "Ctrl+$label hold: $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "Ctrl+$label hold $cmd exit=$code ${out.take(50)}")
             if (code == 0 && outLooksOk(out)) {
-                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold) via $cmd")
+                LogBuffer.i("Shizuku", "Ctrl+$label OK (hold script)")
                 return true
             }
         }
 
-        LogBuffer.e("Shizuku", "Ctrl+$label FAILED — all normal + hold methods exhausted")
+        LogBuffer.e("Shizuku", "Ctrl+$label FAILED all inject paths")
         return false
     }
 
@@ -73,88 +123,117 @@ CTRL_BLOCK = r'''
         return bad.none { out.contains(it, ignoreCase = true) }
     }
 
-'''
-
-def patch_shizuku() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
-    t = p.read_text()
-    # Replace from pressCtrlT through end of pressCtrlNumber (old)
-    start = t.find("    fun pressCtrlT()")
-    if start < 0:
-        raise SystemExit("pressCtrlT missing")
-    # Find pressEnter after pressCtrlNumber
-    end = t.find("    fun pressEnter()", start)
-    if end < 0:
-        raise SystemExit("pressEnter missing")
-    # Keep focusRoblox if it sits between — move it before our block if needed
-    focus = ""
-    fm = re.search(r"    fun focusRoblox\(.*?\n    \}\n", t[start:end], re.S)
-    if fm:
-        focus = fm.group(0) + "\n"
-    # Also grab focus if it's before pressCtrlT
-    if "fun focusRoblox" not in focus:
-        fm2 = re.search(r"    fun focusRoblox\(.*?\n    \}\n\n", t, re.S)
-        if fm2 and fm2.start() < start:
-            focus = ""  # already outside, leave it
-
-    new = CTRL_BLOCK
-    if "fun focusRoblox" not in t[:start] and "fun focusRoblox" not in new:
-        new = new + '''    fun focusRoblox(packageName: String = "com.roblox.client") {
+    fun focusRoblox(packageName: String = "com.roblox.client") {
         val cmds = listOf(
             "monkey -p $packageName -c android.intent.category.LAUNCHER 1",
             "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName",
         )
         for (cmd in cmds) {
             val (code, out) = exec(cmd)
-            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(60)}")
+            LogBuffer.i("Shizuku", "focusRoblox $cmd exit=$code ${out.take(50)}")
             if (code == 0) return
         }
     }
 
 '''
 
-    # Remove old focusRoblox from the replaced region by not including it
-    t2 = t[:start] + new + t[end:]
-    # Dedupe focusRoblox if now duplicated
-    parts = t2.split("    fun focusRoblox")
-    if len(parts) > 2:
-        # keep first only
-        first = parts[0] + "    fun focusRoblox" + parts[1]
-        # strip subsequent full functions
-        rest = "".join(parts[2:])
-        # rest starts mid-function — find next fun at class level
-        m = re.search(r"\n    fun ", rest)
-        if m:
-            rest = rest[m.start()+1:]
-            t2 = first + rest
-        else:
-            t2 = first
-        print("deduped focusRoblox")
-    p.write_text(t2)
-    print("ShizukuShell Ctrl sequence updated")
+def patch_shizuku() -> None:
+    p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
+    t = p.read_text()
+
+    # Ensure imports
+    if "import android.view.InputDevice" not in t:
+        t = t.replace(
+            "import android.view.KeyEvent\n",
+            "import android.view.InputDevice\nimport android.view.KeyCharacterMap\nimport android.view.KeyEvent\n",
+            1,
+        )
+
+    start = t.find("    fun injectKeyEventShell")
+    if start < 0:
+        start = t.find("    fun pressCtrlT")
+    if start < 0:
+        raise SystemExit("no insert point")
+    end = t.find("    fun pressEnter", start)
+    if end < 0:
+        raise SystemExit("pressEnter missing")
+
+    t = t[:start] + SHIZUKU_INJECT + t[end:]
+    # dedupe focusRoblox
+    while t.count("fun focusRoblox") > 1:
+        # remove second occurrence
+        first = t.find("    fun focusRoblox")
+        second = t.find("    fun focusRoblox", first + 1)
+        if second < 0:
+            break
+        # find end of second function
+        m = re.search(r"\n    fun ", t[second + 10:])
+        if not m:
+            break
+        end2 = second + 10 + m.start() + 1
+        t = t[:second] + t[end2:]
+        print("removed dup focusRoblox")
+
+    p.write_text(t)
+    print("ShizukuShell IInputManager inject installed")
+
+def patch_bridge_opentab() -> None:
+    """If Ctrl+T fails, tap the CatWeb + button by percent coords."""
+    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
+    t = p.read_text()
+    if "newTabFallback" in t:
+        print("newTabFallback already present")
+        return
+
+    # Replace openDomains body logic for ctrl failure path
+    old = '''            val ctrl = when {
+                ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                svc != null -> svc.pressCtrlT()
+                else -> false
+            }
+            if (!ctrl) {
+                results += "$d: Ctrl+T failed"
+                continue
+            }'''
+    new = '''            var ctrl = when {
+                ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
+                svc != null -> svc.pressCtrlT()
+                else -> false
+            }
+            if (!ctrl) {
+                // CatWeb shows a "+" on the tab bar — tap it (default top-right)
+                val plusX = 92f
+                val plusY = 4f
+                val tapped = svc?.clickAtPercent(plusX, plusY) == true
+                LogBuffer.w("Control", "Ctrl+T failed — + button tap @$plusX,$plusY ok=$tapped")
+                if (!tapped) {
+                    results += "$d: Ctrl+T and + tap failed"
+                    continue
+                }
+                ctrl = true
+            }'''
+    if old in t:
+        t = t.replace(old, new, 1)
+        p.write_text(t)
+        print("openDomains + fallback")
+    else:
+        print("WARN: openDomains ctrl block not found")
 
 def patch_tapservice() -> None:
     p = ROOT / "app/src/main/java/com/cwbridge/android/TapService.kt"
     t = p.read_text()
-    # pressCtrlT: phase1 shizuku normal+hold, phase2 local hold inject, else fail
-    old = None
     m = re.search(r"    fun pressCtrlT\(\): Boolean \{.*?\n    \}\n", t, re.S)
     if not m:
-        raise SystemExit("TapService.pressCtrlT missing")
+        print("WARN: pressCtrlT missing in TapService")
+        return
     new = '''    fun pressCtrlT(): Boolean {
         LogBuffer.i("A11y", "pressCtrlT")
-        if (ShizukuShell.isReady()) {
-            if (ShizukuShell.pressCtrlT()) {
-                LogBuffer.i("A11y", "pressCtrlT Shizuku OK")
-                return true
-            }
-            LogBuffer.w("A11y", "pressCtrlT Shizuku exhausted normal+hold")
-        } else {
-            LogBuffer.w("A11y", "Shizuku not ready — ${ShizukuShell.statusLine()}")
+        if (ShizukuShell.isReady() && ShizukuShell.pressCtrlT()) {
+            LogBuffer.i("A11y", "pressCtrlT via Shizuku IInputManager/cmds OK")
+            return true
         }
-        // Local hold: Ctrl DOWN, T DOWN/UP, Ctrl UP
         if (injectCtrlChord(KeyEvent.KEYCODE_T)) {
-            LogBuffer.i("A11y", "pressCtrlT local hold inject OK")
+            LogBuffer.i("A11y", "pressCtrlT local inject OK")
             return true
         }
         LogBuffer.e("A11y", "pressCtrlT FAILED")
@@ -164,60 +243,12 @@ def patch_tapservice() -> None:
 '''
     t = t[: m.start()] + new + t[m.end() :]
     p.write_text(t)
-    print("TapService.pressCtrlT updated")
-
-def patch_api_errors() -> None:
-    p = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
-    t = p.read_text()
-    old = '''            "ctrl-t" -> {
-                val ok = when {
-                    svc != null -> svc.pressCtrlT()
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    else -> false
-                }
-                if (ok) "Ctrl+T sent (focus Roblox first if nothing happened)"
-                else "Ctrl+T failed — open Roblox, grant Shizuku, check console logs"
-            }'''
-    new = '''            "ctrl-t" -> {
-                val ok = when {
-                    svc != null -> svc.pressCtrlT()
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    else -> false
-                }
-                if (ok) "Ctrl+T sent"
-                else "ERROR: Ctrl+T failed after normal keys + hold-Ctrl methods — is Roblox focused? Shizuku granted?"
-            }'''
-    if old in t:
-        t = t.replace(old, new, 1)
-        print("api ctrl-t error text")
-    else:
-        # looser replace
-        t2, n = re.subn(
-            r'"ctrl-t" -> \{.*?\n            \}',
-            '''"ctrl-t" -> {
-                val ok = when {
-                    svc != null -> svc.pressCtrlT()
-                    ShizukuShell.isReady() -> ShizukuShell.pressCtrlT()
-                    else -> false
-                }
-                if (ok) "Ctrl+T sent"
-                else "ERROR: Ctrl+T failed after normal keys + hold-Ctrl methods — is Roblox focused? Shizuku granted?"
-            }''',
-            t,
-            count=1,
-            flags=re.S,
-        )
-        if n:
-            t = t2
-            print("api ctrl-t error text (regex)")
-        else:
-            print("WARN: ctrl-t block not found")
-    p.write_text(t)
+    print("TapService updated")
 
 def main() -> None:
     patch_shizuku()
     patch_tapservice()
-    patch_api_errors()
+    patch_bridge_opentab()
     print("done")
 
 if __name__ == "__main__":
