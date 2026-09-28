@@ -982,6 +982,9 @@ class MainActivity : AppCompatActivity() {
                     LogBuffer.i("Control", "bridge restarted from web UI")
                 }
             }
+            override fun stopBridgeWithError(message: String) {
+                stopBridgeWithError(message)
+            }
         })
         server.start()
         Thread {
