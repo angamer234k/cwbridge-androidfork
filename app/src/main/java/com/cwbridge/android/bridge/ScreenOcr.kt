@@ -154,7 +154,7 @@ object ScreenOcr {
         val out = AtomicReference<List<Hit>>(emptyList())
         try {
             val image = InputImage.fromBitmap(bitmap, 0)
-            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
             recognizer.process(image)
                 .addOnSuccessListener { result ->
                     val list = mutableListOf<Hit>()
