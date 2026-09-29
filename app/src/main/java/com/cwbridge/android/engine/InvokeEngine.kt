@@ -113,8 +113,7 @@ class InvokeEngine(
     private suspend fun dispatch(request: String, data1: String, data2: String) {
         when (request) {
             "save" -> {
-                // save.<key>.<value>
-                // save.<key>.<value>.<domain.rbx>  (domain optional → local.rbx)
+                // save.<key>.<value>[.<domain.rbx>]
                 if (data1.isEmpty()) {
                     replyErr("save", "need save.key.value[.domain.rbx]")
                     return
