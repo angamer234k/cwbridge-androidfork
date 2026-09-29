@@ -4,6 +4,14 @@ import re
 
 P = Path(__file__).resolve().parents[1] / "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt"
 
+def replace_arm(src: str, name: str, new_arm: str) -> str:
+    # Allow blank lines between when-branches
+    pattern = rf'(            "{name}" -> \{{)(.*?)(\n\s*"[a-z])'
+    m = re.search(pattern, src, flags=re.S)
+    if not m:
+        raise SystemExit(f"arm {name} not found")
+    return src[: m.start()] + new_arm + m.group(3) + src[m.end() :]
+
 def main() -> None:
     t = P.read_text()
 
@@ -14,7 +22,6 @@ def main() -> None:
             1,
         )
 
-    # Replace entire "save" -> { ... } arm via regex (non-greedy until next "xxx" ->)
     save_new = '''            "save" -> {
                 // save.<key>.<value>[.<domain.rbx>]
                 if (data1.isEmpty()) {
@@ -62,27 +69,17 @@ def main() -> None:
                 )
             }'''
 
-    # Careful: in the Python string above ${e.message} is literal for Kotlin
-
-    def replace_arm(src: str, name: str, new_arm: str) -> str:
-        # Match from "name" -> { through the closing brace of that when-branch
-        pattern = rf'(            "{name}" -> \{{)(.*?)(\n            "[a-z])'
-        m = re.search(pattern, src, flags=re.S)
-        if not m:
-            raise SystemExit(f"arm {name} not found")
-        return src[:m.start()] + new_arm + m.group(3) + src[m.end():]
-
-    if "DatastoreRateLimit.checkAndConsume" not in t or '"save"' not in t.split("checkAndConsume")[0][-200:]:
+    if "DatastoreRateLimit.checkAndConsume(context, domain)" not in t or '"save" ->' in t and "checkAndConsume" not in t[t.find('"save" ->'):t.find('"save" ->')+400]:
         t = replace_arm(t, "save", save_new)
         print("save replaced")
     else:
-        print("save ok")
+        print("save already")
 
-    if "pasteIntoGame" not in t:
+    if "pasteIntoGame(value)" not in t:
         t = replace_arm(t, "load", load_new)
         print("load replaced")
     else:
-        print("load ok")
+        print("load already")
 
     if "private suspend fun pasteIntoGame" not in t:
         helper = '''
@@ -110,6 +107,11 @@ def main() -> None:
         print("pasteIntoGame added")
 
     P.write_text(t)
+    # sanity
+    if "pasteIntoGame(value)" not in t:
+        raise SystemExit("load paste not present after write")
+    if "DatastoreRateLimit.checkAndConsume" not in t:
+        raise SystemExit("rate limit not present after write")
     print("done")
 
 if __name__ == "__main__":
