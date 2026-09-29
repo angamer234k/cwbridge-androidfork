@@ -11,6 +11,7 @@ import com.cwbridge.android.bridge.RobloxLogBuffer
 import com.cwbridge.android.data.Service
 import com.cwbridge.android.data.ServiceConverters
 import com.cwbridge.android.data.ServiceRepository
+import com.cwbridge.android.data.DatastoreRateLimit
 import com.cwbridge.android.data.Store
 import com.cwbridge.android.data.VarStore
 import com.google.gson.Gson
@@ -284,6 +285,9 @@ class LocalHttpServer(
             path == "/api/store/clear" && method == "POST" -> respond(out, 200, clearDomain(body))
 
             path == "/api/limits" && method == "POST" -> respond(out, 200, setLimit(body))
+
+            path == "/api/rate-limits" && method == "GET" -> respond(out, 200, rateLimitsJson(query))
+            path == "/api/rate-limits" && method == "POST" -> respond(out, 200, setRateLimitsJson(body))
 
             path.startsWith("/api/services/") -> {
                 val rest = path.removePrefix("/api/services/")
@@ -614,6 +618,28 @@ class LocalHttpServer(
         return store.clearDomain(domain).fold(
             onSuccess = { json(mapOf("message" to "cleared $it keys from $domain")) },
             onFailure = { json(mapOf("error" to (it.message ?: "clear failed"))) },
+        )
+    }
+
+
+    private fun rateLimitsJson(query: Map<String, String>): String {
+        val domain = query["domain"]
+        return json(DatastoreRateLimit.snapshot(context, domain))
+    }
+
+    private fun setRateLimitsJson(body: String): String {
+        val g = jsonString(body, "globalPerDay").toIntOrNull()
+        val d = jsonString(body, "domainPerDay").toIntOrNull()
+        if (g == null && d == null) {
+            return json(mapOf("error" to "globalPerDay and/or domainPerDay required"))
+        }
+        DatastoreRateLimit.setLimits(context, g, d)
+        return json(
+            mapOf(
+                "ok" to true,
+                "globalPerDay" to DatastoreRateLimit.globalLimit(context),
+                "domainPerDay" to DatastoreRateLimit.domainLimit(context),
+            ),
         )
     }
 

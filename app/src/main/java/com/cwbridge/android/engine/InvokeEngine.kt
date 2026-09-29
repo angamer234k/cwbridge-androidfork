@@ -6,6 +6,7 @@ import android.content.Context
 import com.cwbridge.android.DeviceStatus
 import com.cwbridge.android.TapService
 import com.cwbridge.android.bridge.LogBuffer
+import com.cwbridge.android.data.DatastoreRateLimit
 import com.cwbridge.android.data.Store
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -119,6 +120,11 @@ class InvokeEngine(
                     return
                 }
                 val (value, domain) = splitOptionalDomain(data2)
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain)
+                if (rl != null) {
+                    replyErr("save", rl)
+                    return
+                }
                 val result = store.save(domain, data1, value)
                 result.fold(
                     onSuccess = { replyOk("save", "$data1 → $domain (${value.length} chars)") },
@@ -127,18 +133,32 @@ class InvokeEngine(
             }
 
             "load" -> {
-                // load.key.domain — domain MUST be name.rbx
+                // load.<key>.<domain.rbx> — pastes the actual key value into the game
                 if (data1.isEmpty() || data2.isEmpty()) {
                     replyErr("load", "need load.key.domain (domain like weather.rbx)")
                     return
                 }
-                val result = store.load(data2, data1)
+                val domain = data2.trim()
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain)
+                if (rl != null) {
+                    replyErr("load", rl)
+                    return
+                }
+                val result = store.load(domain, data1)
                 result.fold(
                     onSuccess = { value ->
-                        setClipboard(value)
-                        replyOk("load", value)
+                        // Paste real content into focused field (not just clipboard)
+                        pasteIntoGame(value)
+                        replyOk("load", value.take(500))
                     },
-                    onFailure = { replyErr("load", it.message ?: "fail") },
+                    onFailure = { e ->
+                        // Tell the game via log channel (CatWeb can read cwbridge|err|load|…)
+                        val msg = when (e) {
+                            is NoSuchElementException -> "NOTFOUND ${e.message}"
+                            else -> e.message ?: "fail"
+                        }
+                        replyErr("load", msg)
+                    },
                 )
             }
 
@@ -286,6 +306,20 @@ class InvokeEngine(
             }
 
             else -> replyErr(request, "unknown request — invoke|help")
+        }
+    }
+
+
+    /** Focus → paste [text] into game. Does not emit replyOk (caller does). */
+    private suspend fun pasteIntoGame(text: String) {
+        val svc = TapService.instance ?: return
+        setClipboard(text)
+        svc.clickAtPercent(focusXPct, focusYPct)
+        delay(1000)
+        svc.pasteClipboard()
+        delay(400)
+        if (submitXPx > 0f || submitYPx > 0f) {
+            svc.clickAt(submitXPx, submitYPx)
         }
     }
 
