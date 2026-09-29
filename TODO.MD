@@ -7,7 +7,7 @@
 + FLOATING OVERLAY — status colors (red=error, yellow=waiting CatWeb, green=active)
 + TAP OVERLAY → last Roblox/CatWeb console lines
 + CHECK FOR UPDATES — works (version suffix handling fixed)
-+ WEB SERVER — port 8765 control panel
++ WEB SERVER — port 8080/80/8765 control panel
 + `paste` with no arg pastes current clipboard
 + APP DOESN'T CRASH if a tool/service fails
 + PER-DOMAIN STORAGE LIMIT (bits/bytes/KB/MB/GB) — over-cap saves rejected
@@ -22,6 +22,10 @@
 + PACKAGE FOLDERS — merged + pushed (1c43a72+). bridge/ data/ engine/ server/ under com.cwbridge.android;
   root kept on purpose: MainActivity OverlayService TapService ShizukuShell UpdateChecker DeviceStatus FirstRun
 + CI GUARDS — scripts/check-webui.js (gates every build); path search for WebUi.kt after package move
++ CI GUARDS — lock page (WebUi.LOGIN_SHELL) verified too: script parses, posts /api/login, leaks no dash markup
++ WEB PANEL ESCAPING — esc() real entities (&amp; &lt; &gt; &quot; &#39;) + arg() for inline onclick args;
+  was mapping chars to themselves, so keys/vars/domains with quotes broke or injected markup
++ ONE UNLOCK UI — dashboard's inline #login card removed; a 401 now reloads into the server-side lock page
 + WINDOWS HELPER — cwbridge-updater.ps1 (CLI) + cwbridge-helper-gui.ps1 (window + self-test 22/22)
   latent [switch] positional bug fixed (New-Lbl)
 

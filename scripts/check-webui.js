@@ -8,6 +8,11 @@
  * runtime, so the whole panel silently renders blank. This script reconstructs
  * the page exactly as the app would and fails the build if it is not valid.
  *
+ * It also verifies the separate lock page (WebUi.LOGIN_SHELL): that its script
+ * parses, that it still posts to /api/login, and that it contains none of the
+ * dashboard's markup — that page is served to unauthenticated clients, so a leak
+ * there would hand a stranger the control panel's HTML.
+ *
  * Usage: node scripts/check-webui.js [path/to/WebUi.kt]
  *
  * With no argument it SEARCHES app/src/main/java for WebUi.kt. It used to hardcode
@@ -89,6 +94,37 @@ if (markerConst) {
   }
 }
 
+// The lock page (WebUi.LOGIN_SHELL) is served INSTEAD of the dashboard to every
+// unauthenticated client, so it is the only thing standing between a stranger and
+// the controls. It is not a PART_* string, so the loop above never sees it: check
+// that it parses, that it can actually log in, and that it leaks no dashboard markup.
+const DASHBOARD_MARKERS = ['svcList', 'storeRows', 'varRows', 'shotBox', 'id="app"', '/api/status'];
+const shellMatch = src.match(/private val LOGIN_SHELL: String = """\r?\n([\s\S]*?)"""/);
+if (!shellMatch) {
+  problems.push('LOGIN_SHELL raw string not found — cannot verify the lock page');
+} else {
+  const shell = shellMatch[1];
+  const shellScripts = [];
+  const shellRe = /<script>([\s\S]*?)<\/script>/g;
+  let sh;
+  while ((sh = shellRe.exec(shell)) !== null) shellScripts.push(sh[1]);
+  if (shellScripts.length === 0) {
+    problems.push('lock page has no <script> block, so it can never be unlocked');
+  } else {
+    try {
+      new vm.Script(shellScripts.join('\n'), { filename: 'webui-login.js' });
+    } catch (e) {
+      problems.push('lock page JavaScript does not parse: ' + e.message);
+    }
+  }
+  if (shell.indexOf('/api/login') < 0) {
+    problems.push('lock page never posts to /api/login');
+  }
+  for (const leak of DASHBOARD_MARKERS) {
+    if (shell.indexOf(leak) >= 0) problems.push('lock page leaks dashboard markup: ' + leak);
+  }
+}
+
 // Collect inline script blocks.
 const scripts = [];
 const scriptRe = /<script>([\s\S]*?)<\/script>/g;
@@ -135,4 +171,4 @@ if (problems.length) {
 // hides which WebUi.kt was validated.
 console.log('check-webui: OK for ' + path.relative(path.join(__dirname, '..'), file) +
   ' (' + parts.length + ' parts, ' + scripts.length + ' script block(s), ' +
-  page.length + ' bytes)');
+  page.length + ' bytes' + (shellMatch ? ', lock page checked' : '') + ')');

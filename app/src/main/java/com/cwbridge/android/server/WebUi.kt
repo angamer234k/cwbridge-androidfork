@@ -25,7 +25,6 @@ html,body{margin:0;background:var(--bg);color:var(--text);
   font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
   -webkit-text-size-adjust:100%}
 a{color:var(--accent)}
-.hide{display:none!important}
 header{
   position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
   background:rgba(12,14,18,.88);border-bottom:1px solid var(--line);
@@ -92,20 +91,6 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
 """.trimIndent()
 
     private val PART_B: String = """
-<div id="login" class="hide">
-  <main>
-    <div class="card">
-      <h2>Unlock remote access</h2>
-      <p class="hint">Not on the same LAN as the phone — enter the password shown in the app under Server.</p>
-      <div class="row">
-        <div class="field"><input id="pw" type="password" placeholder="Server password" autocomplete="current-password"></div>
-        <button type="button" onclick="doLogin()">Unlock</button>
-      </div>
-      <div id="loginMsg" class="msg"></div>
-    </div>
-  </main>
-</div>
-
 <div id="app">
 <header>
   <div class="brand">CWBridge</div>
@@ -273,32 +258,36 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
     private val PART_F: String = """
 <script>
 const D = function(id){ return document.getElementById(id); };
-let NEEDS_LOGIN = false;
+let RELOADING = false;
 
 function esc(s){
   return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
-    return ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'})[c];
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
   });
+}
+// Argument for an inline onclick="..." handler: JSON gives a valid JS literal,
+// esc() makes it survive a double-quoted HTML attribute. Without this a raw "
+// inside a key/service name ends the attribute and the button silently no-ops.
+function arg(v){
+  return esc(JSON.stringify(v == null ? "" : String(v)));
 }
 function msg(id, text, cls){
   var el = D(id); if(!el) return;
   el.className = "msg" + (cls ? (" " + cls) : "");
   el.textContent = text || "";
 }
-function showLogin(){
-  NEEDS_LOGIN = true;
-  D("login").classList.remove("hide");
-  D("app").classList.add("hide");
-}
-function revealApp(){
-  NEEDS_LOGIN = false;
-  D("login").classList.add("hide");
-  D("app").classList.remove("hide");
+// The server only ever hands the dashboard to an authenticated client, so a 401
+// means the session died (24h TTL, or the password was regenerated). Reloading
+// makes the server return its own lock page — no second unlock form here.
+function lockedOut(){
+  if(RELOADING) return;
+  RELOADING = true;
+  location.reload();
 }
 
 async function api(path, opts){
   var res = await fetch(path, Object.assign({credentials:"same-origin"}, opts || {}));
-  if(res.status === 401){ showLogin(); throw new Error("locked"); }
+  if(res.status === 401){ lockedOut(); throw new Error("session expired — unlock again"); }
   var ct = res.headers.get("content-type") || "";
   if(ct.indexOf("application/json") < 0){
     if(!res.ok) throw new Error(await res.text());
@@ -320,29 +309,20 @@ function post(path, body){
   });
 }
 
-async function doLogin(){
-  try{
-    await post("/api/login", {password: D("pw").value});
-    msg("loginMsg", "");
-    revealApp();
-    refreshAll();
-  }catch(e){ msg("loginMsg", e.message, "err"); }
-}
 async function logout(){
   try{ await post("/api/logout"); }catch(e){}
-  showLogin();
+  lockedOut();
 }
 
 async function refreshStatus(){
   try{
     var s = await api("/api/status");
-    revealApp();
     var p = D("pill");
     p.textContent = s.state || "-";
     p.className = "chip " + (s.state || "IDLE");
     D("detail").textContent = s.detail || "";
   }catch(e){
-    if(String(e.message) === "locked") return;
+    if(RELOADING) return;
   }
 }
 
@@ -430,8 +410,8 @@ async function loadDomainDb(){
         return "<div class=\"row\" style=\"margin-bottom:6px;align-items:flex-start\">" +
           "<div class=\"field\" style=\"flex:0 0 28%\"><label>" + esc(key) + "</label></div>" +
           "<div class=\"field\" style=\"flex:1\"><textarea id=\"" + id + "\" rows=\"2\">" + esc(val) + "</textarea></div>" +
-          "<button type=\"button\" onclick=\"saveDomainKey(" + JSON.stringify(key) + ",'" + id + "')\">Save</button>" +
-          "<button type=\"button\" class=\"danger\" onclick=\"deleteDomainKey(" + JSON.stringify(key) + ")\">Del</button></div>";
+          "<button type=\"button\" onclick=\"saveDomainKey(" + arg(key) + "," + arg(id) + ")\">Save</button>" +
+          "<button type=\"button\" class=\"danger\" onclick=\"deleteDomainKey(" + arg(key) + ")\">Del</button></div>";
       }).join("");
     }
     msg("domainDbMsg", keys.length + " key(s)", true);
@@ -531,13 +511,13 @@ async function refreshServices(){
     var s = await api("/api/services");
     var list = s.services || [];
     D("svcList").innerHTML = list.map(function(v){
-      var id = esc(v.id || v.name);
+      var id = arg(v.id || v.name);
       return "<div class=\"svc\"><strong>" + esc(v.name) + "</strong>" +
         " <span class=\"badge " + (v.enabled ? "on" : "off") + "\">" + (v.enabled ? "ON" : "OFF") + "</span>" +
-        " <button type=\"button\" class=\"soft\" onclick=\"runService(\'" + id + "')\">Run</button>" +
-        " <button type=\"button\" class=\"ghost\" onclick=\"toggleService(\'" + id + "\'," + (!v.enabled) + ")\">" +
+        " <button type=\"button\" class=\"soft\" onclick=\"runService(" + id + ")\">Run</button>" +
+        " <button type=\"button\" class=\"ghost\" onclick=\"toggleService(" + id + "," + (!v.enabled) + ")\">" +
         (v.enabled ? "Disable" : "Enable") + "</button>" +
-        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(\'" + id + "')\">Delete</button></div>";
+        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(" + id + ")\">Delete</button></div>";
     }).join("") || "<div class=\"hint\">No services yet</div>";
   }catch(e){}
 }
@@ -577,7 +557,7 @@ async function refreshStore(){
     D("storeRows").innerHTML = rows.map(function(d){
       return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
         esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
-        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(\'" + esc(d.domain) + "')\">Clear</button></td></tr>";
+        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(" + arg(d.domain) + ")\">Clear</button></td></tr>";
     }).join("") || "<tr><td colspan=\"5\" style=\"color:var(--muted)\">empty</td></tr>";
   }catch(e){}
 }
@@ -619,7 +599,7 @@ function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
 }
 setInterval(function(){
-  if(NEEDS_LOGIN) return;
+  if(RELOADING) return;
   if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
 }, 3000);
 refreshAll();
