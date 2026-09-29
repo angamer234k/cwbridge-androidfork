@@ -208,7 +208,7 @@ class LocalHttpServer(
         }
 
         try {
-            dispatch(out, method, path, body)
+            dispatch(out, method, path, query, body)
         } catch (t: Throwable) {
             // Never let one bad request kill anything.
             LogBuffer.e("Server", "$method $path -> ${t.message}")
@@ -216,7 +216,7 @@ class LocalHttpServer(
         }
     }
 
-    private fun dispatch(out: OutputStream, method: String, path: String, body: String) {
+    private fun dispatch(out: OutputStream, method: String, path: String, query: Map<String, String>, body: String) {
         when {
             path == "/" || path == "/index.html" ->
                 respond(out, 200, WebUi.page(BridgeControl.screenshotSupported()), "text/html; charset=utf-8")
