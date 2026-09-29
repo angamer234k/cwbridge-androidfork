@@ -20,6 +20,7 @@ import com.cwbridge.android.bridge.AntiDisconnect
 import com.cwbridge.android.bridge.BridgeControl
 import com.cwbridge.android.bridge.BridgeStatus
 import com.cwbridge.android.bridge.CatWebTracker
+import com.cwbridge.android.bridge.DisconnectOcrWatch
 import com.cwbridge.android.bridge.LogBuffer
 import com.cwbridge.android.bridge.LogcatReader
 import com.cwbridge.android.bridge.OverlayState
@@ -653,7 +654,8 @@ class MainActivity : AppCompatActivity() {
                 // mirror stop branch of toggleBridge
                 bridgeRunning = false
                 BridgeControl.cancelOpenCatWeb()
-                    try { logcatReader.stop() } catch (_: Throwable) {}
+                DisconnectOcrWatch.stop()
+                try { logcatReader.stop() } catch (_: Throwable) {}
                 try { invokeEngine.stop() } catch (_: Throwable) {}
                 try { executionEngine.stop() } catch (_: Throwable) {}
                 try { AntiDisconnect.stop() } catch (_: Throwable) {}
@@ -672,6 +674,7 @@ class MainActivity : AppCompatActivity() {
         if (bridgeRunning) {
             bridgeRunning = false
             BridgeControl.cancelOpenCatWeb()
+            DisconnectOcrWatch.stop()
             logcatReader.stop()
             invokeEngine.stop()
             executionEngine.stop()
@@ -717,6 +720,8 @@ class MainActivity : AppCompatActivity() {
             }
             AntiDisconnect.start(bridgeScope)
             ensureLogcatRunning()
+            DisconnectOcrWatch.start(bridgeScope, applicationContext)
+            BridgeControl.resetDisconnectFailsafe()
             BridgeControl.resetDisconnectFailsafe()
             BridgeControl.scheduleOpenCatWebIfNeeded(applicationContext, 10_000L)
             invokeEngine.start()

@@ -343,8 +343,17 @@ object BridgeControl {
         if (d.isEmpty()) return "empty domain"
         val svc = TapService.instance
             ?: return "$d: no accessibility (need CWBridge Tap)"
-        // Percent URL bar (OCR deferred — ML Kit blocked CI)
-        val tapped = svc.clickAtPercent(50f, 6f)
+        val appCtx = svc.applicationContext
+        // OCR URL bar: X 5-90%, Y 0-50% (case-insensitive)
+        val hit = ScreenOcr.findText(appCtx, "search or type a url", 5f, 90f, 0f, 50f)
+            ?: ScreenOcr.findText(appCtx, "type a url", 5f, 90f, 0f, 50f)
+            ?: ScreenOcr.findText(appCtx, "search or type", 5f, 90f, 0f, 50f)
+        val tapped = if (hit != null) {
+            svc.clickAt(hit.centerX, hit.centerY)
+        } else {
+            LogBuffer.w("Control", "OCR URL bar miss — percent fallback 50%,6%")
+            svc.clickAtPercent(50f, 6f)
+        }
         if (!tapped) return "$d: URL bar tap failed"
         try { Thread.sleep(400) } catch (_: InterruptedException) {}
         val typed = if (ShizukuShell.isReady()) ShizukuShell.inputText(d) else svc.sendText(d)
