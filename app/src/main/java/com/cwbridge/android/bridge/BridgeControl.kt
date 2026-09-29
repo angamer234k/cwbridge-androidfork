@@ -188,6 +188,8 @@ object BridgeControl {
             if (ShizukuShell.isReady()) {
                 val (code, out) = ShizukuShell.exec("am force-stop $packageName")
                 LogBuffer.i("Control", "force-stop $packageName exit=$code ${out.take(120)}")
+                // Drop hung logcat --pid=old session so tail follows the new process
+                LogcatReader.requestReconnect("restartRoblox")
                 if (code != 0) return "force-stop failed: ${out.take(160)}"
             } else {
                 LogBuffer.w("Control", "Shizuku not ready — cannot force-stop Roblox")
