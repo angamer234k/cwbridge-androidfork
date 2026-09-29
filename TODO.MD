@@ -28,6 +28,8 @@
 + ONE UNLOCK UI — dashboard's inline #login card removed; a 401 now reloads into the server-side lock page
 + WINDOWS HELPER — cwbridge-updater.ps1 (CLI) + cwbridge-helper-gui.ps1 (window + self-test 22/22)
   latent [switch] positional bug fixed (New-Lbl)
++ ANDROID HELPER LOG — quiet on success: pusher/downloader chatter is buffered now and dumped only on failure
+  ([OK] results, [WARN]/[FAIL] + tips and the diagnostics checklist stay visible; banners + per-second countdowns gone)
 
 ## STILL TO DO
 

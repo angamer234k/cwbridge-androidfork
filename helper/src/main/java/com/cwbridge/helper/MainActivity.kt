@@ -25,12 +25,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileFilter
+import java.util.concurrent.ConcurrentLinkedDeque
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var pusher: OtgAdbPusher
     private var selected: UsbDevice? = null
+
+    /**
+     * Pusher/downloader chatter (per-second countdowns, `$ cmd` echoes, progress
+     * percentages) is buffered here instead of being shown. It is printed by
+     * [dumpDetails] only when an action fails, which is when it is actually useful.
+     */
+    private val details = ConcurrentLinkedDeque<String>()
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -39,20 +47,15 @@ class MainActivity : AppCompatActivity() {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val ok = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                     if (ok && device != null) {
-                        log("USB permission granted for ${device.deviceName}")
                         selected = device
                         refreshUsb()
                     } else {
-                        log("USB permission denied")
+                        log("[WARN] USB permission denied")
                         logTip("On this phone: allow USB access when prompted. Unplug/replug if no prompt.")
                     }
                 }
-                UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                    log("USB device attached")
-                    refreshUsb()
-                }
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> refreshUsb()
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    log("USB device detached")
                     selected = null
                     refreshUsb()
                 }
@@ -78,7 +81,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnShareLogs.setOnClickListener { shareLogs() }
         binding.btnClearLogs.setOnClickListener {
             binding.logView.text = ""
-            log("Log cleared.")
+            details.clear()
         }
 
         val filter = IntentFilter().apply {
@@ -89,8 +92,7 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         refreshUsb()
-        log("Helper 1.1.2 — crash-safe logging + diagnostics")
-        log("Stuck? Tap Help / common fixes, or Run diagnostics.")
+        log("Helper 1.1.2")
     }
 
     override fun onDestroy() {
@@ -102,7 +104,6 @@ class MainActivity : AppCompatActivity() {
         val device = selected
         if (device == null) {
             Toast.makeText(this, "Connect target via OTG first", Toast.LENGTH_SHORT).show()
-            log("No target device.")
             logTip("1) Target: Developer options → USB debugging ON\n2) Use a data OTG cable (not charge-only)\n3) This phone = USB host\n4) Tap Refresh USB")
             refreshUsb()
             return null
@@ -122,8 +123,6 @@ class MainActivity : AppCompatActivity() {
             selected = null
             binding.usbState.text = "USB: no device — plug OTG to target"
             binding.usbState.setTextColor(0xFFC4A574.toInt())
-            log("No USB devices")
-            logTip("Cable must support data. Target needs USB debugging. Some OEMs need USB debugging (Security settings).")
             return
         }
         val device = devices.first()
@@ -131,12 +130,11 @@ class MainActivity : AppCompatActivity() {
         if (!pusher.hasPermission(device)) {
             binding.usbState.text = "USB: ${device.deviceName} (need permission)"
             binding.usbState.setTextColor(0xFFC4A574.toInt())
-            log("Requesting USB permission…")
             pusher.requestPermission(device)
         } else {
             binding.usbState.text = "USB: ${device.deviceName} ready"
             binding.usbState.setTextColor(0xFF8FAD86.toInt())
-            log("USB ready: vid=${device.vendorId} pid=${device.productId}")
+            remember("USB ready: vid=${device.vendorId} pid=${device.productId}")
         }
     }
 
@@ -145,18 +143,16 @@ class MainActivity : AppCompatActivity() {
         binding.btnPush.isEnabled = false
         lifecycleScope.launch {
             try {
-                log("—— Push update ——")
                 val apk = withContext(Dispatchers.IO) {
                     ReleaseDownloader.downloadLatestCwbridge(File(cacheDir, "apk-cache")) { msg ->
-                        log(msg)
+                        route(msg)
                     }.file
                 }
-                log("APK ready: ${apk.absolutePath} (${apk.length()} bytes)")
+                remember("APK ready: ${apk.absolutePath} (${apk.length()} bytes)")
                 withContext(Dispatchers.IO) {
-                    pusher.push(apk, device) { msg -> log(msg) }
+                    pusher.push(apk, device) { msg -> route(msg) }
                 }
-                log("SUCCESS — CWBridge updated + READ_LOGS granted")
-                logTip("On target: open CWBridge → enable Accessibility (CWBridge Tap) → Start bridge.")
+                log("[OK] CWBridge updated on target")
                 Toast.makeText(this@MainActivity, "Success", Toast.LENGTH_LONG).show()
             } catch (t: Throwable) {
                 handleFailure("Push", t)
@@ -170,12 +166,11 @@ class MainActivity : AppCompatActivity() {
         val device = requireTarget() ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                log("—— Grant READ_LOGS ——")
-                val out = pusher.grantReadLogs(device) { msg -> log(msg) }
+                val out = pusher.grantReadLogs(device) { msg -> route(msg) }
                 withContext(Dispatchers.Main) {
-                    log("grant result: ${out.ifBlank { "ok" }}")
+                    remember("grant result: ${out.ifBlank { "ok" }}")
+                    log("[OK] READ_LOGS granted")
                     Toast.makeText(this@MainActivity, "READ_LOGS grant sent", Toast.LENGTH_SHORT).show()
-                    logTip("In CWBridge on target, logcat line should say OK. Then Start bridge.")
                 }
             } catch (t: Throwable) {
                 withContext(Dispatchers.Main) { handleFailure("Grant READ_LOGS", t) }
@@ -188,21 +183,21 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartShizuku.isEnabled = false
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                log("—— Start Shizuku ——")
-                val out = pusher.startShizuku(device) { msg -> log(msg) }
+                val out = pusher.startShizuku(device) { msg -> route(msg) }
                 withContext(Dispatchers.Main) {
-                    log("Shizuku start finished")
+                    remember("start output: ${out.take(300).ifBlank { "(empty)" }}")
+                    log("[OK] Shizuku start sent")
                     Toast.makeText(
                         this@MainActivity,
                         "Shizuku start sent — check Shizuku on target",
                         Toast.LENGTH_LONG,
                     ).show()
-                    if (out.isNotBlank()) log("raw: ${out.take(300)}")
-                    logTip("Open Shizuku on target — status should say service is running. Survives until reboot.")
+                    if (out.isNotBlank()) remember("raw: ${out.take(300)}")
                 }
             } catch (e: OtgAdbPusher.ShizukuNotInstalledException) {
                 withContext(Dispatchers.Main) {
-                    log("FAIL: ${e.message}")
+                    log("[FAIL] ${e.message}")
+                    dumpDetails()
                     showShizukuInstallHelp()
                 }
             } catch (t: Throwable) {
@@ -235,11 +230,9 @@ class MainActivity : AppCompatActivity() {
         val device = requireTarget() ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                log("—— Launch CWBridge on target ——")
-                val out = pusher.launchTarget(device) { msg -> log(msg) }
+                val out = pusher.launchTarget(device) { msg -> route(msg) }
                 withContext(Dispatchers.Main) {
-                    log("launch: ${out.take(200)}")
-                    logTip("If nothing opens: install via Push update first, or check package on diagnostics.")
+                    remember("launch: ${out.take(200)}")
                 }
             } catch (t: Throwable) {
                 withContext(Dispatchers.Main) { handleFailure("Launch", t) }
@@ -256,7 +249,7 @@ class MainActivity : AppCompatActivity() {
                     "Then unplug, replug, and accept the RSA prompt again.",
             )
             .setPositiveButton("Reset") { _, _ ->
-                pusher.resetAdbKeys { msg -> log(msg) }
+                pusher.resetAdbKeys { msg -> route(msg) }
                 Toast.makeText(this, "ADB keys cleared", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
@@ -311,16 +304,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
             }
             .show()
-        log("Help: $title")
     }
 
     private fun runDiagnostics() {
         try { binding.btnDiagnostics.isEnabled = false } catch (_: Throwable) {}
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                log("—— DIAGNOSTICS ——")
+                log("Diagnostics:")
                 log("Host: ${Build.MANUFACTURER} ${Build.MODEL} Android ${Build.VERSION.RELEASE}")
-                log("(Target checks need USB permission)")
 
                 val device = selected
                 if (device == null || !pusher.hasPermission(device)) {
@@ -328,7 +319,7 @@ class MainActivity : AppCompatActivity() {
                     logTip("Connect OTG, Refresh USB, allow permission, run diagnostics again.")
                 } else {
                     try {
-                        val installed = pusher.isTargetInstalled(device) { msg -> log(msg) }
+                        val installed = pusher.isTargetInstalled(device) { msg -> route(msg) }
                         if (installed) {
                             log("[OK] Main app on target (${OtgAdbPusher.TARGET_PKG})")
                         } else {
@@ -338,7 +329,7 @@ class MainActivity : AppCompatActivity() {
                         val grantProbe = pusher.shellOnDevice(
                             device,
                             "dumpsys package ${OtgAdbPusher.TARGET_PKG} | grep -i READ_LOGS || true",
-                        ) { msg -> log(msg) }
+                        ) { msg -> route(msg) }
                         log("READ_LOGS probe: ${grantProbe.trim().ifBlank { "(no line)" }.take(200)}")
                         if (grantProbe.contains("granted=true", ignoreCase = true) ||
                             grantProbe.contains("granted", ignoreCase = true)
@@ -350,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                         val shizukuPath = pusher.shellOnDevice(
                             device,
                             "pm path ${OtgAdbPusher.SHIZUKU_PKG}",
-                        ) { msg -> log(msg) }
+                        ) { msg -> route(msg) }
                         if (shizukuPath.contains("package:")) {
                             log("[OK] Shizuku installed on target")
                         } else {
@@ -359,7 +350,7 @@ class MainActivity : AppCompatActivity() {
                         val props = pusher.shellOnDevice(
                             device,
                             "getprop ro.product.model; getprop ro.build.version.release",
-                        ) { msg -> log(msg) }
+                        ) { msg -> route(msg) }
                         log("Target: ${props.trim().replace("\n", " / ").take(80)}")
                     } catch (t: Throwable) {
                         log("[FAIL] Target check: ${t.message}")
@@ -415,9 +406,6 @@ class MainActivity : AppCompatActivity() {
                         logTip("Wi-Fi/data required to download the main APK for Push update.")
                     }
                 }
-
-                log("—— DIAGNOSTICS COMPLETE ——")
-                log("Still stuck? Copy/Share logs and open Help / common fixes.")
             } catch (t: Throwable) {
                 handleFailure("Diagnostics", t)
             } finally {
@@ -430,8 +418,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleFailure(action: String, t: Throwable) {
         val msg = t.message ?: t.javaClass.simpleName
-        log("FAIL ($action): $msg")
+        log("[FAIL] $action: $msg")
         suggestForError(msg)
+        dumpDetails()
         try {
             if (!isFinishing && !isDestroyed) {
                 Toast.makeText(this, "$action failed — see log tips", Toast.LENGTH_LONG).show()
@@ -459,6 +448,32 @@ class MainActivity : AppCompatActivity() {
             else ->
                 logTip("Run diagnostics. Open Help / common fixes. Copy logs if you need support.")
         }
+    }
+
+    /**
+     * Callbacks from the pusher/downloader are chatty: per-second retry countdowns,
+     * `$ cmd` echoes, progress percentages. Show only the lines that describe a
+     * problem; everything else is buffered so [dumpDetails] can still explain a
+     * failure without cluttering a run that worked.
+     */
+    private fun route(raw: String) {
+        val line = raw.trimEnd()
+        if (line.isBlank()) return
+        if (PROBLEM_PATTERN.containsMatchIn(line)) log(line) else remember(line)
+    }
+
+    private fun remember(line: String) {
+        details.addLast(line)
+        while (details.size > DETAIL_KEEP) details.pollFirst()
+    }
+
+    /** Emptied after dumping, so one failure does not re-print another one's detail. */
+    private fun dumpDetails() {
+        val tail = details.toList()
+        details.clear()
+        if (tail.isEmpty()) return
+        log("— detail —")
+        tail.forEach { log(it) }
     }
 
     private fun logTip(text: String) {
@@ -524,5 +539,20 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Throwable) {
             // never crash the helper over a log line
         }
+    }
+
+    private companion object {
+        /** Buffered callback lines kept for the next failure dump. */
+        const val DETAIL_KEEP = 40
+
+        /**
+         * A buffered line matching this is shown straight away. The leading `\b` on
+         * every word matters: plain "stall" also matches "in**stall**", which the
+         * pusher logs on every successful run.
+         */
+        val PROBLEM_PATTERN = Regex(
+            """\b(fail|stall|error|denied|unauthorized|timeout|timed out|retry|reconnect|not\s+(found|installed))""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }
