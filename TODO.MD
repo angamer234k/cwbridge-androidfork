@@ -19,30 +19,19 @@
 + Ctrl+T, Enter, read clipboard, toggle bridge, tap by %/px/text, send invoke, live console, variables
 + SERVER UI WIRING — real categoryServer section, password + quota controls
 + README — web server, LAN-vs-remote auth, known limits
-+ PACKAGE FOLDERS — merged + pushed (1c43a72+). bridge/ data/ engine/ server/ under com.cwbridge.android;
-  root kept on purpose: MainActivity OverlayService TapService ShizukuShell UpdateChecker DeviceStatus FirstRun
-+ CI GUARDS — scripts/check-webui.js (gates every build); path search for WebUi.kt after package move
-+ CI GUARDS — lock page (WebUi.LOGIN_SHELL) verified too: script parses, posts /api/login, leaks no dash markup
-+ WEB PANEL ESCAPING — esc() real entities (&amp; &lt; &gt; &quot; &#39;) + arg() for inline onclick args;
-  was mapping chars to themselves, so keys/vars/domains with quotes broke or injected markup
-+ ONE UNLOCK UI — dashboard's inline #login card removed; a 401 now reloads into the server-side lock page
-+ WINDOWS HELPER — cwbridge-updater.ps1 (CLI) + cwbridge-helper-gui.ps1 (window + self-test 22/22)
-  latent [switch] positional bug fixed (New-Lbl)
-+ ANDROID HELPER LOG — quiet on success: pusher/downloader chatter is buffered now and dumped only on failure
-  ([OK] results, [WARN]/[FAIL] + tips and the diagnostics checklist stay visible; banners + per-second countdowns gone)
++ PACKAGE FOLDERS — bridge/ data/ engine/ server/ under com.cwbridge.android
++ CI GUARDS — scripts/check-webui.js (gates every build); LOGIN_SHELL verified
++ WEB PANEL ESCAPING — esc() + arg() for inline onclick
++ ONE UNLOCK UI — server-side lock page only
++ WINDOWS HELPER — quiet logs on success; detail dump on failure
++ STAGE 2 WEB PANEL — gooey status blob (SVG goo + reduced-motion), Material Symbols Rounded icons,
+  readiness checklist (a11y / Shizuku / CatWeb) from /api/status, section nav, busy buttons,
+  aria-live toasts, confirm modal, screenshot download+timestamp, console/vars copy + autoscroll,
+  Enter-to-send invoke, icon empty states; check-webui D(id)/onclick/no external script extras
 
 ## STILL TO DO
 
-- PAIR WITH 6-DIGIT CODE — deferred on purpose; needs separate Vercel/Firestore pairing service
-
-### Web panel polish (Stage 2)
-- GOOEY STATUS INDICATOR — SVG feGaussianBlur + feColorMatrix; maps to green/yellow/red; prefers-reduced-motion
-- MATERIAL SYMBOLS ROUNDED ICONS (~30) — gated on document.fonts.load; each icon + text label
-- READINESS CHECKLIST — surface accessibility / shizuku / catwebReady from /api/status (panel currently ignores them)
-- UX polish — section nav, in-flight button state (no double-fire Restart Roblox), aria-live toasts,
-  styled confirm modal, screenshot download+timestamp, console/vars copy + autoscroll, Enter-to-send,
-  icon empty states
-- check-webui.js extras — D('id') ↔ id="..." cross-ref, onclick targets exist, no external script src, no bare `$`
+- PAIR WITH 6-DIGIT CODE — next month's problem; needs Vercel/Railway pairing service
 
 ### Windows helper
 - REAL-DEVICE TEST — GUI not yet run by a human against a plugged-in phone (self-test only)
@@ -51,3 +40,4 @@
 - Overlay long-press → Ctrl+T in 3s (Shizuku preferred, TapService fallback)
 - Debug keystore: decode keystore/cwbridge-debug.p12.b64 before local build
 - Helper needs AdbLib vendored at build time (see build-debug-apk.yml)
+- Same-LAN clients still skip the password by design
