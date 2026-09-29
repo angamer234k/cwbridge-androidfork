@@ -225,6 +225,8 @@ class LocalHttpServer(
             path == "/api/status" -> respond(out, 200, statusJson())
             path == "/api/diagnose" -> respond(out, 200, diagnoseJson())
             path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))
+            path == "/api/auto-domain" && method == "GET" -> respond(out, 200, getAutoDomainJson())
+            path == "/api/auto-domain" && method == "POST" -> respond(out, 200, setAutoDomainJson(body))
 
             path == "/api/logs" -> respond(out, 200, logsJson())
 
@@ -326,6 +328,41 @@ class LocalHttpServer(
                 "androidSdk" to android.os.Build.VERSION.SDK_INT,
                 "issues" to issues,
                 "ok" to issues.isEmpty(),
+            ),
+        )
+    }
+
+
+    private fun getAutoDomainJson(): String {
+        val domains = BridgeControl.loadAutoOpenDomains(context)
+        val one = domains.firstOrNull().orEmpty()
+        return json(
+            mapOf(
+                "domain" to one,
+                "domains" to domains,
+            ),
+        )
+    }
+
+    private fun setAutoDomainJson(body: String): String {
+        val raw = jsonString(body, "domain").ifBlank {
+            jsonString(body, "domains")
+        }
+        val one = raw.lines()
+            .flatMap { it.split(",", ";") }
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+        BridgeControl.saveAutoOpenDomains(
+            context,
+            if (one.isEmpty()) emptyList() else listOf(one),
+        )
+        LogBuffer.i("Server", "auto-open domain set to '${one.ifEmpty { "(cleared)" }}'")
+        return json(
+            mapOf(
+                "ok" to true,
+                "domain" to one,
+                "message" to if (one.isEmpty()) "auto-open cleared" else "auto-open set to $one",
             ),
         )
     }

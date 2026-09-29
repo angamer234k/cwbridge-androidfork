@@ -148,6 +148,17 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
   </div>
 
   <div class="card">
+    <h2>Auto-open on CW load</h2>
+    <p class="hint">Single domain only. When CatWeb logs finished, opens this in the current tab. Empty = off.</p>
+    <div class="row">
+      <div class="field"><input id="autoDomain" placeholder="67.rbx" autocomplete="off"></div>
+      <button type="button" onclick="saveAutoDomain()">Save</button>
+      <button type="button" class="ghost" onclick="clearAutoDomain()">Clear</button>
+    </div>
+    <div id="autoDomMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
     <h2>Open domains</h2>
     <p class="hint">One domain per line. Flow: Ctrl+T, tap URL bar (X/Y %), type domain, Enter, wait, then Ctrl+1. Needs Shizuku.</p>
     <textarea id="domainList" placeholder="example.rbx"></textarea>
@@ -279,6 +290,10 @@ async function api(path, opts){
   if(!res.ok) throw new Error(data.error || ("error " + res.status));
   return data;
 }
+async function get(path){
+  var r = await fetch(path, {credentials:"same-origin"});
+  return r.json();
+}
 function post(path, body){
   return api(path, {
     method: "POST",
@@ -377,6 +392,28 @@ async function loadShot(){
     msg("ctlMsg", "screenshot ok", "good");
   }catch(e){ msg("ctlMsg", e.message, "err"); }
 }
+
+async function loadAutoDomain(){
+  try {
+    var r = await get("/api/auto-domain");
+    if (r.domain != null) D("autoDomain").value = r.domain || "";
+  } catch (e) {}
+}
+async function saveAutoDomain(){
+  var d = (D("autoDomain").value || "").trim();
+  try {
+    var r = await post("/api/auto-domain", {domain: d});
+    msg("autoDomMsg", r.message || ("saved " + d), !r.error);
+    if (r.domain != null) D("autoDomain").value = r.domain || "";
+  } catch (e) {
+    msg("autoDomMsg", String(e), false);
+  }
+}
+async function clearAutoDomain(){
+  D("autoDomain").value = "";
+  return saveAutoDomain();
+}
+
 async function sendInvoke(){
   try{
     var r = await post("/api/invoke", {line: D("inv").value});
