@@ -141,23 +141,40 @@ class Store(context: Context) {
         }
 
         fun parseSize(input: String): Long? {
-            val s = input.trim().lowercase().replace("_", "").replace(" ", "")
+            // Accept: 69420 | 500KB | 500 KB | 1.5mb | 2GiB | 1gb | 8kib | 100bits
+            val s = input.trim().lowercase()
+                .replace("_", "")
+                .replace(" ", "")
+                .replace(",", "")
             if (s.isEmpty()) return null
-            val m = Regex("^([0-9]*\\.?[0-9]+)([kmgt]?)(i?b?|bits?)$").matchEntire(s) ?: return null
+
+            val m = Regex(
+                "^([0-9]*\\.?[0-9]+)(k|m|g|t)?(i)?(b|bit|bits)?$",
+            ).matchEntire(s) ?: return null
+
             val amount = m.groupValues[1].toDoubleOrNull() ?: return null
-            val unit = m.groupValues[2]
-            val isBits = m.groupValues[3].startsWith("bit")
-            val power = when (unit) {
-                "k" -> 10
-                "m" -> 20
-                "g" -> 30
-                "t" -> 40
+            if (amount < 0) return null
+
+            val prefix = m.groupValues[2]           // k/m/g/t or ""
+            val binary = m.groupValues[3] == "i"    // KiB style
+            val suffix = m.groupValues[4]           // b / bit / bits / ""
+
+            val isBits = suffix == "bit" || suffix == "bits"
+            // Bare number with no unit → bytes
+            val unitPower = when (prefix) {
+                "k" -> 1
+                "m" -> 2
+                "g" -> 3
+                "t" -> 4
                 else -> 0
             }
-            val base = 1024.0.pow(power)
-            val bytes = amount * base
-            if (bytes < 0 || bytes > Long.MAX_VALUE) return null
-            return (if (isBits) bytes / 8 else bytes).toLong()
+            val radix = if (binary) 1024.0 else 1024.0 // we use 1024 for both KB and KiB
+            val multiplier = radix.pow(unitPower.toDouble())
+            var bytes = amount * multiplier
+            if (isBits) bytes /= 8.0
+
+            if (bytes < 0 || bytes > Long.MAX_VALUE.toDouble()) return null
+            return bytes.toLong()
         }
 
         fun formatBytes(bytes: Long): String {
