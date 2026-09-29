@@ -196,7 +196,22 @@ class LocalHttpServer(
         val presented = query["password"] ?: headers["x-cwbridge-password"]
             ?: jsonString(body, "password").ifBlank { null }
         val denial = ServerAuth.check(context, remote, session, presented)
-        if (denial != null) {
+        val authed = denial == null
+
+        // Same path `/`: login shell OR full dashboard — never both in one response.
+        // Unauthenticated clients only ever receive the lock page (no dash markup).
+        if (path == "/" || path == "/index.html") {
+            if (authed) {
+                return respond(
+                    out, 200,
+                    WebUi.page(BridgeControl.screenshotSupported()),
+                    "text/html; charset=utf-8",
+                )
+            }
+            return respond(out, 200, WebUi.loginPage(), "text/html; charset=utf-8")
+        }
+
+        if (!authed) {
             return respond(out, 401, json(mapOf("error" to denial, "needsPassword" to true)))
         }
 
@@ -219,9 +234,6 @@ class LocalHttpServer(
 
     private fun dispatch(out: OutputStream, method: String, path: String, query: Map<String, String>, body: String) {
         when {
-            path == "/" || path == "/index.html" ->
-                respond(out, 200, WebUi.page(BridgeControl.screenshotSupported()), "text/html; charset=utf-8")
-
             path == "/favicon.ico" -> respond(out, 204, "", "image/x-icon")
 
             path == "/api/status" -> respond(out, 200, statusJson())
