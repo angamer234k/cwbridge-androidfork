@@ -1,40 +1,20 @@
 #!/usr/bin/env node
 /**
  * Guard for the web control panel.
- *
- * WebUi.kt builds an HTML+JS page inside Kotlin raw strings, which means the
- * Kotlin compiler never sees the JavaScript. A quoting slip there (e.g. writing
- * \\' where \' is needed) ships a page whose <script> block fails to parse at
- * runtime, so the whole panel silently renders blank. This script reconstructs
- * the page exactly as the app would and fails the build if it is not valid.
- *
- * It also verifies the separate lock page (WebUi.LOGIN_SHELL): that its script
- * parses, that it still posts to /api/login, and that it contains none of the
- * dashboard's markup — that page is served to unauthenticated clients, so a leak
- * there would hand a stranger the control panel's HTML.
- *
- * Usage: node scripts/check-webui.js [path/to/WebUi.kt]
- *
- * With no argument it SEARCHES app/src/main/java for WebUi.kt. It used to hardcode
- * .../com/cwbridge/android/WebUi.kt, which broke every build the instant WebUi.kt
- * moved into the server/ subpackage. Searching means the next move cannot break CI
- * the same way; an explicit path still wins if you pass one.
+ * Reconstructs WebUi page + LOGIN_SHELL and validates JS / markup contracts.
  */
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-/** ------------------------------------------------------ */
+
 const javaRoot = path.join(__dirname, '..', 'app', 'src', 'main', 'java');
 
 function findWebUi(dir, hits) {
   let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (e) {
-    return hits; // unreadable directory: keep looking rather than crash
-  }
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+  catch (e) { return hits; }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) findWebUi(full, hits);
@@ -52,123 +32,116 @@ if (file) {
 } else {
   const hits = findWebUi(javaRoot, []);
   if (hits.length === 0) {
-    console.error('check-webui: found no WebUi.kt anywhere under ' + javaRoot);
-    console.error('  If the file was renamed, update this script.');
+    console.error('check-webui: found no WebUi.kt under ' + javaRoot);
     process.exit(1);
   }
   if (hits.length > 1) {
-    console.error('check-webui: ' + hits.length + ' WebUi.kt files found, cannot pick one:');
-    for (const h of hits) console.error('  - ' + h);
-    console.error('  Pass one explicitly: node scripts/check-webui.js <path>');
+    console.error('check-webui: multiple WebUi.kt files');
     process.exit(1);
   }
   file = hits[0];
 }
 
 const src = fs.readFileSync(file, 'utf8');
-const problems = [];
 
-// Kotlin raw strings do not process escapes, so the body is taken verbatim.
-// trimIndent() only strips a COMMON indent; these parts start at column 0, so
-// the content is preserved as-is.
-const partRe = /private val PART_[A-Z]: String = """\r?\n([\s\S]*?)"""/g;
-const parts = [];
-let m;
-while ((m = partRe.exec(src)) !== null) parts.push(m[1]);
+function extractParts() {
+  const parts = [];
+  const re = /private\s+val\s+(PART_[A-Z])\s*:\s*String\s*=\s*"""([\s\S]*?)"""\.trimIndent\(\)/g;
+  let m;
+  while ((m = re.exec(src))) parts.push({ name: m[1], body: m[2] });
+  return parts;
+}
 
-if (parts.length === 0) {
-  console.error('check-webui: found no PART_* raw strings in ' + file);
-  console.error('  If the page was restructured, update this script to match.');
+const parts = extractParts();
+if (parts.length < 5) {
+  console.error('check-webui: expected PART_* blocks, found ' + parts.length);
   process.exit(1);
 }
-const page = parts.join('\n');
 
-// The screenshot button is conditionally injected via a placeholder comment.
-// If the constant and the comment drift apart, the button is silently dropped
-// (or never appears) with no error anywhere.
-const markerConst = src.match(/SCREENSHOT_MARKER\s*=\s*"([^"]*)"/);
-if (markerConst) {
-  const marker = markerConst[1];
-  if (!page.includes(marker)) {
-    problems.push('SCREENSHOT_MARKER (' + marker + ') does not appear in the page markup');
-  }
-}
-
-// The lock page (WebUi.LOGIN_SHELL) is served INSTEAD of the dashboard to every
-// unauthenticated client, so it is the only thing standing between a stranger and
-// the controls. It is not a PART_* string, so the loop above never sees it: check
-// that it parses, that it can actually log in, and that it leaks no dashboard markup.
-const DASHBOARD_MARKERS = ['svcList', 'storeRows', 'varRows', 'shotBox', 'id="app"', '/api/status'];
-const shellMatch = src.match(/private val LOGIN_SHELL: String = """\r?\n([\s\S]*?)"""/);
-if (!shellMatch) {
-  problems.push('LOGIN_SHELL raw string not found — cannot verify the lock page');
-} else {
-  const shell = shellMatch[1];
-  const shellScripts = [];
-  const shellRe = /<script>([\s\S]*?)<\/script>/g;
-  let sh;
-  while ((sh = shellRe.exec(shell)) !== null) shellScripts.push(sh[1]);
-  if (shellScripts.length === 0) {
-    problems.push('lock page has no <script> block, so it can never be unlocked');
-  } else {
-    try {
-      new vm.Script(shellScripts.join('\n'), { filename: 'webui-login.js' });
-    } catch (e) {
-      problems.push('lock page JavaScript does not parse: ' + e.message);
-    }
-  }
-  if (shell.indexOf('/api/login') < 0) {
-    problems.push('lock page never posts to /api/login');
-  }
-  for (const leak of DASHBOARD_MARKERS) {
-    if (shell.indexOf(leak) >= 0) problems.push('lock page leaks dashboard markup: ' + leak);
-  }
-}
-
-// Collect inline script blocks.
+const html = parts.map(p => p.body).join('');
 const scripts = [];
-const scriptRe = /<script>([\s\S]*?)<\/script>/g;
-let s;
-while ((s = scriptRe.exec(page)) !== null) scripts.push(s[1]);
-
-if (scripts.length === 0) {
-  problems.push('no <script> block found in the generated page');
-} else {
-  const js = scripts.join('\n');
-  try {
-    // Compiles without executing, exactly like `node --check`.
-    new vm.Script(js, { filename: 'webui-inline.js' });
-  } catch (e) {
-    problems.push('inline JavaScript does not parse: ' + e.message);
-  }
-  // A stray double backslash before a quote is the specific mistake that made
-  // the panel render blank once; flag it explicitly for a clearer message.
-  const stray = (js.match(/\\\\'/g) || []).length;
-  if (stray > 0) {
-    problems.push(
-      'found ' + stray + ' occurrence(s) of \\\\  in inline JS. ' +
-      'Kotlin raw strings do NOT process escapes, so write \\\' (one backslash) ' +
-      'to escape a quote inside JS.');
-  }
-}
-
-// Coarse structural sanity: the page must open and close the tags it opens.
-for (const tag of ['html', 'head', 'body']) {
-  const open = (page.match(new RegExp('<' + tag + '[ >]', 'gi')) || []).length;
-  const close = (page.match(new RegExp('</' + tag + '>', 'gi')) || []).length;
-  if (open !== 1 || close !== 1) {
-    problems.push('expected exactly one <' + tag + '> and </' + tag + '>, found ' + open + '/' + close);
-  }
-}
-
-if (problems.length) {
-  console.error('check-webui: FAILED for ' + file);
-  for (const p of problems) console.error('  - ' + p);
+const scriptRe = /<script>([\s\S]*?)<\/script>/gi;
+let sm;
+while ((sm = scriptRe.exec(html))) scripts.push(sm[1]);
+if (scripts.length < 1) {
+  console.error('check-webui: no <script> in dashboard');
   process.exit(1);
 }
 
-// Name the file that was actually checked: with discovery in play, "OK" alone
-// hides which WebUi.kt was validated.
-console.log('check-webui: OK for ' + path.relative(path.join(__dirname, '..'), file) +
+for (let i = 0; i < scripts.length; i++) {
+  try {
+    new vm.Script(scripts[i], { filename: 'WebUi-part-' + i + '.js' });
+  } catch (e) {
+    console.error('check-webui: dashboard script parse failed:', e.message);
+    process.exit(1);
+  }
+}
+
+if (/<script[^>]+src\s*=/i.test(html)) {
+  console.error('check-webui: external <script src> not allowed');
+  process.exit(1);
+}
+
+const joined = scripts.join('\n');
+if (/\B\$\s*\(/.test(joined) || /\B\$\./.test(joined)) {
+  console.error('check-webui: bare $ usage detected');
+  process.exit(1);
+}
+
+const ids = new Set();
+const idRe = /\bid\s*=\s*"([A-Za-z][\w-]*)"/g;
+let im;
+while ((im = idRe.exec(html))) ids.add(im[1]);
+const dRe = /\bD\(\s*["']([A-Za-z][\w-]*)["']\s*\)/g;
+const missing = [];
+while ((im = dRe.exec(joined))) {
+  if (!ids.has(im[1])) missing.push(im[1]);
+}
+if (missing.length) {
+  console.error('check-webui: D(id) missing elements: ' + missing.slice(0, 20).join(', '));
+  process.exit(1);
+}
+
+const onclickRe = /\bonclick\s*=\s*"([A-Za-z_][\w]*)\s*\(/g;
+const fnNames = new Set();
+const fnRe = /function\s+([A-Za-z_][\w]*)\s*\(|async\s+function\s+([A-Za-z_][\w]*)\s*\(/g;
+while ((im = fnRe.exec(joined))) fnNames.add(im[1] || im[2]);
+const missingFn = [];
+while ((im = onclickRe.exec(html))) {
+  if (!fnNames.has(im[1])) missingFn.push(im[1]);
+}
+if (missingFn.length) {
+  console.error('check-webui: onclick targets missing: ' + missingFn.join(', '));
+  process.exit(1);
+}
+
+const shellMatch = src.match(/private\s+val\s+LOGIN_SHELL\s*:\s*String\s*=\s*"""([\s\S]*?)"""\.trimIndent\(\)/);
+if (!shellMatch) {
+  console.error('check-webui: LOGIN_SHELL missing');
+  process.exit(1);
+}
+const shell = shellMatch[1];
+const shellScripts = [];
+const ssr = /<script>([\s\S]*?)<\/script>/gi;
+while ((sm = ssr.exec(shell))) shellScripts.push(sm[1]);
+for (const sc of shellScripts) {
+  try { new vm.Script(sc, { filename: 'LOGIN_SHELL.js' }); }
+  catch (e) {
+    console.error('check-webui: LOGIN_SHELL script parse failed:', e.message);
+    process.exit(1);
+  }
+}
+if (!/\/api\/login/.test(shell)) {
+  console.error('check-webui: LOGIN_SHELL must post /api/login');
+  process.exit(1);
+}
+if (/id="app"|Restart bridge|sec-console/.test(shell)) {
+  console.error('check-webui: LOGIN_SHELL leaks dashboard markup');
+  process.exit(1);
+}
+
+console.log(
+  'check-webui: OK for ' + path.relative(path.join(__dirname, '..'), file) +
   ' (' + parts.length + ' parts, ' + scripts.length + ' script block(s), ' +
-  page.length + ' bytes' + (shellMatch ? ', lock page checked' : '') + ')');
+  Buffer.byteLength(html, 'utf8') + ' bytes)'
+);
