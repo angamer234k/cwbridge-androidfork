@@ -1,290 +1,182 @@
 #!/usr/bin/env python3
-"""Fix logcat stuck on dead Roblox PID after force-stop / restart."""
+"""Add GET/POST /api/auto-domain + web card to edit CW-load domain."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LOGCAT = r'''package com.cwbridge.android.bridge
-
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
-
-/**
- * Roblox-only logcat tail.
- *
- * When Roblox is force-stopped, `logcat --pid=OLD` often **hangs** instead of EOF.
- * We poll PID liveness and destroy/re-attach so logs advance after Restart Roblox.
- */
-class LogcatReader(
-    private val context: Context,
-    private var invokeSink: ((String) -> Unit)? = null,
-) {
-
-    private var job: Job? = null
-    private var process: Process? = null
-    @Volatile private var wantRunning = false
-    @Volatile private var reconnectRequested = false
-
-    fun setInvokeSink(sink: ((String) -> Unit)?) {
-        invokeSink = sink
-    }
-
-    fun hasPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.READ_LOGS,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    /** Call after force-stop / restart so we drop the dead --pid session. */
-    fun requestReconnect(reason: String = "manual") {
-        LogBuffer.i("Logcat", "reconnect requested ($reason)")
-        reconnectRequested = true
-        try {
-            process?.destroy()
-        } catch (_: Exception) {
-        }
-    }
-
-    fun start(scope: CoroutineScope) {
-        stop()
-        if (!hasPermission()) {
-            LogBuffer.w("Logcat", "READ_LOGS not granted")
-            return
-        }
-        wantRunning = true
-        reconnectRequested = false
-        activeInstance = this
-        job = scope.launch(Dispatchers.IO) {
-            var attempt = 0
-            while (isActive && wantRunning) {
-                attempt++
-                reconnectRequested = false
-                try {
-                    // After restart Roblox may not exist yet — wait for a PID
-                    var robloxPid: Int? = null
-                    var waitTicks = 0
-                    while (isActive && wantRunning && !reconnectRequested) {
-                        robloxPid = resolveRobloxPid()
-                        if (robloxPid != null && robloxPid > 0) break
-                        waitTicks++
-                        if (waitTicks == 1 || waitTicks % 5 == 0) {
-                            LogBuffer.i("Logcat", "waiting for Roblox process…")
-                        }
-                        delay(1000)
-                    }
-                    if (!isActive || !wantRunning) break
-                    if (reconnectRequested) continue
-
-                    val pid = robloxPid!!
-                    LogBuffer.i("Logcat", "filtering to Roblox pid=$pid (attempt $attempt)")
-                    val proc = ProcessBuilder(
-                        "logcat",
-                        "-v", "threadtime",
-                        "-T", "1",
-                        "--pid=$pid",
-                    ).redirectErrorStream(true).start()
-                    process = proc
-                    if (attempt == 1) {
-                        LogBuffer.i("Logcat", "attached — Roblox-only tail")
-                    } else {
-                        LogBuffer.i("Logcat", "re-attached (attempt $attempt, pid=$pid)")
-                    }
-
-                    val myPkg = context.packageName
-                    var lastAliveCheck = System.currentTimeMillis()
-                    BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
-                        while (isActive && wantRunning && !reconnectRequested) {
-                            // Dead PID / hung logcat: poll every ~1.5s
-                            val now = System.currentTimeMillis()
-                            if (now - lastAliveCheck >= 1500L) {
-                                lastAliveCheck = now
-                                if (!isPidAlive(pid)) {
-                                    LogBuffer.w("Logcat", "Roblox pid $pid gone — reconnect")
-                                    break
-                                }
-                                // process died?
-                                try {
-                                    proc.exitValue()
-                                    LogBuffer.w("Logcat", "logcat process exited — reconnect")
-                                    break
-                                } catch (_: IllegalThreadStateException) {
-                                    // still running
-                                }
-                            }
-
-                            if (!reader.ready()) {
-                                delay(150)
-                                continue
-                            }
-                            val line = reader.readLine() ?: break
-                            if (line.contains(myPkg) && !line.contains("invoke|")) continue
-                            if (line.contains("attached —") || line.contains("re-attached")) continue
-
-                            RecentLogLines.add(line)
-                            CatWebTracker.onLogLine(line)
-                            AntiDisconnect.onLogLine(line)
-
-                            val lower = line.lowercase()
-                            val isFlog = lower.contains("flog::creatoroutput") ||
-                                lower.contains("flog::output") ||
-                                lower.contains("[from ")
-                            val isInvoke = line.contains("invoke|")
-                            val isCat = lower.contains("catweb") || lower.contains("waiting for server")
-                            if (isFlog || isInvoke || isCat || looksLikeRobloxLine(line)) {
-                                if (isInvoke) {
-                                    try {
-                                        invokeSink?.invoke(line)
-                                    } catch (t: Throwable) {
-                                        LogBuffer.e("Logcat", "invokeSink: ${t.message}")
-                                    }
-                                }
-                                LogBuffer.i("Roblox", line.take(300))
-                            }
-                        }
-                    }
-                    try {
-                        proc.destroy()
-                    } catch (_: Exception) {
-                    }
-                    process = null
-                } catch (t: Throwable) {
-                    process = null
-                    if (isActive && wantRunning) {
-                        LogBuffer.e("Logcat", "failed: ${t.message}")
-                    }
-                }
-                if (!isActive || !wantRunning) break
-                delay(400)
-            }
-        }
-    }
-
-    private fun isPidAlive(pid: Int): Boolean {
-        // /proc/pid exists while process lives
-        try {
-            if (File("/proc/$pid").exists()) return true
-        } catch (_: Throwable) {
-        }
-        try {
-            if (com.cwbridge.android.ShizukuShell.isReady()) {
-                val (code, out) = com.cwbridge.android.ShizukuShell.exec("kill -0 $pid")
-                // kill -0 succeeds (0) if process exists
-                if (code == 0) return true
-                if (out.contains("No such process", ignoreCase = true)) return false
-            }
-        } catch (_: Throwable) {
-        }
-        // Fallback: pidof should not list this pid
-        val current = resolveRobloxPid()
-        return current != null && current == pid
-    }
-
-    private fun resolveRobloxPid(): Int? {
-        val pkgs = listOf(
-            "com.roblox.client",
-            "com.roblox.client.vng",
-            "com.roblox.client.ugc",
+def patch_server() -> None:
+    p = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
+    t = p.read_text()
+    if "/api/auto-domain" in t:
+        print("auto-domain route already")
+    else:
+        t = t.replace(
+            'path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))',
+            'path == "/api/domains" && method == "POST" -> respond(out, 200, openDomainsJson(body))\n'\n            '            path == "/api/auto-domain" && method == "GET" -> respond(out, 200, getAutoDomainJson())\n'\n            '            path == "/api/auto-domain" && method == "POST" -> respond(out, 200, setAutoDomainJson(body))',
+            1,
         )
-        try {
-            if (com.cwbridge.android.ShizukuShell.isReady()) {
-                val joined = pkgs.joinToString(" ")
-                val (code, out) = com.cwbridge.android.ShizukuShell.exec("pidof $joined")
-                val pid = out.trim().split(Regex("\\s+")).firstOrNull()?.toIntOrNull()
-                if (code == 0 && pid != null && pid > 0) return pid
-            }
-        } catch (_: Throwable) {
-        }
-        try {
-            for (pkg in pkgs) {
-                val p = Runtime.getRuntime().exec(arrayOf("pidof", pkg))
-                val out = p.inputStream.bufferedReader().readText().trim()
-                p.waitFor()
-                val pid = out.split(Regex("\\s+")).firstOrNull()?.toIntOrNull()
-                if (pid != null && pid > 0) return pid
-            }
-        } catch (_: Throwable) {
-        }
-        return null
+        print("routes added")
+
+    if "fun getAutoDomainJson" not in t:
+        helpers = r'''
+    private fun getAutoDomainJson(): String {
+        val domains = BridgeControl.loadAutoOpenDomains(context)
+        val one = domains.firstOrNull().orEmpty()
+        return json(
+            mapOf(
+                "domain" to one,
+                "domains" to domains,
+            ),
+        )
     }
 
-    private fun looksLikeRobloxLine(line: String): Boolean {
-        val lower = line.lowercase()
-        if (lower.contains("roblox")) return true
-        if (lower.contains("flog::")) return true
-        if (lower.contains("catweb")) return true
-        if (line.contains("invoke|")) return true
-        if (line.contains('\u2022') || line.contains('\u00B7')) return true
-        if (lower.contains("waiting for server")) return true
-        if (lower.contains("creatoroutput") || lower.contains("[from ")) return true
-        if (lower.contains("datamodel loading")) return true
-        if (lower.contains("hello world")) return true
-        return false
-    }
-
-    fun stop() {
-        wantRunning = false
-        reconnectRequested = true
-        job?.cancel()
-        job = null
-        try {
-            process?.destroy()
-        } catch (_: Exception) {
+    private fun setAutoDomainJson(body: String): String {
+        // Single domain only (multi-tab not supported)
+        val raw = jsonString(body, "domain").ifBlank {
+            jsonString(body, "domains")
         }
-        process = null
-        if (activeInstance === this) activeInstance = null
+        val one = raw.lines()
+            .flatMap { it.split(",", ";") }
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+        BridgeControl.saveAutoOpenDomains(
+            context,
+            if (one.isEmpty()) emptyList() else listOf(one),
+        )
+        LogBuffer.i("Server", "auto-open domain set to '${one.ifEmpty { "(cleared)" }}'")
+        return json(
+            mapOf(
+                "ok" to true,
+                "domain" to one,
+                "message" to if (one.isEmpty()) "auto-open cleared" else "auto-open set to $one",
+            ),
+        )
     }
 
-    companion object {
-        @Volatile
-        var activeInstance: LogcatReader? = null
-            private set
+'''
+        # insert before openDomainsJson
+        if "private fun openDomainsJson" in t:
+            t = t.replace(
+                "    private fun openDomainsJson",
+                helpers + "    private fun openDomainsJson",
+                1,
+            )
+            print("helpers added")
+        else:
+            print("WARN: openDomainsJson not found")
+    p.write_text(t)
 
-        fun requestReconnect(reason: String = "external") {
-            activeInstance?.requestReconnect(reason)
-        }
-    }
+def patch_webui() -> None:
+    p = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
+    t = p.read_text()
+    if "id=\"autoDomain\"" in t or "id='autoDomain'" in t:
+        print("auto domain card already")
+    else:
+        card = '''  <div class="card">
+    <h2>Auto-open on CW load</h2>
+    <p class="hint">Single domain only. When CatWeb logs finished, the bridge opens this in the current tab (OCR URL bar). Empty = off.</p>
+    <div class="row">
+      <div class="field"><input id="autoDomain" placeholder="67.rbx" autocomplete="off"></div>
+      <button type="button" onclick="saveAutoDomain()">Save</button>
+      <button type="button" class="ghost" onclick="clearAutoDomain()">Clear</button>
+    </div>
+    <div id="autoDomMsg" class="msg"></div>
+  </div>
+
+'''
+        needle = '  <div class="card">\n    <h2>Open domains</h2>'
+        if needle in t:
+            t = t.replace(needle, card + needle, 1)
+            print("card inserted")
+        else:
+            print("WARN: Open domains card not found")
+
+    if "async function loadAutoDomain" not in t:
+        js = r'''
+async function loadAutoDomain(){
+  try {
+    var r = await get("/api/auto-domain");
+    if (r.domain != null) D("autoDomain").value = r.domain || "";
+  } catch (e) {}
+}
+async function saveAutoDomain(){
+  var d = (D("autoDomain").value || "").trim();
+  try {
+    var r = await post("/api/auto-domain", {domain: d});
+    msg("autoDomMsg", r.message || ("saved " + d), !r.error);
+    if (r.domain != null) D("autoDomain").value = r.domain || "";
+  } catch (e) {
+    msg("autoDomMsg", String(e), false);
+  }
+}
+async function clearAutoDomain(){
+  D("autoDomain").value = "";
+  return saveAutoDomain();
 }
 '''
+        # after openDomains function or near other async functions
+        if "async function openDomains()" in t:
+            # append js after openDomains block - find a safe anchor
+            if "async function sendInvoke" in t:
+                t = t.replace("async function sendInvoke", js + "\nasync function sendInvoke", 1)
+                print("js helpers added")
+            else:
+                t = t.replace("async function openDomains()", js + "\nasync function openDomains()", 1)
+                print("js before openDomains")
+        else:
+            print("WARN: openDomains fn missing")
+
+    # boot load on page open
+    if "loadAutoDomain()" not in t:
+        if "loadServices()" in t:
+            t = t.replace("loadServices()", "loadServices(); loadAutoDomain()", 1)
+            print("boot loadAutoDomain")
+        elif "refreshStatus()" in t:
+            t = t.replace("refreshStatus()", "refreshStatus(); loadAutoDomain()", 1)
+            print("boot via refreshStatus")
+        else:
+            # try end of script boot
+            if "DOMContentLoaded" in t:
+                t = t.replace(
+                    "DOMContentLoaded",
+                    "DOMContentLoaded",  # no-op marker
+                    1,
+                )
+            # inject before closing script
+            if "</script>" in t:
+                t = t.replace(
+                    "</script>",
+                    "try{loadAutoDomain()}catch(e){}\n</script>",
+                    1,
+                )
+                print("boot at script end")
+
+    # ensure get() helper exists - many WebUi have post and get
+    if "function get(" not in t and "async function get(" not in t:
+        # add simple get next to post
+        if "function post(path, body)" in t:
+            t = t.replace(
+                "function post(path, body)",
+                "async function get(path){\n  var r = await fetch(path, {credentials:\"same-origin\"});\n  return r.json();\n}\nfunction post(path, body)",
+                1,
+            )
+            print("get() helper added")
+        elif "async function post(" in t:
+            t = t.replace(
+                "async function post(",
+                "async function get(path){\n  var r = await fetch(path, {credentials:\"same-origin\"});\n  return r.json();\n}\nasync function post(",
+                1,
+            )
+            print("get() helper added (async)")
+
+    p.write_text(t)
+    print("WebUi done")
 
 def main() -> None:
-    (ROOT / "app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt").write_text(LOGCAT)
-    print("LogcatReader rewritten")
-
-    bc = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
-    t = bc.read_text()
-    if "LogcatReader.requestReconnect" not in t:
-        old = '''            if (ShizukuShell.isReady()) {
-                val (code, out) = ShizukuShell.exec("am force-stop $packageName")
-                LogBuffer.i("Control", "force-stop $packageName exit=$code ${out.take(120)}")
-                if (code != 0) return "force-stop failed: ${out.take(160)}"
-            }'''
-        new = '''            if (ShizukuShell.isReady()) {
-                val (code, out) = ShizukuShell.exec("am force-stop $packageName")
-                LogBuffer.i("Control", "force-stop $packageName exit=$code ${out.take(120)}")
-                // Drop hung logcat --pid=old session so tail follows the new process
-                LogcatReader.requestReconnect("restartRoblox")
-                if (code != 0) return "force-stop failed: ${out.take(160)}"
-            }'''
-        if old in t:
-            t = t.replace(old, new, 1)
-            bc.write_text(t)
-            print("restartRoblox triggers logcat reconnect")
-        else:
-            print("WARN: restartRoblox block not matched")
-    else:
-        print("reconnect already in restartRoblox")
+    patch_server()
+    patch_webui()
+    print("done")
 
 if __name__ == "__main__":
     main()
