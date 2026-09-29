@@ -23,6 +23,7 @@ import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import kotlin.text.Charsets
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -544,17 +545,17 @@ class LocalHttpServer(
             ?: return json(mapOf("error" to "bad domain '$domain'"))
         val prefix = "$d::"
         val all = com.cwbridge.android.data.UserFileStore.storeAll(context)
-        val keys = all.entries
+        val pairs = all.entries
             .filter { it.key.startsWith(prefix) }
-            .map { e ->
-                val key = e.key.removePrefix(prefix)
-                mapOf(
-                    "key" to key,
-                    "value" to e.value,
-                    "bytes" to e.value.toByteArray(Charsets.UTF_8).size,
-                )
-            }
-            .sortedBy { it["key"] as String }
+            .map { e -> e.key.removePrefix(prefix) to e.value }
+            .sortedBy { it.first }
+        val keys = pairs.map { (key, value) ->
+            mapOf(
+                "key" to key,
+                "value" to value,
+                "bytes" to value.toByteArray(Charsets.UTF_8).size,
+            )
+        }
         return json(
             mapOf(
                 "domain" to d,
