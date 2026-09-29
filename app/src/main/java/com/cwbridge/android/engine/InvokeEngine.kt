@@ -98,19 +98,30 @@ class InvokeEngine(
         }
     }
 
+
+    /** If raw ends with .name.rbx, peel domain; else default local.rbx. */
+    private fun splitOptionalDomain(raw: String): Pair<String, String> {
+        val m = Regex("""^(.*)\.([a-z0-9_-]+\.rbx)$""", RegexOption.IGNORE_CASE).matchEntire(raw.trim())
+        return if (m != null) {
+            m.groupValues[1] to m.groupValues[2].lowercase()
+        } else {
+            raw to Store.DEFAULT_DOMAIN
+        }
+    }
+
     private suspend fun dispatch(request: String, data1: String, data2: String) {
         when (request) {
             "save" -> {
-                // save.key.data  OR  save.key.data with domain in key as domain/key
-                // Wire: save.<key>.<data>  → default domain local.rbx
-                //       save.<domain>.<key> not used — user asked save.key.data
+                // save.<key>.<value>
+                // save.<key>.<value>.<domain.rbx>  (domain optional → local.rbx)
                 if (data1.isEmpty()) {
-                    replyErr("save", "need save.key.data")
+                    replyErr("save", "need save.key.value[.domain.rbx]")
                     return
                 }
-                val result = store.saveDefault(data1, data2)
+                val (value, domain) = splitOptionalDomain(data2)
+                val result = store.save(domain, data1, value)
                 result.fold(
-                    onSuccess = { replyOk("save", "$data1 stored (${data2.length} chars)") },
+                    onSuccess = { replyOk("save", "$data1 → $domain (${value.length} chars)") },
                     onFailure = { replyErr("save", it.message ?: "fail") },
                 )
             }

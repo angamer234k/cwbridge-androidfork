@@ -274,7 +274,11 @@ class LocalHttpServer(
 
             path == "/api/store" && method == "GET" -> respond(out, 200, storeJson())
 
+            path == "/api/store/keys" && method == "GET" -> respond(out, 200, storeKeysJson(query))
+
             path == "/api/store" && method == "POST" -> respond(out, 200, saveKey(body))
+
+            path == "/api/store/delete" && method == "POST" -> respond(out, 200, deleteKey(body))
 
             path == "/api/store/clear" && method == "POST" -> respond(out, 200, clearDomain(body))
 
@@ -529,6 +533,47 @@ class LocalHttpServer(
     }
 
     // ---- storage + quota --------------------------------------------------
+
+
+    private fun storeKeysJson(query: Map<String, String>): String {
+        val domain = query["domain"].orEmpty()
+        if (domain.isBlank()) {
+            return json(mapOf("error" to "domain required (?domain=name.rbx)"))
+        }
+        val d = Store.normalizeDomain(domain)
+            ?: return json(mapOf("error" to "bad domain '$domain'"))
+        val prefix = "$d::"
+        val all = com.cwbridge.android.data.UserFileStore.storeAll(context)
+        val keys = all.entries
+            .filter { it.key.startsWith(prefix) }
+            .map { e ->
+                val key = e.key.removePrefix(prefix)
+                mapOf(
+                    "key" to key,
+                    "value" to e.value,
+                    "bytes" to e.value.toByteArray(Charsets.UTF_8).size,
+                )
+            }
+            .sortedBy { it["key"] as String }
+        return json(
+            mapOf(
+                "domain" to d,
+                "keys" to keys,
+                "used" to Store.formatBytes(store.usageOf(d)),
+                "limit" to Store.formatBytes(store.limitOf(d)),
+                "limitBytes" to store.limitOf(d),
+            ),
+        )
+    }
+
+    private fun deleteKey(body: String): String {
+        val domain = jsonString(body, "domain")
+        val key = jsonString(body, "key")
+        return store.remove(domain, key).fold(
+            onSuccess = { json(mapOf("message" to "deleted $key from $domain")) },
+            onFailure = { json(mapOf("error" to (it.message ?: "delete failed"))) },
+        )
+    }
 
     private fun storeJson(): String {
         val domains = store.domains().map { d ->

@@ -159,6 +159,24 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
   </div>
 
   <div class="card">
+    <h2>Edit domain database</h2>
+    <p class="hint">Pick a domain, load keys, edit values, save or delete. Same store as invoke|save.</p>
+    <div class="row">
+      <div class="field"><input id="editDomain" list="domainListDatalist" placeholder="example.rbx"></div>
+      <button type="button" onclick="loadDomainDb()">Load</button>
+    </div>
+    <datalist id="domainListDatalist"></datalist>
+    <div id="domainDbMeta" class="hint"></div>
+    <div id="domainDbRows" style="margin-top:8px;overflow:auto;max-height:320px"></div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><input id="newKey" placeholder="new key"></div>
+      <div class="field"><input id="newVal" placeholder="value"></div>
+      <button type="button" onclick="addDomainKey()">Add</button>
+    </div>
+    <div id="domainDbMsg" class="msg"></div>
+  </div>
+
+  <div class="card">
     <h2>Open domains</h2>
     <p class="hint">One domain per line. Flow: Ctrl+T, tap URL bar (X/Y %), type domain, Enter, wait, then Ctrl+1. Needs Shizuku.</p>
     <textarea id="domainList" placeholder="example.rbx"></textarea>
@@ -391,6 +409,75 @@ async function loadShot(){
     D("shotBox").innerHTML = "<img id=\"shotImg\" alt=\"screenshot\" src=\"" + url + "\">";
     msg("ctlMsg", "screenshot ok", "good");
   }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+
+
+async function loadDomainDb(){
+  var d = (D("editDomain").value || "").trim();
+  if(!d){ msg("domainDbMsg", "enter a domain", false); return; }
+  try {
+    var r = await get("/api/store/keys?domain=" + encodeURIComponent(d));
+    if(r.error){ msg("domainDbMsg", r.error, false); return; }
+    D("domainDbMeta").textContent = (r.domain || d) + " — " + (r.used || "?") + " / " + (r.limit || "?");
+    var keys = r.keys || [];
+    if(!keys.length){
+      D("domainDbRows").innerHTML = "<p class=\"hint\">No keys yet.</p>";
+    } else {
+      D("domainDbRows").innerHTML = keys.map(function(k, i){
+        var key = k.key || "";
+        var val = k.value || "";
+        var id = "kv_" + i;
+        return "<div class=\"row\" style=\"margin-bottom:6px;align-items:flex-start\">" +
+          "<div class=\"field\" style=\"flex:0 0 28%\"><label>" + esc(key) + "</label></div>" +
+          "<div class=\"field\" style=\"flex:1\"><textarea id=\"" + id + "\" rows=\"2\">" + esc(val) + "</textarea></div>" +
+          "<button type=\"button\" onclick=\"saveDomainKey(" + JSON.stringify(key) + ",'" + id + "')\">Save</button>" +
+          "<button type=\"button\" class=\"danger\" onclick=\"deleteDomainKey(" + JSON.stringify(key) + ")\">Del</button></div>";
+      }).join("");
+    }
+    msg("domainDbMsg", keys.length + " key(s)", true);
+  } catch(e){
+    msg("domainDbMsg", String(e), false);
+  }
+}
+async function saveDomainKey(key, inputId){
+  var d = (D("editDomain").value || "").trim();
+  var el = D(inputId);
+  var val = el ? el.value : "";
+  try {
+    var r = await post("/api/store", {domain: d, key: key, value: val});
+    msg("domainDbMsg", r.message || r.error || "saved", !r.error);
+    if(!r.error) loadDomainDb();
+  } catch(e){ msg("domainDbMsg", String(e), false); }
+}
+async function deleteDomainKey(key){
+  var d = (D("editDomain").value || "").trim();
+  if(!confirm("Delete " + key + " from " + d + "?")) return;
+  try {
+    var r = await post("/api/store/delete", {domain: d, key: key});
+    msg("domainDbMsg", r.message || r.error || "deleted", !r.error);
+    if(!r.error) loadDomainDb();
+  } catch(e){ msg("domainDbMsg", String(e), false); }
+}
+async function addDomainKey(){
+  var d = (D("editDomain").value || "").trim();
+  var key = (D("newKey").value || "").trim();
+  var val = D("newVal").value || "";
+  if(!d || !key){ msg("domainDbMsg", "domain and key required", false); return; }
+  try {
+    var r = await post("/api/store", {domain: d, key: key, value: val});
+    msg("domainDbMsg", r.message || r.error || "added", !r.error);
+    if(!r.error){ D("newKey").value = ""; D("newVal").value = ""; loadDomainDb(); }
+  } catch(e){ msg("domainDbMsg", String(e), false); }
+}
+async function refreshDomainDatalist(){
+  try {
+    var s = await get("/api/store");
+    var list = D("domainListDatalist");
+    if(!list) return;
+    list.innerHTML = (s.domains || []).map(function(x){
+      return "<option value=\"" + esc(x.domain) + "\">";
+    }).join("");
+  } catch(e){}
 }
 
 async function loadAutoDomain(){
