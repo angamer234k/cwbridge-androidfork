@@ -357,7 +357,8 @@ class LocalHttpServer(
             context,
             if (one.isEmpty()) emptyList() else listOf(one),
         )
-        LogBuffer.i("Server", "auto-open domain set to '${one.ifEmpty { "(cleared)" }}'")
+        val label = if (one.isEmpty()) "(cleared)" else one
+        LogBuffer.i("Server", "auto-open domain set to '$label'")
         return json(
             mapOf(
                 "ok" to true,
