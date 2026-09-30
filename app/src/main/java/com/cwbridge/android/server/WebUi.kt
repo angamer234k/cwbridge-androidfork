@@ -853,9 +853,9 @@ function renderEditorLists(){
     var kind = (a._kind||a.type||"?").toString().toUpperCase();
     var body = "";
     if(kind==="DELAY") body = "<input type=\"number\" style=\"width:90px\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=parseInt(this.value,10)||1000\"> ms";
-    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body = "<input style=\"min-width:160px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"text / $var\">";
+    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body = "<input style=\"min-width:160px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"text / ${'$'}var\">";
     else if(kind==="SET_VAR") body = "key <input style=\"width:90px\" value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"> = <input style=\"width:120px\" value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\">";
-    else if(kind==="TEXT_MAN") body = "src <input style=\"width:90px\" value=\""+esc(a.source||"$lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"> → <input style=\"width:90px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
+    else if(kind==="TEXT_MAN") body = "src <input style=\"width:90px\" value=\""+esc(a.source||"${'$'}lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"> → <input style=\"width:90px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
     else if(kind==="TAP") body = "text <input style=\"width:120px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"or use %\">";
     else body = "<span class=\"hint\">(no params)</span>";
     return "<div class=\"row\" style=\"margin-bottom:4px\"><span class=\"chip\">" + (i+1) + ". " + esc(kind) +
@@ -877,7 +877,7 @@ function addAction(){
   if(kind==="DELAY") a.milliseconds = 500;
   if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
   if(kind==="SET_VAR"){ a.key=""; a.value=""; }
-  if(kind==="TEXT_MAN"){ a.source="$lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
+  if(kind==="TEXT_MAN"){ a.source="${'$'}lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
   if(kind==="TAP"){ a.text=""; }
   ED.actions.push(a);
   renderEditorLists();
