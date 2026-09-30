@@ -1,77 +1,148 @@
 #!/usr/bin/env python3
-"""AI paste auto-presses Enter after pasting the model reply."""
+"""
+Anti-AFK: periodic keep-alive taps (not idle-only).
+Log noise was resetting lastActivityMs so the 5min idle tap almost never fired.
+"""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-p = ROOT / "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt"
-t = p.read_text()
+p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/AntiDisconnect.kt"
 
-old_paste = """    private suspend fun pasteIntoGame(text: String) {
-        val svc = TapService.instance ?: return
-        setClipboard(text)
-        svc.clickAtPercent(focusXPct, focusYPct)
-        delay(1000)
-        svc.pasteClipboard()
-        delay(400)
-        if (submitXPx > 0f || submitYPx > 0f) {
-            svc.clickAt(submitXPx, submitYPx)
+new = r'''package com.cwbridge.android.bridge
+
+import com.cwbridge.android.ShizukuShell
+import com.cwbridge.android.TapService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * Keep-alive while the bridge is running.
+ *
+ * Periodic taps every [KEEP_ALIVE_INTERVAL_MS] (not "idle after 5min"),
+ * because CatWeb/FLog lines used to reset the idle clock and taps never fired.
+ * Tap is mid-right (avoids status bar / gesture edge). Shizuku fallback if a11y down.
+ */
+object AntiDisconnect {
+    /** How often to poke the screen while bridge is on. */
+    private const val KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000L
+    private const val TICK_MS = 15_000L
+    private const val GRACE_MS = 25_000L
+    private const val MIN_TAP_INTERVAL_MS = 90_000L
+    /** Right side, upper-mid — away from top chrome (~5%) and bottom gesture bar. */
+    private const val KEEP_ALIVE_X = 88f
+    private const val KEEP_ALIVE_Y = 40f
+
+    @Volatile private var startedAtMs: Long = 0L
+    @Volatile private var enabled: Boolean = false
+    @Volatile private var lastTapTime: Long = 0L
+    private var job: Job? = null
+
+    fun noteActivity() {
+        // Kept for callers; no longer gates keep-alive (periodic only).
+    }
+
+    fun onLogLine(raw: String) {
+        if (!enabled) return
+        if (System.currentTimeMillis() - startedAtMs < GRACE_MS) return
+
+        val lower = raw.lowercase()
+        val isConsole =
+            lower.contains("flog::") ||
+                raw.contains('\u2022') ||
+                raw.contains('\u00B7') ||
+                lower.contains("catweb") ||
+                lower.contains("invoke|")
+        if (!isConsole) return
+
+        if (lower.contains("disconnect") || lower.contains("disconnected") ||
+            lower.contains("connection lost")
+        ) {
+            LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
+            noteActivity()
+            CatWebTracker.armForNextReady()
+            val hasReconnect = lower.contains("reconnect")
+            if (!hasReconnect) {
+                val n = BridgeControl.bumpDisconnectFailsafe()
+                LogBuffer.w("AntiDC", "dead disconnect hint — failsafe=$n")
+            }
+            if (BridgeStatus.state != OverlayState.ERROR) {
+                BridgeStatus.set(OverlayState.WAITING, "Reconnecting\u2026")
+            }
         }
-    }"""
+    }
 
-new_paste = """    private suspend fun pasteIntoGame(text: String, pressEnter: Boolean = false) {
+    fun start(scope: CoroutineScope) {
+        stop()
+        enabled = true
+        startedAtMs = System.currentTimeMillis()
+        lastTapTime = 0L
+        job = scope.launch(Dispatchers.IO) {
+            LogBuffer.i(
+                "AntiDC",
+                "periodic keep-alive every ${KEEP_ALIVE_INTERVAL_MS / 1000}s " +
+                    "\u2192 tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% " +
+                    "(grace ${GRACE_MS / 1000}s)",
+            )
+            while (isActive && enabled) {
+                delay(TICK_MS)
+                if (!enabled) break
+                val now = System.currentTimeMillis()
+                if (now - startedAtMs < GRACE_MS) continue
+                if (lastTapTime == 0L || now - lastTapTime >= KEEP_ALIVE_INTERVAL_MS) {
+                    tryKeepAliveTap("periodic")
+                }
+            }
+        }
+    }
+
+    fun stop() {
+        enabled = false
+        job?.cancel()
+        job = null
+        lastTapTime = 0L
+    }
+
+    private fun tryKeepAliveTap(reason: String) {
+        val now = System.currentTimeMillis()
+        if (lastTapTime > 0L && now - lastTapTime < MIN_TAP_INTERVAL_MS) {
+            LogBuffer.i("AntiDC", "skip tap: cooldown ${now - lastTapTime}ms")
+            return
+        }
+        lastTapTime = now
+
         val svc = TapService.instance
-        setClipboard(text)
         if (svc != null) {
-            svc.clickAtPercent(focusXPct, focusYPct)
-            delay(1000)
-            svc.pasteClipboard()
-            delay(400)
-            if (submitXPx > 0f || submitYPx > 0f) {
-                svc.clickAt(submitXPx, submitYPx)
-                delay(200)
-            }
-            if (pressEnter) {
-                val ok = svc.pressEnter()
-                LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
-            }
-        } else if (ShizukuShell.isReady()) {
-            ShizukuShell.exec("input keyevent KEYCODE_PASTE")
-            delay(400)
-            if (pressEnter) {
-                val ok = ShizukuShell.pressEnter()
-                LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
-            }
-        } else {
-            LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
+            val ok = svc.clickAtPercent(KEEP_ALIVE_X, KEEP_ALIVE_Y)
+            LogBuffer.i(
+                "AntiDC",
+                "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) a11y ok=$ok",
+            )
+            return
         }
-    }"""
+        if (ShizukuShell.isReady()) {
+            val out = ShizukuShell.exec("wm size")
+            var w = 1080
+            var h = 2400
+            val m = Regex("""(\d+)x(\d+)""").find(out ?: "")
+            if (m != null) {
+                w = m.groupValues[1].toIntOrNull() ?: w
+                h = m.groupValues[2].toIntOrNull() ?: h
+            }
+            val x = (w * KEEP_ALIVE_X / 100f).toInt()
+            val y = (h * KEEP_ALIVE_Y / 100f).toInt()
+            val r = ShizukuShell.exec("input tap $x $y")
+            LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y \u2192 $r")
+            return
+        }
+        LogBuffer.w("AntiDC", "no accessibility/Shizuku — cannot tap ($reason)")
+    }
+}
+'''
 
-if old_paste in t:
-    t = t.replace(old_paste, new_paste, 1)
-    print("pasteIntoGame: pressEnter param")
-elif "pressEnter: Boolean = false" in t:
-    print("pasteIntoGame already has pressEnter")
-else:
-    raise SystemExit("pasteIntoGame block not found")
-
-old_ai_paste = "pasteIntoGame(text)\n                    replyOk(\"ai\", text.take(500))"
-new_ai_paste = "pasteIntoGame(text, pressEnter = true)\n                    replyOk(\"ai\", text.take(500))"
-if old_ai_paste in t:
-    t = t.replace(old_ai_paste, new_ai_paste, 1)
-    print("AI: auto Enter after paste")
-elif "pasteIntoGame(text, pressEnter = true)" in t:
-    print("AI already auto-Enter")
-else:
-    idx = t.find('"ai" ->')
-    if idx < 0:
-        raise SystemExit("ai handler missing")
-    chunk = t[idx:idx+2000]
-    if "pasteIntoGame(text)" in chunk and "pressEnter = true" not in chunk:
-        t = t[:idx] + chunk.replace("pasteIntoGame(text)", "pasteIntoGame(text, pressEnter = true)", 1) + t[idx+2000:]
-        print("AI: auto Enter (broad)")
-    else:
-        print("AI paste replace miss")
-
-p.write_text(t)
-print("InvokeEngine", p.stat().st_size)
-print("hotfix ai-enter OK")
+p.write_text(new)
+print("AntiDisconnect rewritten", p.stat().st_size)
+print("hotfix antiafk OK")
