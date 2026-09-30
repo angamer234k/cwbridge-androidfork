@@ -636,21 +636,40 @@ class LocalHttpServer(
 
     private fun rateLimitsJson(query: Map<String, String>): String {
         val domain = query["domain"]
-        return json(DatastoreRateLimit.snapshot(context, domain))
+        val snap = DatastoreRateLimit.snapshot(context, domain).toMutableMap()
+        snap["defaultLimitBytes"] = store.defaultLimitBytes()
+        snap["defaultLimit"] = Store.formatBytes(store.defaultLimitBytes())
+        return json(snap)
     }
 
     private fun setRateLimitsJson(body: String): String {
         val g = jsonString(body, "globalPerDay").toIntOrNull()
         val d = jsonString(body, "domainPerDay").toIntOrNull()
-        if (g == null && d == null) {
-            return json(mapOf("error" to "globalPerDay and/or domainPerDay required"))
+        val defRaw = jsonString(body, "defaultLimit")
+        var touched = false
+        if (g != null || d != null) {
+            DatastoreRateLimit.setLimits(context, g, d)
+            touched = true
         }
-        DatastoreRateLimit.setLimits(context, g, d)
+        if (defRaw.isNotBlank()) {
+            val bytes = if (defRaw.equals("unlimited", true) || defRaw == "0") 0L
+            else Store.parseSize(defRaw)
+                ?: return json(mapOf("error" to "bad defaultLimit '$defRaw' — try 1GB, 500MB"))
+            store.setDefaultLimitBytes(bytes).getOrElse {
+                return json(mapOf("error" to (it.message ?: "failed")))
+            }
+            touched = true
+        }
+        if (!touched) {
+            return json(mapOf("error" to "globalPerDay, domainPerDay, and/or defaultLimit required"))
+        }
         return json(
             mapOf(
                 "ok" to true,
                 "globalPerDay" to DatastoreRateLimit.globalLimit(context),
                 "domainPerDay" to DatastoreRateLimit.domainLimit(context),
+                "defaultLimitBytes" to store.defaultLimitBytes(),
+                "defaultLimit" to Store.formatBytes(store.defaultLimitBytes()),
             ),
         )
     }

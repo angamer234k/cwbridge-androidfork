@@ -88,8 +88,22 @@ class Store(context: Context) {
     }
 
     fun limitOf(domain: String): Long {
-        val d = normalizeDomain(domain) ?: return DEFAULT_LIMIT_BYTES
-        return UserFileStore.limitGet(app, d, DEFAULT_LIMIT_BYTES)
+        val d = normalizeDomain(domain) ?: return defaultLimitBytes()
+        return UserFileStore.limitGet(app, d, defaultLimitBytes())
+    }
+
+    fun defaultLimitBytes(): Long {
+        val raw = UserFileStore.getSetting(app, "store_default_limit_bytes", null)
+        val parsed = raw?.let { parseSize(it) ?: it.toLongOrNull() }
+        return parsed?.coerceAtLeast(0L) ?: DEFAULT_LIMIT_BYTES
+    }
+
+    fun setDefaultLimitBytes(bytes: Long): Result<Unit> {
+        if (bytes < 0) return Result.failure(IllegalArgumentException("limit cannot be negative"))
+        val v = if (bytes == 0L) "0" else formatBytes(bytes).replace(" ", "")
+        UserFileStore.putSetting(app, "store_default_limit_bytes", if (bytes == 0L) "0" else bytes.toString())
+        LogBuffer.i("Store", "default limit = ${formatBytes(bytes)}")
+        return Result.success(Unit)
     }
 
     fun setLimit(domain: String, bytes: Long): Result<Unit> {
@@ -132,7 +146,7 @@ class Store(context: Context) {
 
     companion object {
         const val DEFAULT_DOMAIN = "local.rbx"
-        const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024
+        const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024 * 1024 // 1 GiB
 
         fun normalizeDomain(raw: String): String? {
             val s = raw.trim().lowercase()

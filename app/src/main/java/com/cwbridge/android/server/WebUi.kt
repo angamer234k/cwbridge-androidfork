@@ -300,6 +300,23 @@ pre#console{
     <div id="svcMsg" class="msg"></div>
   </div>
 
+  <div class="card" id="sec-limits">
+    <h2><span class="ms sm">speed</span> Limits</h2>
+    <p class="hint">Storage default applies to domains without a custom limit. Request caps count save/load actions (0 = unlimited).</p>
+    <div class="row">
+      <div class="field"><label class="hint">Global data default</label>
+        <input id="limDefault" placeholder="1GB"></div>
+      <div class="field"><label class="hint">Reqs / day (global)</label>
+        <input id="limGlobalReq" type="number" min="0" placeholder="500"></div>
+      <div class="field"><label class="hint">Reqs / day / domain</label>
+        <input id="limDomainReq" type="number" min="0" placeholder="200"></div>
+      <button type="button" onclick="saveLimits()"><span class="ms sm">save</span> Save limits</button>
+      <button type="button" class="ghost" onclick="loadLimits()"><span class="ms sm">refresh</span> Refresh</button>
+    </div>
+    <div id="limitsMeta" class="hint" style="margin-top:8px"></div>
+    <div id="limitsMsg" class="msg"></div>
+  </div>
+
   <div class="card" id="sec-store">
     <h2><span class="ms sm">database</span> Storage</h2>
     <div style="overflow-x:auto">
@@ -540,6 +557,43 @@ async function loadShot(){
     msg("ctlMsg", "screenshot ok", "good");
   }catch(e){ msg("ctlMsg", e.message, "err"); }
 }
+
+async function loadLimits(){
+  try{
+    const j=await api('/api/rate-limits');
+    const def=document.getElementById('limDefault');
+    const g=document.getElementById('limGlobalReq');
+    const d=document.getElementById('limDomainReq');
+    if(def) def.value=j.defaultLimit||'';
+    if(g) g.value=(j.globalLimit!=null?j.globalLimit:'');
+    if(d) d.value=(j.domainLimit!=null?j.domainLimit:'');
+    const meta=document.getElementById('limitsMeta');
+    if(meta){
+      let s='Today: global '+ (j.globalUsed||0) +'/'+ (j.globalLimit||0);
+      if(j.domainUsed!=null) s+=' · domain '+j.domainUsed+'/'+(j.domainLimit||0);
+      s+=' · default storage '+ (j.defaultLimit||'?');
+      meta.textContent=s;
+    }
+  }catch(e){ toast(e.message||String(e),false); }
+}
+async function saveLimits(){
+  const body={};
+  const def=document.getElementById('limDefault');
+  const g=document.getElementById('limGlobalReq');
+  const d=document.getElementById('limDomainReq');
+  if(def && def.value.trim()) body.defaultLimit=def.value.trim();
+  if(g && g.value!=='') body.globalPerDay=parseInt(g.value,10);
+  if(d && d.value!=='') body.domainPerDay=parseInt(d.value,10);
+  const msg=document.getElementById('limitsMsg');
+  try{
+    const j=await api('/api/rate-limits',{method:'POST',body:JSON.stringify(body)});
+    if(j.error){ if(msg) msg.innerHTML='<span class="bad">'+(j.error||'')+'</span>'; toast(j.error,false); return; }
+    if(msg) msg.innerHTML='<span class="ok">Saved</span>';
+    toast('Limits saved',true);
+    loadLimits();
+  }catch(e){ if(msg) msg.innerHTML='<span class="bad">'+(e.message||e)+'</span>'; toast(e.message||String(e),false); }
+}
+
 async function loadDomainDb(){
   var d = (D("editDomain").value || "").trim();
   if(!d){ msg("domainDbMsg", "enter a domain", false); return; }
@@ -743,7 +797,7 @@ function copyConsole(){
 }
 function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
-  loadAutoDomain(); refreshDomainDatalist();
+  loadAutoDomain(); refreshDomainDatalist(); loadLimits();
 }
 var inv = D("inv");
 if(inv) inv.addEventListener("keydown", function(e){
