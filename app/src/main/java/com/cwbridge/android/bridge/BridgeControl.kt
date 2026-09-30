@@ -183,6 +183,8 @@ object BridgeControl {
      * without the app holding the kill permission; falls back to a plain launch.
      */
     fun restartRoblox(context: Context, packageName: String = "com.roblox.client"): String {
+        CatWebTracker.armForNextReady()
+
         if (packageName.isBlank()) return "no Roblox package name configured"
         return try {
             if (ShizukuShell.isReady()) {

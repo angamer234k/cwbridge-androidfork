@@ -68,6 +68,8 @@ object DisconnectOcrWatch {
                 )
             }
             AntiDisconnect.noteActivity()
+            CatWebTracker.armForNextReady()
+            BridgeStatus.set(OverlayState.WAITING, "Reconnect tapped — waiting CatWeb…")
             return
         }
 
@@ -85,6 +87,7 @@ object DisconnectOcrWatch {
             return
         }
         LogBuffer.w("OCR-DC", "relaunching Roblox (failsafe $n)")
+        CatWebTracker.armForNextReady()
         BridgeControl.restartRoblox(context)
         BridgeStatus.set(OverlayState.WAITING, "Relaunch after disconnect ($n/5)")
     }

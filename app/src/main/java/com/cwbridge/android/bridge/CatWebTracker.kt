@@ -21,6 +21,16 @@ object CatWebTracker {
         readyFired = false
     }
 
+    /**
+     * After disconnect / OCR reconnect / Roblox relaunch — allow the next
+     * CatWeb "finished" line to fire [readyCallback] again (re-open domain).
+     */
+    fun armForNextReady() {
+        ready = false
+        readyFired = false
+        LogBuffer.i("CatWeb", "armed for next finished (will reopen domain)")
+    }
+
     @Volatile
     var seenBoot: Boolean = false
         private set
@@ -66,10 +76,30 @@ object CatWebTracker {
             if (!readyFired) {
                 readyFired = true
                 try {
+                    LogBuffer.i("CatWeb", "finished → onReady (open domain)")
                     readyCallback?.invoke()
                 } catch (t: Throwable) {
                     LogBuffer.e("CatWeb", "onReady: ${t.message}")
                 }
+            } else {
+                LogBuffer.i("CatWeb", "finished ignored (already fired — need armForNextReady after reconnect)")
+            }
+        } else if (
+            ready && (
+                lower.contains("waiting for server") ||
+                    lower.contains("loading") ||
+                    (lower.contains("catweb") && (lower.contains("v") || lower.contains("version")))
+            )
+        ) {
+            // Session reloading after reconnect — arm so next finished reopens domain
+            armForNextReady()
+            val detail = when {
+                lower.contains("waiting for server") -> "Waiting for server…"
+                lower.contains("loading") -> "CatWeb loading…"
+                else -> "CatWeb restarting…"
+            }
+            if (BridgeStatus.state != OverlayState.ERROR) {
+                BridgeStatus.set(OverlayState.WAITING, detail)
             }
         } else if (!ready) {
             val detail = when {

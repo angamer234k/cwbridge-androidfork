@@ -55,6 +55,7 @@ object AntiDisconnect {
         ) {
             LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
             noteActivity()
+            CatWebTracker.armForNextReady()
             val hasReconnect = lower.contains("reconnect")
             if (!hasReconnect) {
                 // Dead disconnect (no reconnect affordance in the log line).
