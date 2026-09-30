@@ -1,209 +1,77 @@
 #!/usr/bin/env python3
-"""
-After OCR reconnect / Roblox relaunch, CatWeb 'finished' must open the domain again.
-Root cause: CatWebTracker.readyFired stays true forever after first ready.
-"""
+"""AI paste auto-presses Enter after pasting the model reply."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+p = ROOT / "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt"
+t = p.read_text()
 
-
-def patch_tracker():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/CatWebTracker.kt"
-    t = p.read_text()
-
-    if "fun armForNextReady" in t:
-        print("CatWebTracker: armForNextReady already present")
-    else:
-        old = """    fun setOnReadyOnce(cb: (() -> Unit)?) {
-        readyCallback = cb
-        readyFired = false
+old_paste = """    private suspend fun pasteIntoGame(text: String) {
+        val svc = TapService.instance ?: return
+        setClipboard(text)
+        svc.clickAtPercent(focusXPct, focusYPct)
+        delay(1000)
+        svc.pasteClipboard()
+        delay(400)
+        if (submitXPx > 0f || submitYPx > 0f) {
+            svc.clickAt(submitXPx, submitYPx)
+        }
     }"""
-        new = """    fun setOnReadyOnce(cb: (() -> Unit)?) {
-        readyCallback = cb
-        readyFired = false
-    }
 
-    /**
-     * After disconnect / OCR reconnect / Roblox relaunch — allow the next
-     * CatWeb "finished" line to fire [readyCallback] again (re-open domain).
-     */
-    fun armForNextReady() {
-        ready = false
-        readyFired = false
-        LogBuffer.i("CatWeb", "armed for next finished (will reopen domain)")
+new_paste = """    private suspend fun pasteIntoGame(text: String, pressEnter: Boolean = false) {
+        val svc = TapService.instance
+        setClipboard(text)
+        if (svc != null) {
+            svc.clickAtPercent(focusXPct, focusYPct)
+            delay(1000)
+            svc.pasteClipboard()
+            delay(400)
+            if (submitXPx > 0f || submitYPx > 0f) {
+                svc.clickAt(submitXPx, submitYPx)
+                delay(200)
+            }
+            if (pressEnter) {
+                val ok = svc.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
+            }
+        } else if (ShizukuShell.isReady()) {
+            ShizukuShell.exec("input keyevent KEYCODE_PASTE")
+            delay(400)
+            if (pressEnter) {
+                val ok = ShizukuShell.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
+            }
+        } else {
+            LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
+        }
     }"""
-        if old not in t:
-            raise SystemExit("setOnReadyOnce not found")
-        t = t.replace(old, new, 1)
-        print("CatWebTracker: armForNextReady")
 
-    old_fin = """        if (finished) {
-            ready = true
-            BridgeStatus.set(OverlayState.ACTIVE, "CatWeb ready")
-            if (!readyFired) {
-                readyFired = true
-                try {
-                    readyCallback?.invoke()
-                } catch (t: Throwable) {
-                    LogBuffer.e("CatWeb", "onReady: ${t.message}")
-                }
-            }
-        } else if (!ready) {"""
+if old_paste in t:
+    t = t.replace(old_paste, new_paste, 1)
+    print("pasteIntoGame: pressEnter param")
+elif "pressEnter: Boolean = false" in t:
+    print("pasteIntoGame already has pressEnter")
+else:
+    raise SystemExit("pasteIntoGame block not found")
 
-    new_fin = """        if (finished) {
-            ready = true
-            BridgeStatus.set(OverlayState.ACTIVE, "CatWeb ready")
-            if (!readyFired) {
-                readyFired = true
-                try {
-                    LogBuffer.i("CatWeb", "finished → onReady (open domain)")
-                    readyCallback?.invoke()
-                } catch (t: Throwable) {
-                    LogBuffer.e("CatWeb", "onReady: ${t.message}")
-                }
-            } else {
-                LogBuffer.i("CatWeb", "finished ignored (already fired — need armForNextReady after reconnect)")
-            }
-        } else if (
-            ready && (
-                lower.contains("waiting for server") ||
-                    lower.contains("loading") ||
-                    (lower.contains("catweb") && (lower.contains("v") || lower.contains("version")))
-            )
-        ) {
-            // Session reloading after reconnect — arm so next finished reopens domain
-            armForNextReady()
-            val detail = when {
-                lower.contains("waiting for server") -> "Waiting for server…"
-                lower.contains("loading") -> "CatWeb loading…"
-                else -> "CatWeb restarting…"
-            }
-            if (BridgeStatus.state != OverlayState.ERROR) {
-                BridgeStatus.set(OverlayState.WAITING, detail)
-            }
-        } else if (!ready) {"""
-
-    if old_fin in t:
-        t = t.replace(old_fin, new_fin, 1)
-        print("CatWebTracker: auto-arm on reload lines + finished log")
+old_ai_paste = "pasteIntoGame(text)\n                    replyOk(\"ai\", text.take(500))"
+new_ai_paste = "pasteIntoGame(text, pressEnter = true)\n                    replyOk(\"ai\", text.take(500))"
+if old_ai_paste in t:
+    t = t.replace(old_ai_paste, new_ai_paste, 1)
+    print("AI: auto Enter after paste")
+elif "pasteIntoGame(text, pressEnter = true)" in t:
+    print("AI already auto-Enter")
+else:
+    idx = t.find('"ai" ->')
+    if idx < 0:
+        raise SystemExit("ai handler missing")
+    chunk = t[idx:idx+2000]
+    if "pasteIntoGame(text)" in chunk and "pressEnter = true" not in chunk:
+        t = t[:idx] + chunk.replace("pasteIntoGame(text)", "pasteIntoGame(text, pressEnter = true)", 1) + t[idx+2000:]
+        print("AI: auto Enter (broad)")
     else:
-        print("CatWebTracker: finished block pattern miss — check file")
+        print("AI paste replace miss")
 
-    p.write_text(t)
-    print("CatWebTracker", p.stat().st_size)
-
-
-def patch_ocr():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/DisconnectOcrWatch.kt"
-    t = p.read_text()
-
-    if "armForNextReady" in t:
-        print("OCR: already arms")
-    else:
-        old = """        if (reconnect != null) {
-            LogBuffer.i("OCR-DC", "Reconnect found — tapping")
-            val svc = TapService.instance
-            if (svc != null) {
-                svc.clickAt(reconnect.centerX, reconnect.centerY)
-            } else if (ShizukuShell.isReady()) {
-                ShizukuShell.exec(
-                    "input tap ${reconnect.centerX.toInt()} ${reconnect.centerY.toInt()}",
-                )
-            }
-            AntiDisconnect.noteActivity()
-            return
-        }"""
-        new = """        if (reconnect != null) {
-            LogBuffer.i("OCR-DC", "Reconnect found — tapping")
-            val svc = TapService.instance
-            if (svc != null) {
-                svc.clickAt(reconnect.centerX, reconnect.centerY)
-            } else if (ShizukuShell.isReady()) {
-                ShizukuShell.exec(
-                    "input tap ${reconnect.centerX.toInt()} ${reconnect.centerY.toInt()}",
-                )
-            }
-            AntiDisconnect.noteActivity()
-            CatWebTracker.armForNextReady()
-            BridgeStatus.set(OverlayState.WAITING, "Reconnect tapped — waiting CatWeb…")
-            return
-        }"""
-        if old not in t:
-            raise SystemExit("OCR reconnect block not found")
-        t = t.replace(old, new, 1)
-        print("OCR: arm after reconnect tap")
-
-        old2 = """        LogBuffer.w("OCR-DC", "relaunching Roblox (failsafe $n)")
-        BridgeControl.restartRoblox(context)
-        BridgeStatus.set(OverlayState.WAITING, "Relaunch after disconnect ($n/5)")
-    }
-}"""
-        new2 = """        LogBuffer.w("OCR-DC", "relaunching Roblox (failsafe $n)")
-        CatWebTracker.armForNextReady()
-        BridgeControl.restartRoblox(context)
-        BridgeStatus.set(OverlayState.WAITING, "Relaunch after disconnect ($n/5)")
-    }
-}"""
-        if old2 in t:
-            t = t.replace(old2, new2, 1)
-            print("OCR: arm before relaunch")
-        else:
-            print("OCR: relaunch arm pattern miss")
-
-    p.write_text(t)
-    print("DisconnectOcrWatch", p.stat().st_size)
-
-
-def patch_bridge_control():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
-    t = p.read_text()
-
-    idx = t.find("fun restartRoblox")
-    if idx >= 0:
-        chunk = t[idx:idx + 800]
-        if "armForNextReady" in chunk:
-            print("Control: restartRoblox already arms")
-        else:
-            brace = t.find("{", idx)
-            t = t[:brace + 1] + "\n        CatWebTracker.armForNextReady()\n" + t[brace + 1:]
-            print("Control: arm at restartRoblox")
-    else:
-        print("Control: no restartRoblox")
-
-    p.write_text(t)
-    print("BridgeControl", p.stat().st_size)
-
-
-def patch_anti():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/AntiDisconnect.kt"
-    if not p.exists():
-        print("AntiDisconnect skip")
-        return
-    t = p.read_text()
-    if "armForNextReady" in t:
-        print("AntiDC: already arms")
-        return
-    old = """            LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
-            noteActivity()"""
-    new = """            LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
-            noteActivity()
-            CatWebTracker.armForNextReady()"""
-    if old in t:
-        t = t.replace(old, new, 1)
-        p.write_text(t)
-        print("AntiDC: arm on disconnect signal")
-    else:
-        print("AntiDC: pattern miss")
-
-
-def main():
-    patch_tracker()
-    patch_ocr()
-    patch_bridge_control()
-    patch_anti()
-    print("hotfix reopen OK")
-
-
-if __name__ == "__main__":
-    main()
+p.write_text(t)
+print("InvokeEngine", p.stat().st_size)
+print("hotfix ai-enter OK")
