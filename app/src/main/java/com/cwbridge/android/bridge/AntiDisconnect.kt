@@ -114,18 +114,18 @@ object AntiDisconnect {
             return
         }
         if (ShizukuShell.isReady()) {
-            val out = ShizukuShell.exec("wm size")
+            val (_, sizeOut) = ShizukuShell.exec("wm size")
             var w = 1080
             var h = 2400
-            val m = Regex("""(\d+)x(\d+)""").find(out ?: "")
+            val m = Regex("""(\d+)x(\d+)""").find(sizeOut)
             if (m != null) {
                 w = m.groupValues[1].toIntOrNull() ?: w
                 h = m.groupValues[2].toIntOrNull() ?: h
             }
             val x = (w * KEEP_ALIVE_X / 100f).toInt()
             val y = (h * KEEP_ALIVE_Y / 100f).toInt()
-            val r = ShizukuShell.exec("input tap $x $y")
-            LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y \u2192 $r")
+            val (code, r) = ShizukuShell.exec("input tap $x $y")
+            LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y code=$code $r")
             return
         }
         LogBuffer.w("AntiDC", "no accessibility/Shizuku — cannot tap ($reason)")
