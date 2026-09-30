@@ -1,81 +1,8 @@
 #!/usr/bin/env python3
-"""Fix ShizukuShell.exec Pair handling in AntiDisconnect."""
+import base64
 from pathlib import Path
-
 ROOT = Path(__file__).resolve().parents[1]
 p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/AntiDisconnect.kt"
-t = p.read_text()
-
-old = '''        if (ShizukuShell.isReady()) {
-            val out = ShizukuShell.exec("wm size")
-            var w = 1080
-            var h = 2400
-            val m = Regex("""(\\d+)x(\\d+)""").find(out ?: "")
-            if (m != null) {
-                w = m.groupValues[1].toIntOrNull() ?: w
-                h = m.groupValues[2].toIntOrNull() ?: h
-            }
-            val x = (w * KEEP_ALIVE_X / 100f).toInt()
-            val y = (h * KEEP_ALIVE_Y / 100f).toInt()
-            val r = ShizukuShell.exec("input tap $x $y")
-            LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y \\u2192 $r")
-            return
-        }'''
-
-# try several variants of the broken block
-fixed = '''        if (ShizukuShell.isReady()) {
-            val (_, sizeOut) = ShizukuShell.exec("wm size")
-            var w = 1080
-            var h = 2400
-            val m = Regex("""(\\d+)x(\\d+)""").find(sizeOut)
-            if (m != null) {
-                w = m.groupValues[1].toIntOrNull() ?: w
-                h = m.groupValues[2].toIntOrNull() ?: h
-            }
-            val x = (w * KEEP_ALIVE_X / 100f).toInt()
-            val y = (h * KEEP_ALIVE_Y / 100f).toInt()
-            val (code, r) = ShizukuShell.exec("input tap $x $y")
-            LogBuffer.i(
-                "AntiDC",
-                "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y code=$code $r",
-            )
-            return
-        }'''
-
-if "val (_, sizeOut)" in t:
-    print("already fixed")
-elif "val out = ShizukuShell.exec(\"wm size\")" in t:
-    # flexible replace
-    import re
-    t2, n = re.subn(
-        r"if \(ShizukuShell\.isReady\(\)\) \{[\s\S]*?LogBuffer\.w\(\"AntiDC\", "no accessibility",
-        fixed + "\n        LogBuffer.w(\"AntiDC\", "no accessibility",
-        t,
-        count=1,
-    )
-    if n != 1:
-        # simpler line-based
-        t = t.replace(
-            "val out = ShizukuShell.exec(\"wm size\")",
-            "val (_, sizeOut) = ShizukuShell.exec(\"wm size\")",
-            1,
-        )
-        t = t.replace("find(out ?: \"\")", "find(sizeOut)", 1)
-        t = t.replace(
-            "val r = ShizukuShell.exec(\"input tap $x $y\")",
-            "val (code, r) = ShizukuShell.exec(\"input tap $x $y\")",
-            1,
-        )
-        t = t.replace("shizuku $x,$y \\u2192 $r", "shizuku $x,$y code=$code $r", 1)
-        t = t.replace("shizuku $x,$y \u2192 $r", "shizuku $x,$y code=$code $r", 1)
-        t = t.replace("shizuku $x,$y → $r", "shizuku $x,$y code=$code $r", 1)
-        print("fixed via line replaces")
-    else:
-        t = t2
-        print("fixed via regex")
-else:
-    raise SystemExit("shizuku block not found")
-
-p.write_text(t)
+p.write_bytes(base64.b64decode("cGFja2FnZSBjb20uY3dicmlkZ2UuYW5kcm9pZC5icmlkZ2UKCmltcG9ydCBjb20uY3dicmlkZ2UuYW5kcm9pZC5TaGl6dWt1U2hlbGwKaW1wb3J0IGNvbS5jd2JyaWRnZS5hbmRyb2lkLlRhcFNlcnZpY2UKaW1wb3J0IGtvbGluLnguY29yb3V0aW5lcy5Db3JvdXRpbmVTY29wZQppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLkRpc3BhdGNoZXJzCmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuSm9iCmltcG9ydCBrb3RsaW54LmNvcm91dGluZXMuZGVsYXkKaW1wb3J0IGtvbGluLnguY29yb3V0aW5lcy5pc0FjdGl2ZQppbXBvcnQga290bGlueC5jb3JvdXRpbmVzLmxhdW5jaAoKLyoqCiAqIEtlZXAtYWxpdmUgd2hpbGUgdGhlIGJyaWRnZSBpcyBydW5uaW5nLgogKgogKiBQZXJpb2RpYyB0YXBzIGV2ZXJ5IEtFRVBfQUxJVkVfSU5URVJWQUxfTVMgKG5vdCBpZGxlLWFmdGVyLTVtaW4pLAogKiBiZWNhdXNlIENhdFdlYi9GTG9nIGxpbmVzIHVzZWQgdG8gcmVzZXQgdGhlIGlkbGUgY2xvY2sgYW5kIHRhcHMgbmV2ZXIgZmlyZWQuCiAqIFRhcCBpcyBtaWQtcmlnaHQgKGF2b2lkcyBzdGF0dXMgYmFyIC8gZ2VzdHVyZSBlZGdlKS4gU2hpenVrdSBmYWxsYmFjayBpZiBhMTF5IGRvd24uCiAqLwpvYmplY3QgQW50aURpc2Nvbm5lY3QgewogICAgcHJpdmF0ZSBjb25zdCB2YWwgS0VFUF9BTElWRV9JTlRFUlZBTF9NUyA9IDIgKiA2MCAqIDEwMDBMCiAgICBwcml2YXRlIGNvbnN0IHZhbCBUSUNLX01TID0gMTVfMDAwTAogICAgcHJpdmF0ZSBjb25zdCB2YWwgR1JBQ0VfTVMgPSAyNV8wMDBMCiAgICBwcml2YXRlIGNvbnN0IHZhbCBNSU5fVEFQX0lOVEVSVkFMX01TID0gOTBfMDAwTAogICAgcHJpdmF0ZSBjb25zdCB2YWwgS0VFUF9BTElWRV9YID0gODhmCiAgICBwcml2YXRlIGNvbnN0IHZhbCBLRUVQX0FMSVZFX1kgPSA0MGYKCiAgICBAVm9sYXRpbGUgcHJpdmF0ZSB2YXIgc3RhcnRlZEF0TXM6IExvbmcgPSAwTAogICAgQFZvbGF0aWxlIHByaXZhdGUgdmFyIGVuYWJsZWQ6IEJvb2xlYW4gPSBmYWxzZQogICAgQFZvbGF0aWxlIHByaXZhdGUgdmFyIGxhc3RUYXBUaW1lOiBMb25nID0gMEwKICAgIHByaXZhdGUgdmFyIGpvYjogSm9iPyA9IG51bGwKCiAgICBmdW4gbm90ZUFjdGl2aXR5KCkgewogICAgICAgIC8vIEtlcHQgZm9yIGNhbGxlcnM7IGtlZXAtYWxpdmUgaXMgcGVyaW9kaWMgb25seS4KICAgIH0KCiAgICBmdW4gb25Mb2dMaW5lKHJhdzogU3RyaW5nKSB7CiAgICAgICAgaWYgKCFlbmFibGVkKSByZXR1cm4KICAgICAgICBpZiAoU3lzdGVtLmN1cnJlbnRUaW1lTWlsbGlzKCkgLSBzdGFydGVkQXRNcyA8IEdSQUNFX01TKSByZXR1cm4KCiAgICAgICAgdmFsIGxvd2VyID0gcmF3Lmxvd2VyY2FzZSgpCiAgICAgICAgdmFsIGlzQ29uc29sZSA9CiAgICAgICAgICAgIGxvd2VyLmNvbnRhaW5zKCJmbG9nOjoiKSB8fAogICAgICAgICAgICAgICAgcmF3LmNvbnRhaW5zKCdcdTIwMjInKSB8fAogICAgICAgICAgICAgICAgcmF3LmNvbnRhaW5zKCdcdTAwQjcnKSB8fAogICAgICAgICAgICAgICAgbG93ZXIuY29udGFpbnMoImNhdHdlYiIpIHx8CiAgICAgICAgICAgICAgICBsb3dlci5jb250YWlucygiaW52b2tlfCIpCiAgICAgICAgaWYgKCFpc0NvbnNvbGUpIHJldHVybgoKICAgICAgICBpZiAoCiAgICAgICAgICAgIGxvd2VyLmNvbnRhaW5zKCJkaXNjb25uZWN0IikgfHwgbG93ZXIuY29udGFpbnMoImRpc2Nvbm5lY3RlZCIpIHx8CiAgICAgICAgICAgIGxvd2VyLmNvbnRhaW5zKCJjb25uZWN0aW9uIGxvc3QiKQogICAgICAgICkgewogICAgICAgICAgICBMb2dCdWZmZXIudygiQW50aURDIiwgImRpc2Nvbm5lY3Qgc2lnbmFsIC0gc29mdCByZWNvdmVyIChubyBzcGFtIHRhcCkiKQogICAgICAgICAgICBub3RlQWN0aXZpdHkoKQogICAgICAgICAgICBDYXRXZWJUcmFja2VyLmFybUZvck5leHRSZWFkeSgpCiAgICAgICAgICAgIHZhbCBoYXNSZWNvbm5lY3QgPSBsb3dlci5jb250YWlucygicmVjb25uZWN0IikKICAgICAgICAgICAgaWYgKCFoYXNSZWNvbm5lY3QpIHsKICAgICAgICAgICAgICAgIHZhbCBuID0gQnJpZGdlQ29udHJvbC5idW1wRGlzY29ubmVjdEZhaWxzYWZlKCkKICAgICAgICAgICAgICAgIExvZ0J1ZmZlci53KCJBbnRpREMiLCAiZGVhZCBkaXNjb25uZWN0IGhpbnQgLSBmYWlsc2FmZT0kbiIpCiAgICAgICAgICAgIH0KICAgICAgICAgICAgaWYgKEJyaWRnZVN0YXR1cy5zdGF0ZSAhPSBPdmVybGF5U3RhdGUuRVJST1IpIHsKICAgICAgICAgICAgICAgIEJyaWRnZVN0YXR1cy5zZXQoT3ZlcmxheVN0YXRlLldBSVRJTkcsICJSZWNvbm5lY3RpbmcuLi4iKQogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQoKICAgIGZ1biBzdGFydChzY29wZTogQ29yb3V0aW5lU2NvcGUpIHsKICAgICAgICBzdG9wKCkKICAgICAgICBlbmFibGVkID0gdHJ1ZQogICAgICAgIHN0YXJ0ZWRBdE1zID0gU3lzdGVtLmN1cnJlbnRUaW1lTWlsbGlzKCkKICAgICAgICBsYXN0VGFwVGltZSA9IDBMCiAgICAgICAgam9iID0gc2NvcGUubGF1bmNoKERpc3BhdGNoZXJzLklPKSB7CiAgICAgICAgICAgIExvZ0J1ZmZlci5pKAogICAgICAgICAgICAgICAgIkFudGlEQyIsCiAgICAgICAgICAgICAgICAicGVyaW9kaWMga2VlcC1hbGl2ZSBldmVyeSAke0tFRVBfQUxJVkVfSU5URVJWQUxfTVMgLyAxMDAwfXMgIiArCiAgICAgICAgICAgICAgICAgICAgIi0+IHRhcCAke0tFRVBfQUxJVkVfWC50b0ludCgpfSUsJHtLRUVQX0FMSVZFXlkudG9JbnQoKX0lICIgKAogICAgICAgICAgICAgICAgICAgICIoZ3JhY2UgJHtHUkFDRV9NUyAvIDEwMDB9cykiLAogICAgICAgICAgICApCiAgICAgICAgICAgIHdoaWxlIChpc0FjdGl2ZSAmJiBlbmFibGVkKSB7CiAgICAgICAgICAgICAgICBkZWxheShUSUNLX01TKQogICAgICAgICAgICAgICAgaWYgKCFlbmFibGVkKSBicmVhawogICAgICAgICAgICAgICAgdmFsIG5vdyA9IFN5c3RlbS5jdXJyZW50VGltZU1pbGxpcygpCiAgICAgICAgICAgICAgICBpZiAobm93IC0gc3RhcnRlZEF0TXMgPCBHUkFDRV9NUykgY29udGludWUKICAgICAgICAgICAgICAgIGlmIChsYXN0VGFwVGltZSA9PSAwTCB8fCBub3cgLSBsYXN0VGFwVGltZSA+PSBLRUVQX0FMSVZFX0lOVEVSVkFMX01TKSB7CiAgICAgICAgICAgICAgICAgICAgdHJ5S2VlcEFsaXZlVGFwKCJwZXJpb2RpYyIpCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9CgogICAgZnVuIHN0b3AoKSB7CiAgICAgICAgZW5hYmxlZCA9IGZhbHNlCiAgICAgICAgam9iPy5jYW5jZWwoKQogICAgam9iID0gbnVsbAogICAgICAgIGxhc3RUYXBUaW1lID0gMEwKICAgIH0KCiAgICBwcml2YXRlIGZ1biB0cnlLZWVwQWxpdmVUYXAocmVhc29uOiBTdHJpbmcpIHsKICAgICAgICB2YWwgbm93ID0gU3lzdGVtLmN1cnJlbnRUaW1lTWlsbGlzKCkKICAgICAgICBpZiAobGFzdFRhcFRpbWUgPiAwTCAmJiBub3cgLSBsYXN0VGFwVGltZSA8IE1JTl9UQVBfSU5URVJWQUxfTVMpIHsKICAgICAgICAgICAgTG9nQnVmZmVyLmkoIkFudGlEQyIsICJza2lwIHRhcDogY29vbGRvd24gJHtub3cgLSBsYXN0VGFwVGltZX1tcyIpCiAgICAgICAgICAgIHJldHVybgogICAgICAgIH0KICAgICAgICBsYXN0VGFwVGltZSA9IG5vdwoKICAgICAgICB2YWwgc3ZjID0gVGFwU2VydmljZS5pbnN0YW5jZQogICAgICAgIGlmIChzdmMgIT0gbnVsbCkgewogICAgICAgICAgICB2YWwgb2sgPSBzdmMuY2xpY2tBdFBlcmNlbnQoS0VFUF9BTElWRV9YLCBLRUVQX0FMSVZFXlkpCiAgICAgICAgICAgIExvZ0J1ZmZlci5pKAogICAgICAgICAgICAgICAgIkFudGlEQyIsCiAgICAgICAgICAgICAgICAidGFwICR7S0VFUF9BTElWRV9YLnRvSW50KCl9JSwke0tFRVBfQUxJVkVfWS50b0ludCgpfSUgKCRyZWFzb24pIGExMXkgb2s9JG9rIiwKICAgICAgICAgICAgKQogICAgICAgICAgICByZXR1cm4KICAgICAgICB9CiAgICAgICAgaWYgKFNoaXp1a3VTaGVsbC5pc1JlYWR5KCkpIHsKICAgICAgICAgICAgdmFsIChfLCBzaXplT3V0KSA9IFNoaXp1a3VTaGVsbC5leGVjKCJ3bSBzaXplIikKICAgICAgICAgICAgdmFyIHcgPSAxMDgwCiAgICAgICAgICAgIHZhciBoID0gMjQwMAogICAgICAgICAgICB2YWwgbSA9IFJlZ2V4KCI"""KFxkKyl4KFxkKykiIiIpLmZpbmQoc2l6ZU91dCkKICAgICAgICAgICAgaWYgKG0gIT0gbnVsbCkgewogICAgICAgICAgICAgICAgdyA9IG0uZ3JvdXBWYWx1ZXNbMV0udG9JbnRPck51bGwoKSA/OiB3CiAgICAgICAgICAgICAgICBoID0gbS5ncm91cFZhbHVlc1syXS50b0ludE9yTnVsbCgpID86IGgKICAgICAgICAgICAgfQogICAgICAgICAgICB2YWwgeCA9ICh3ICogS0VFUF9BTElWRV9YIC8gMTAwZikudG9JbnQoKQogICAgICAgICAgICB2YWwgeSA9IChoICogS0VFUF9BTElWRV9YIC8gMTAwZikudG9JbnQoKQogICAgICAgICAgICB2YWwgKGNvZGUsIHIpID0gU2hpenVrdVNoZWxsLmV4ZWMoImlucHV0IHRhcCAkeCB5IikKICAgICAgICAgICAgTG9nQnVmZmVyLmkKICAgICAgICAgICAgICAgICJBbnRpREMiLAogICAgICAgICAgICAgICAgInRhcCAke0tFRVBfQUxJVkVfWC50b0ludCgpfSUsJHtLRUVQX0FMSVZFXlkudG9JbnQoKX0lICgkcmVhc29uKSBzaGl6dWt1ICR4LCR5IGNvZGU9JGNvZGUgJHIiLAogICAgICAgICAgICApCiAgICAgICAgICAgIHJldHVybgogICAgICAgIH0KICAgICAgICBMb2dCdWZmZXIudygiQW50aURDIiwgIm5vIGFjY2Vzc2liaWxpdHkvU2hpenVrdSAtIGNhbm5vdCB0YXAgKCRyZWFzb24pIikKICAgIH0KfQo="))
 print("AntiDisconnect", p.stat().st_size)
-print("hotfix pair OK")
+print("hotfix antiafk2 OK")
