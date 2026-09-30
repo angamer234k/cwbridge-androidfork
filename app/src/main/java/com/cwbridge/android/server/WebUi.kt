@@ -29,11 +29,16 @@ html,body{margin:0;background:var(--bg);color:var(--text);
   font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   -webkit-text-size-adjust:100%}
 a{color:var(--accent)}
-.ms{font-family:"Material+Symbols+Rounded",sans-serif;font-weight:400;font-style:normal;
-  font-size:20px;line-height:1;vertical-align:middle;
+.ms{
+  font-family:"Material Symbols Rounded",sans-serif;
+  font-weight:400;font-style:normal;font-size:20px;line-height:1;
+  vertical-align:middle;letter-spacing:normal;text-transform:none;
   font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;
-  user-select:none}
+  font-feature-settings:"liga";-webkit-font-feature-settings:"liga";
+  user-select:none;display:inline-block;
+}
 .ms.sm{font-size:18px}
+h2 .ms,button .ms,a .ms,nav .ms{text-transform:none;letter-spacing:normal}
 header{
   position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
   background:rgba(12,14,18,.9);border-bottom:1px solid var(--line);
