@@ -494,7 +494,7 @@ class InvokeEngine(
                         replyErr("ai", "empty model reply")
                         return
                     }
-                    pasteIntoGame(text)
+                    pasteIntoGame(text, pressEnter = true)
                     replyOk("ai", text.take(500))
                 } catch (t: Throwable) {
                     replyErr("ai", t.message ?: "llm failed")
@@ -507,15 +507,31 @@ class InvokeEngine(
 
 
     /** Focus → paste [text] into game. Does not emit replyOk (caller does). */
-    private suspend fun pasteIntoGame(text: String) {
-        val svc = TapService.instance ?: return
+    private suspend fun pasteIntoGame(text: String, pressEnter: Boolean = false) {
+        val svc = TapService.instance
         setClipboard(text)
-        svc.clickAtPercent(focusXPct, focusYPct)
-        delay(1000)
-        svc.pasteClipboard()
-        delay(400)
-        if (submitXPx > 0f || submitYPx > 0f) {
-            svc.clickAt(submitXPx, submitYPx)
+        if (svc != null) {
+            svc.clickAtPercent(focusXPct, focusYPct)
+            delay(1000)
+            svc.pasteClipboard()
+            delay(400)
+            if (submitXPx > 0f || submitYPx > 0f) {
+                svc.clickAt(submitXPx, submitYPx)
+                delay(200)
+            }
+            if (pressEnter) {
+                val ok = svc.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
+            }
+        } else if (ShizukuShell.isReady()) {
+            ShizukuShell.exec("input keyevent KEYCODE_PASTE")
+            delay(400)
+            if (pressEnter) {
+                val ok = ShizukuShell.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
+            }
+        } else {
+            LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
         }
     }
 
