@@ -1,233 +1,276 @@
 #!/usr/bin/env python3
-"""Add Limits panel + 1GB default storage + rate-limit UI."""
+"""Macro-style service builder in web UI + proper service JSON GET."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def patch_store():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/data/Store.kt"
-    t = p.read_text()
-    old = "const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024"
-    new = "const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024 * 1024 // 1 GiB"
-    if old in t:
-        t = t.replace(old, new, 1)
-        print("Store: default limit → 1GB")
-    else:
-        print("Store: default already patched or missing")
-
-    old_lim = """    fun limitOf(domain: String): Long {
-        val d = normalizeDomain(domain) ?: return DEFAULT_LIMIT_BYTES
-        return UserFileStore.limitGet(app, d, DEFAULT_LIMIT_BYTES)
-    }"""
-    new_lim = """    fun limitOf(domain: String): Long {
-        val d = normalizeDomain(domain) ?: return defaultLimitBytes()
-        return UserFileStore.limitGet(app, d, defaultLimitBytes())
-    }
-
-    fun defaultLimitBytes(): Long {
-        val raw = UserFileStore.getSetting(app, "store_default_limit_bytes", null)
-        val parsed = raw?.let { parseSize(it) ?: it.toLongOrNull() }
-        return parsed?.coerceAtLeast(0L) ?: DEFAULT_LIMIT_BYTES
-    }
-
-    fun setDefaultLimitBytes(bytes: Long): Result<Unit> {
-        if (bytes < 0) return Result.failure(IllegalArgumentException("limit cannot be negative"))
-        val v = if (bytes == 0L) "0" else formatBytes(bytes).replace(" ", "")
-        UserFileStore.putSetting(app, "store_default_limit_bytes", if (bytes == 0L) "0" else bytes.toString())
-        LogBuffer.i("Store", "default limit = ${formatBytes(bytes)}")
-        return Result.success(Unit)
-    }"""
-    if old_lim in t:
-        t = t.replace(old_lim, new_lim, 1)
-        print("Store: defaultLimitBytes helpers")
-    elif "fun defaultLimitBytes" in t:
-        print("Store: helpers already present")
-    else:
-        raise SystemExit("limitOf block not found")
-
-    p.write_text(t)
-    print("Store.kt", p.stat().st_size)
-
-
 def patch_server():
     p = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
     t = p.read_text()
-
-    old_snap = """    private fun rateLimitsJson(query: Map<String, String>): String {
-        val domain = query["domain"]
-        return json(DatastoreRateLimit.snapshot(context, domain))
-    }"""
-    new_snap = """    private fun rateLimitsJson(query: Map<String, String>): String {
-        val domain = query["domain"]
-        val snap = DatastoreRateLimit.snapshot(context, domain).toMutableMap()
-        snap["defaultLimitBytes"] = store.defaultLimitBytes()
-        snap["defaultLimit"] = Store.formatBytes(store.defaultLimitBytes())
-        return json(snap)
-    }"""
-    if old_snap in t:
-        t = t.replace(old_snap, new_snap, 1)
-        print("Server: rateLimitsJson enriched")
+    old = """        if (method == "GET" && sub.isEmpty()) {
+            return json(mapOf("service" to existing))
+        }"""
+    new = """        if (method == "GET" && sub.isEmpty()) {
+            // serviceGson emits _kind on triggers/actions for round-trip edit
+            return \"\"\"{\"service\":${serviceGson.toJson(existing)}}\"\"\"
+        }"""
+    if old in t:
+        t = t.replace(old, new, 1)
+        print("Server: GET service uses serviceGson")
     else:
-        print("Server: rateLimitsJson skip")
-
-    old_set = """    private fun setRateLimitsJson(body: String): String {
-        val g = jsonString(body, "globalPerDay").toIntOrNull()
-        val d = jsonString(body, "domainPerDay").toIntOrNull()
-        if (g == null && d == null) {
-            return json(mapOf("error" to "globalPerDay and/or domainPerDay required"))
-        }
-        DatastoreRateLimit.setLimits(context, g, d)
-        return json(
-            mapOf(
-                "ok" to true,
-                "globalPerDay" to DatastoreRateLimit.globalLimit(context),
-                "domainPerDay" to DatastoreRateLimit.domainLimit(context),
-            ),
-        )
-    }"""
-    new_set = """    private fun setRateLimitsJson(body: String): String {
-        val g = jsonString(body, "globalPerDay").toIntOrNull()
-        val d = jsonString(body, "domainPerDay").toIntOrNull()
-        val defRaw = jsonString(body, "defaultLimit")
-        var touched = false
-        if (g != null || d != null) {
-            DatastoreRateLimit.setLimits(context, g, d)
-            touched = true
-        }
-        if (defRaw.isNotBlank()) {
-            val bytes = if (defRaw.equals("unlimited", true) || defRaw == "0") 0L
-            else Store.parseSize(defRaw)
-                ?: return json(mapOf("error" to "bad defaultLimit '$defRaw' — try 1GB, 500MB"))
-            store.setDefaultLimitBytes(bytes).getOrElse {
-                return json(mapOf("error" to (it.message ?: "failed")))
-            }
-            touched = true
-        }
-        if (!touched) {
-            return json(mapOf("error" to "globalPerDay, domainPerDay, and/or defaultLimit required"))
-        }
-        return json(
-            mapOf(
-                "ok" to true,
-                "globalPerDay" to DatastoreRateLimit.globalLimit(context),
-                "domainPerDay" to DatastoreRateLimit.domainLimit(context),
-                "defaultLimitBytes" to store.defaultLimitBytes(),
-                "defaultLimit" to Store.formatBytes(store.defaultLimitBytes()),
-            ),
-        )
-    }"""
-    if old_set in t:
-        t = t.replace(old_set, new_set, 1)
-        print("Server: setRateLimitsJson extended")
-    else:
-        print("Server: setRateLimitsJson skip")
-
+        print("Server: GET service skip")
     p.write_text(t)
-    print("LocalHttpServer.kt", p.stat().st_size)
+    print("LocalHttpServer", p.stat().st_size)
 
 
 def patch_webui():
     p = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
     t = p.read_text()
 
-    old_store = """  <div class="card" id="sec-store">
-    <h2><span class="ms sm">database</span> Storage</h2>"""
-    limits_card = """  <div class="card" id="sec-limits">
-    <h2><span class="ms sm">speed</span> Limits</h2>
-    <p class="hint">Storage default applies to domains without a custom limit. Request caps count save/load actions (0 = unlimited).</p>
-    <div class="row">
-      <div class="field"><label class="hint">Global data default</label>
-        <input id="limDefault" placeholder="1GB"></div>
-      <div class="field"><label class="hint">Reqs / day (global)</label>
-        <input id="limGlobalReq" type="number" min="0" placeholder="500"></div>
-      <div class="field"><label class="hint">Reqs / day / domain</label>
-        <input id="limDomainReq" type="number" min="0" placeholder="200"></div>
-      <button type="button" onclick="saveLimits()"><span class="ms sm">save</span> Save limits</button>
-      <button type="button" class="ghost" onclick="loadLimits()"><span class="ms sm">refresh</span> Refresh</button>
+    old_card = """  <div class=\"card\" id=\"sec-services\">
+    <h2><span class=\"ms sm\">extension</span> Services</h2>
+    <div id=\"svcList\"></div>
+    <div class=\"row\" style=\"margin-top:10px\">
+      <div class=\"field\"><input id=\"svcName\" placeholder=\"New service name\"></div>
+      <button type=\"button\" onclick=\"createService()\"><span class=\"ms sm\">add</span> Create</button>
     </div>
-    <div id="limitsMeta" class="hint" style="margin-top:8px"></div>
-    <div id="limitsMsg" class="msg"></div>
-  </div>
+    <div id=\"svcMsg\" class=\"msg\"></div>
+  </div>"""
 
-  <div class="card" id="sec-store">
-    <h2><span class="ms sm">database</span> Storage</h2>"""
-    if old_store in t and 'id="sec-limits"' not in t:
-        t = t.replace(old_store, limits_card, 1)
-        print("WebUi: Limits card added")
-    elif 'id="sec-limits"' in t:
-        print("WebUi: Limits card already present")
+    new_card = """  <div class=\"card\" id=\"sec-services\">
+    <h2><span class=\"ms sm\">extension</span> Services</h2>
+    <p class=\"hint\">Macros with triggers + actions. Enabled = always listening (log/time). Edit anytime.</p>
+    <div id=\"svcList\"></div>
+    <div class=\"row\" style=\"margin-top:10px\">
+      <div class=\"field\"><input id=\"svcName\" placeholder=\"New macro name\"></div>
+      <button type=\"button\" onclick=\"createService()\"><span class=\"ms sm\">add</span> Create</button>
+    </div>
+    <div id=\"svcEditor\" style=\"display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)\">
+      <div class=\"row\">
+        <div class=\"field\"><label class=\"hint\">Name</label><input id=\"edName\"></div>
+        <div class=\"field\"><label class=\"hint\">Description</label><input id=\"edDesc\" placeholder=\"optional\"></div>
+        <label class=\"hint\" style=\"display:flex;align-items:center;gap:6px;padding-top:18px\">
+          <input type=\"checkbox\" id=\"edEnabled\" checked> Enabled (always on)
+        </label>
+      </div>
+      <h3 style=\"font-size:12px;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px\">TRIGGERS</h3>
+      <div id=\"edTriggers\"></div>
+      <div class=\"row\" style=\"margin-top:6px\">
+        <button type=\"button\" class=\"ghost\" onclick=\"addTrigger('LOG')\"><span class=\"ms sm\">article</span> Log match</button>
+        <button type=\"button\" class=\"ghost\" onclick=\"addTrigger('TIME')\"><span class=\"ms sm\">schedule</span> Interval</button>
+      </div>
+      <h3 style=\"font-size:12px;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px\">ACTIONS</h3>
+      <div id=\"edActions\"></div>
+      <div class=\"row\" style=\"margin-top:6px\">
+        <select id=\"edAddAct\" style=\"max-width:160px\">
+          <option value=\"DELAY\">Delay</option>
+          <option value=\"CTRL_T\">Ctrl+T</option>
+          <option value=\"PRESS_ENTER\">Enter</option>
+          <option value=\"SEND_TEXT\">Send text</option>
+          <option value=\"ENTER_TEXT\">Paste + Enter</option>
+          <option value=\"SET_VAR\">Set variable</option>
+          <option value=\"TEXT_MAN\">TextMan</option>
+          <option value=\"TAP\">Tap</option>
+        </select>
+        <button type=\"button\" class=\"ghost\" onclick=\"addAction()\"><span class=\"ms sm\">add</span> Add action</button>
+      </div>
+      <div class=\"row\" style=\"margin-top:12px\">
+        <button type=\"button\" onclick=\"saveEditor()\"><span class=\"ms sm\">save</span> Save macro</button>
+        <button type=\"button\" class=\"ghost\" onclick=\"closeEditor()\">Close</button>
+        <button type=\"button\" class=\"soft\" onclick=\"runEditor()\"><span class=\"ms sm\">play_arrow</span> Run now</button>
+      </div>
+      <input type=\"hidden\" id=\"edId\">
+    </div>
+    <div id=\"svcMsg\" class=\"msg\"></div>
+  </div>"""
+
+    if old_card in t:
+        t = t.replace(old_card, new_card, 1)
+        print("WebUi: services card → macro builder")
+    elif 'id=\"svcEditor\"' in t:
+        print("WebUi: editor already present")
     else:
-        raise SystemExit("store card not found")
+        raise SystemExit("services card not found")
 
-    if "async function loadLimits" not in t:
-        js = r"""
-async function loadLimits(){
+    start = t.find("async function refreshServices()")
+    if start < 0:
+        raise SystemExit("refreshServices not found")
+    end = t.find("async function refreshStore()", start)
+    if end < 0:
+        end = t.find("async function refreshVars()", start)
+    if end < 0:
+        raise SystemExit("end of services JS not found")
+
+    new_js = r"""
+var ED = {id:'',name:'',description:'',isEnabled:true,triggers:[],actions:[]};
+function uid(){ return String(Date.now()) + Math.floor(Math.random()*1000); }
+async function refreshServices(){
   try{
-    const j=await api('/api/rate-limits');
-    const def=document.getElementById('limDefault');
-    const g=document.getElementById('limGlobalReq');
-    const d=document.getElementById('limDomainReq');
-    if(def) def.value=j.defaultLimit||'';
-    if(g) g.value=(j.globalLimit!=null?j.globalLimit:'');
-    if(d) d.value=(j.domainLimit!=null?j.domainLimit:'');
-    const meta=document.getElementById('limitsMeta');
-    if(meta){
-      let s='Today: global '+ (j.globalUsed||0) +'/'+ (j.globalLimit||0);
-      if(j.domainUsed!=null) s+=' · domain '+j.domainUsed+'/'+(j.domainLimit||0);
-      s+=' · default storage '+ (j.defaultLimit||'?');
-      meta.textContent=s;
+    var s = await api("/api/services");
+    var list = s.services || [];
+    if(!list.length){
+      D("svcList").innerHTML = "<div class=\"empty\"><span class=\"ms\">extension_off</span>No macros yet — create one</div>";
+      return;
     }
-  }catch(e){ toast(e.message||String(e),false); }
+    D("svcList").innerHTML = list.map(function(sv){
+      var on = sv.enabled !== false;
+      return "<div class=\"row\" style=\"margin-bottom:8px;align-items:center\">" +
+        "<span style=\"flex:1;min-width:0\"><b>" + esc(sv.name||sv.id) + "</b>" +
+        " <span class=\"hint\">" + (sv.triggers||0) + " trig · " + (sv.actions||0) + " act" +
+        (on ? " · <span class=\"ok\">ON</span>" : " · <span class=\"bad\">OFF</span>") + "</span></span>" +
+        "<button type=\"button\" class=\"ghost\" onclick=\"toggleService(" + arg(sv.id) + "," + (!on) + ")\">" +
+        (on ? "Disable" : "Enable") + "</button>" +
+        "<button type=\"button\" class=\"soft\" onclick=\"editService(" + arg(sv.id) + ")\">Edit</button>" +
+        "<button type=\"button\" class=\"soft\" onclick=\"runService(" + arg(sv.id) + ")\">Run</button>" +
+        "<button type=\"button\" class=\"ghost\" onclick=\"deleteService(" + arg(sv.id) + ")\">Del</button></div>";
+    }).join("");
+  }catch(e){}
 }
-async function saveLimits(){
-  const body={};
-  const def=document.getElementById('limDefault');
-  const g=document.getElementById('limGlobalReq');
-  const d=document.getElementById('limDomainReq');
-  if(def && def.value.trim()) body.defaultLimit=def.value.trim();
-  if(g && g.value!=='') body.globalPerDay=parseInt(g.value,10);
-  if(d && d.value!=='') body.domainPerDay=parseInt(d.value,10);
-  const msg=document.getElementById('limitsMsg');
+async function createService(){
   try{
-    const j=await api('/api/rate-limits',{method:'POST',body:JSON.stringify(body)});
-    if(j.error){ if(msg) msg.innerHTML='<span class="bad">'+(j.error||'')+'</span>'; toast(j.error,false); return; }
-    if(msg) msg.innerHTML='<span class="ok">Saved</span>';
-    toast('Limits saved',true);
-    loadLimits();
-  }catch(e){ if(msg) msg.innerHTML='<span class="bad">'+(e.message||e)+'</span>'; toast(e.message||String(e),false); }
+    var name = (D("svcName").value||"").trim();
+    if(!name){ msg("svcMsg","name required","err"); return; }
+    var r = await post("/api/services", {name: name});
+    msg("svcMsg", r.message || "created", "good");
+    D("svcName").value = "";
+    await refreshServices();
+    if(r.id) editService(r.id);
+  }catch(e){ msg("svcMsg", e.message, "err"); }
 }
-"""
-        anchor = "async function loadDomainDb()"
-        if anchor in t:
-            t = t.replace(anchor, js + "\n" + anchor, 1)
-            print("WebUi: loadLimits/saveLimits JS")
-        else:
-            idx = t.rfind("</script>")
-            if idx < 0:
-                raise SystemExit("no script end")
-            t = t[:idx] + js + "\n" + t[idx:]
-            print("WebUi: JS appended before </script>")
+async function runService(id){
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(id) + "/run");
+    msg("svcMsg", r.message || "ran", "good"); toast(r.message||"ran", true);
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function toggleService(id, enabled){
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(id), {enabled: !!enabled});
+    msg("svcMsg", r.message || "ok", "good");
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function deleteService(id){
+  if(!confirm("Delete this macro?")) return;
+  try{
+    var r = await api("/api/services/" + encodeURIComponent(id), {method:"DELETE"});
+    msg("svcMsg", (r && r.message) || "deleted", "good");
+    if(ED.id===id) closeEditor();
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function editService(id){
+  try{
+    var r = await api("/api/services/" + encodeURIComponent(id));
+    var s = r.service;
+    if(!s){ msg("svcMsg","load failed","err"); return; }
+    ED = {
+      id: s.id,
+      name: s.name||"",
+      description: s.description||"",
+      isEnabled: s.isEnabled !== false && s.enabled !== false,
+      triggers: (s.triggers||[]).slice(),
+      actions: (s.actions||[]).slice()
+    };
+    D("edId").value = ED.id;
+    D("edName").value = ED.name;
+    D("edDesc").value = ED.description;
+    D("edEnabled").checked = !!ED.isEnabled;
+    renderEditorLists();
+    D("svcEditor").style.display = "block";
+    D("svcEditor").scrollIntoView({behavior:"smooth",block:"nearest"});
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+function closeEditor(){
+  D("svcEditor").style.display = "none";
+  ED = {id:'',name:'',description:'',isEnabled:true,triggers:[],actions:[]};
+}
+function renderEditorLists(){
+  var tg = D("edTriggers");
+  if(!ED.triggers.length) tg.innerHTML = "<div class=\"hint\">No triggers — macro only runs via Run button</div>";
+  else tg.innerHTML = ED.triggers.map(function(tr,i){
+    var kind = (tr._kind||tr.type||"LOG").toString().toUpperCase();
+    var body = "";
+    if(kind==="TIME"){
+      body = "every <input type=\"number\" style=\"width:90px\" value=\"" + esc(String(tr.intervalMs||1000)) +
+        "\" onchange=\"ED.triggers["+i+"].intervalMs=parseInt(this.value,10)||1000\"> ms";
+    } else {
+      body = "pattern <input style=\"min-width:140px\" value=\"" + esc(tr.pattern||"") +
+        "\" onchange=\"ED.triggers["+i+"].pattern=this.value\">";
+    }
+    return "<div class=\"row\" style=\"margin-bottom:4px\"><span class=\"chip\">" + esc(kind) +
+      "</span> " + body +
+      " <button type=\"button\" class=\"ghost\" onclick=\"ED.triggers.splice("+i+",1);renderEditorLists()\">×</button></div>";
+  }).join("");
+  var ac = D("edActions");
+  if(!ED.actions.length) ac.innerHTML = "<div class=\"hint\">No actions yet</div>";
+  else ac.innerHTML = ED.actions.map(function(a,i){
+    var kind = (a._kind||a.type||"?").toString().toUpperCase();
+    var body = "";
+    if(kind==="DELAY") body = "<input type=\"number\" style=\"width:90px\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=parseInt(this.value,10)||1000\"> ms";
+    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body = "<input style=\"min-width:160px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"text / $var\">";
+    else if(kind==="SET_VAR") body = "key <input style=\"width:90px\" value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"> = <input style=\"width:120px\" value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\">";
+    else if(kind==="TEXT_MAN") body = "src <input style=\"width:90px\" value=\""+esc(a.source||"$lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"> → <input style=\"width:90px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
+    else if(kind==="TAP") body = "text <input style=\"width:120px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"or use %\">";
+    else body = "<span class=\"hint\">(no params)</span>";
+    return "<div class=\"row\" style=\"margin-bottom:4px\"><span class=\"chip\">" + (i+1) + ". " + esc(kind) +
+      "</span> " + body +
+      " <button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">×</button></div>";
+  }).join("");
+}
+function addTrigger(kind){
+  if(kind==="TIME"){
+    ED.triggers.push({_kind:"TIME",id:uid(),name:"Interval",intervalMs:5000,repeat:true,type:"TIME"});
+  } else {
+    ED.triggers.push({_kind:"LOG",id:uid(),name:"Log",pattern:"invoke|",matchCase:false,useRegex:false,type:"LOG"});
+  }
+  renderEditorLists();
+}
+function addAction(){
+  var kind = (D("edAddAct").value||"DELAY").toUpperCase();
+  var a = {_kind:kind,id:uid(),name:kind,type:kind};
+  if(kind==="DELAY") a.milliseconds = 500;
+  if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
+  if(kind==="SET_VAR"){ a.key=""; a.value=""; }
+  if(kind==="TEXT_MAN"){ a.source="$lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
+  if(kind==="TAP"){ a.text=""; }
+  ED.actions.push(a);
+  renderEditorLists();
+}
+async function saveEditor(){
+  if(!ED.id){ msg("svcMsg","nothing open","err"); return; }
+  ED.name = (D("edName").value||"").trim() || ED.name;
+  ED.description = D("edDesc").value||"";
+  ED.isEnabled = !!D("edEnabled").checked;
+  ED.triggers.forEach(function(tr){ if(!tr._kind) tr._kind = (tr.type||"LOG"); });
+  ED.actions.forEach(function(a){ if(!a._kind) a._kind = (a.type||"DELAY"); });
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(ED.id), {json: JSON.stringify(ED)});
+    if(r.error){ msg("svcMsg", r.error, "err"); toast(r.error,false); return; }
+    msg("svcMsg", r.message || "saved", "good"); toast("Macro saved", true);
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function runEditor(){
+  if(!ED.id) return;
+  await saveEditor();
+  await runService(ED.id);
+}
 
-    old_ra = "function refreshAll(){\n  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();\n  loadAutoDomain(); refreshDomainDatalist();\n}"
-    new_ra = "function refreshAll(){\n  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();\n  loadAutoDomain(); refreshDomainDatalist(); loadLimits();\n}"
-    if old_ra in t:
-        t = t.replace(old_ra, new_ra, 1)
-        print("WebUi: refreshAll → loadLimits")
-    elif "loadLimits();" in t[t.find("function refreshAll"): t.find("function refreshAll") + 350]:
-        print("WebUi: refreshAll already loads limits")
-    else:
-        print("WebUi: WARN refreshAll pattern miss")
+"""
+
+    t = t[:start] + new_js + t[end:]
+    print("WebUi: services JS replaced")
 
     p.write_text(t)
-    print("WebUi.kt", p.stat().st_size)
+    print("WebUi", p.stat().st_size)
 
 
 def main():
-    patch_store()
     patch_server()
     patch_webui()
-    print("hotfix limits OK")
+    print("hotfix macro OK")
 
 
 if __name__ == "__main__":
