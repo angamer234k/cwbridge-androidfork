@@ -508,7 +508,8 @@ class LocalHttpServer(
             ?: return json(mapOf("error" to "no such service: $id"))
 
         if (method == "GET" && sub.isEmpty()) {
-            return json(mapOf("service" to existing))
+            // serviceGson emits _kind on triggers/actions for round-trip edit
+            return """{"service":${serviceGson.toJson(existing)}}"""
         }
 
         if (method == "DELETE" && sub.isEmpty()) {
