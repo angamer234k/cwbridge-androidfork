@@ -1,175 +1,352 @@
 #!/usr/bin/env python3
-"""Fix Check for updates crash: AlertDialog must not use applicationContext."""
+"""storeinfo paste + admin setlimit + per-domain request limits."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/UpdateChecker.kt"
+def patch_rate_limit():
+    p = ROOT / "app/src/main/java/com/cwbridge/android/data/DatastoreRateLimit.kt"
     t = p.read_text()
 
-    if "fun dialogUi()" not in t:
-        anchor = """    private fun onMain(block: () -> Unit) {
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) block()
-        else handler.post(block)
-    }"""
-        if anchor not in t:
-            raise SystemExit("onMain not found")
-        helper = """
+    old = """    fun domainLimit(ctx: Context): Int =
+        UserFileStore.getSetting(ctx, "rate_limit_domain_day", DEFAULT_DOMAIN_PER_DAY.toString())
+            ?.toIntOrNull()?.coerceAtLeast(0) ?: DEFAULT_DOMAIN_PER_DAY
 
-    /** Prefer Activity for dialogs — applicationContext has no window token. */
-    private fun dialogUi(): android.content.Context {
-        val act = context as? android.app.Activity
-        if (act != null && !act.isFinishing) return act
-        var c: android.content.Context? = context
-        while (c is android.content.ContextWrapper) {
-            if (c is android.app.Activity && !c.isFinishing) return c
-            c = c.baseContext
+    fun setLimits(ctx: Context, globalPerDay: Int?, domainPerDay: Int?) {
+        globalPerDay?.let {
+            UserFileStore.putSetting(ctx, "rate_limit_global_day", it.coerceAtLeast(0).toString())
         }
-        return context
+        domainPerDay?.let {
+            UserFileStore.putSetting(ctx, "rate_limit_domain_day", it.coerceAtLeast(0).toString())
+        }
+    }"""
+
+    new = """    fun domainLimit(ctx: Context): Int =
+        UserFileStore.getSetting(ctx, "rate_limit_domain_day", DEFAULT_DOMAIN_PER_DAY.toString())
+            ?.toIntOrNull()?.coerceAtLeast(0) ?: DEFAULT_DOMAIN_PER_DAY
+
+    /** Per-domain override; falls back to global domain default. 0 = unlimited. */
+    fun domainLimit(ctx: Context, domain: String): Int {
+        val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        val override = UserFileStore.getSetting(ctx, "rate_limit_for_$d", null)
+            ?.toIntOrNull()
+        if (override != null) return override.coerceAtLeast(0)
+        return domainLimit(ctx)
     }
 
-    private fun showSafeDialog(
-        title: String,
-        message: String,
-        positive: String? = null,
-        onPositive: (() -> Unit)? = null,
-    ) {
-        onMain {
-            try {
-                val ui = dialogUi()
-                if (ui !is android.app.Activity) {
-                    android.widget.Toast.makeText(
-                        context,
-                        ("$title: $message").take(180),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                    onPositive?.invoke()
-                    return@onMain
-                }
-                val b = android.app.AlertDialog.Builder(ui)
-                    .setTitle(title)
-                    .setMessage(message)
-                if (positive != null && onPositive != null) {
-                    b.setPositiveButton(positive) { _, _ -> onPositive.invoke() }
-                    b.setNegativeButton("Cancel", null)
-                } else {
-                    b.setPositiveButton("OK", null)
-                }
-                b.show()
-            } catch (t: Throwable) {
-                LogBuffer.e("UpdateChecker", "dialog failed: ${t.message}")
-                try {
-                    android.widget.Toast.makeText(
-                        context,
-                        ("$title — ${t.message}").take(160),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                } catch (_: Throwable) { }
-            }
+    fun setDomainRequestLimit(ctx: Context, domain: String, perDay: Int) {
+        val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        UserFileStore.putSetting(ctx, "rate_limit_for_$d", perDay.coerceAtLeast(0).toString())
+    }
+
+    fun setLimits(ctx: Context, globalPerDay: Int?, domainPerDay: Int?) {
+        globalPerDay?.let {
+            UserFileStore.putSetting(ctx, "rate_limit_global_day", it.coerceAtLeast(0).toString())
+        }
+        domainPerDay?.let {
+            UserFileStore.putSetting(ctx, "rate_limit_domain_day", it.coerceAtLeast(0).toString())
         }
     }"""
-        t = t.replace(anchor, anchor + helper, 1)
-        print("inserted dialogUi + showSafeDialog")
-    else:
-        print("helpers already present")
 
-    start = t.find("    fun showUpdateDialog")
-    end = t.find("    /** Run [block] on the main thread", start)
-    if start < 0:
-        raise SystemExit("showUpdateDialog missing")
-    if end < 0:
-        end = t.find("    private fun onMain", start)
-    block = t[start:end]
-    if "showSafeDialog" not in block:
-        on = block.find("        onMain {")
-        if on < 0:
-            raise SystemExit("onMain in showUpdateDialog missing")
-        head = block[:on]
-        new_block = head + (
-            "        showSafeDialog(\n"
-            '            title = "Update available",\n'
-            "            message = message,\n"
-            '            positive = "Download",\n'
-            "            onPositive = { requestDownloadPermission(apkAsset) },\n"
-            "        )\n"
-            "    }\n\n"
-        )
-        t = t[:start] + new_block + t[end:]
-        print("showUpdateDialog → showSafeDialog")
+    if "fun domainLimit(ctx: Context, domain: String)" in t:
+        print("RateLimit: per-domain already present")
+    elif old in t:
+        t = t.replace(old, new, 1)
+        print("RateLimit: per-domain limit helpers")
     else:
-        print("showUpdateDialog already safe")
+        raise SystemExit("RateLimit domainLimit block not found")
 
-    old_req = """    private fun requestDownloadPermission(apkAsset: GitHubAsset) {
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Download Update")
-            .setMessage("Download ${apkAsset.name}? This will use your mobile data.")
-            .setPositiveButton("Confirm Download") { _, _ ->
-                downloadAndInstall(apkAsset)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }"""
-    new_req = """    private fun requestDownloadPermission(apkAsset: GitHubAsset) {
-        showSafeDialog(
-            title = "Download Update",
-            message = "Download ${apkAsset.name}? This will use your mobile data.",
-            positive = "Confirm Download",
-            onPositive = { downloadAndInstall(apkAsset) },
-        )
-    }"""
-    if old_req in t:
-        t = t.replace(old_req, new_req, 1)
-        print("requestDownloadPermission fixed")
-    elif "requestDownloadPermission" in t and "showSafeDialog" in t[
-        t.find("requestDownloadPermission"): t.find("requestDownloadPermission") + 400
-    ]:
-        print("requestDownloadPermission already safe")
+    old_c = """        val gLim = globalLimit(ctx)
+        val dLim = domainLimit(ctx)
+
+        val gKey = "rate_count_global_$day"
+        val dNorm = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        val dKey = "rate_count_domain_${dNorm}_$day"
+
+        val gUsed = UserFileStore.getSetting(ctx, gKey, "0")?.toIntOrNull() ?: 0
+        val dUsed = UserFileStore.getSetting(ctx, dKey, "0")?.toIntOrNull() ?: 0
+
+        if (gLim > 0 && gUsed >= gLim) {
+            return "RATELIMIT global $gUsed/$gLim per day"
+        }
+        if (dLim > 0 && dUsed >= dLim) {
+            return "RATELIMIT domain $dNorm $dUsed/$dLim per day"
+        }"""
+    new_c = """        val gLim = globalLimit(ctx)
+        val dNorm = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        val dLim = domainLimit(ctx, dNorm)
+
+        val gKey = "rate_count_global_$day"
+        val dKey = "rate_count_domain_${dNorm}_$day"
+
+        val gUsed = UserFileStore.getSetting(ctx, gKey, "0")?.toIntOrNull() ?: 0
+        val dUsed = UserFileStore.getSetting(ctx, dKey, "0")?.toIntOrNull() ?: 0
+
+        if (gLim > 0 && gUsed >= gLim) {
+            return "RATELIMIT global $gUsed/$gLim per day"
+        }
+        if (dLim > 0 && dUsed >= dLim) {
+            return "RATELIMIT domain $dNorm $dUsed/$dLim per day"
+        }"""
+    if old_c in t:
+        t = t.replace(old_c, new_c, 1)
+        print("RateLimit: checkAndConsume uses per-domain")
     else:
-        print("WARN requestDownloadPermission not patched")
+        print("RateLimit: checkAndConsume skip")
 
-    needle = 'android.app.AlertDialog.Builder(context)\n                    .setTitle("Download started")'
-    if needle in t:
-        idx = t.find(needle)
-        on = t.rfind("onMain {", 0, idx)
-        show = t.find(".show()", idx)
-        end_brace = t.find("\n            }", show)
-        if on < 0 or end_brace < 0:
-            raise SystemExit("download started block bounds fail")
-        end_brace = end_brace + len("\n            }")
-        new_dl = (
-            "showSafeDialog(\n"
-            '                title = "Download started",\n'
-            '                message = "The update will appear in your notifications.\\n" +\n'
-            '                    "Tap it to install once the download finishes.",\n'
-            "            )"
-        )
-        t = t[:on] + new_dl + t[end_brace:]
-        print("download-started dialog fixed")
+    old_s = """        if (domain != null) {
+            val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+            val dUsed = UserFileStore.getSetting(ctx, "rate_count_domain_${d}_$day", "0")?.toIntOrNull() ?: 0
+            out["domain"] = d
+            out["domainUsed"] = dUsed
+        }"""
+    new_s = """        if (domain != null) {
+            val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+            val dUsed = UserFileStore.getSetting(ctx, "rate_count_domain_${d}_$day", "0")?.toIntOrNull() ?: 0
+            val dLimEff = domainLimit(ctx, d)
+            out["domain"] = d
+            out["domainUsed"] = dUsed
+            out["domainLimit"] = dLimEff
+            out["domainLeft"] = if (dLimEff <= 0) -1 else (dLimEff - dUsed).coerceAtLeast(0)
+        }"""
+    if old_s in t:
+        t = t.replace(old_s, new_s, 1)
+        print("RateLimit: snapshot per-domain")
     else:
-        print("download-started already fixed or missing")
-
-    left = t.count("AlertDialog.Builder(context)")
-    print("remaining Builder(context)", left)
-    if left:
-        t = t.replace("android.app.AlertDialog.Builder(context)", "android.app.AlertDialog.Builder(dialogUi())")
-        print("fallback: Builder(dialogUi()) for leftovers")
+        print("RateLimit: snapshot skip")
 
     p.write_text(t)
-    print("UpdateChecker", p.stat().st_size)
+    print("DatastoreRateLimit", p.stat().st_size)
 
-    mp = ROOT / "app/src/main/java/com/cwbridge/android/MainActivity.kt"
-    mt = mp.read_text()
-    if "UpdateChecker(applicationContext)" in mt:
-        mt = mt.replace("UpdateChecker(applicationContext)", "UpdateChecker(this@MainActivity)")
-        mp.write_text(mt)
-        print("MainActivity: UpdateChecker → Activity")
+
+def patch_invoke():
+    p = ROOT / "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt"
+    t = p.read_text()
+
+    if "import com.cwbridge.android.data.UserFileStore" not in t:
+        t = t.replace(
+            "import com.cwbridge.android.data.Store",
+            "import com.cwbridge.android.data.Store\nimport com.cwbridge.android.data.UserFileStore",
+            1,
+        )
+        print("Invoke: import UserFileStore")
+
+    old_cmds = '"cmds: save load status tap tappx paste clip focus submit wait toast echo help"'
+    new_cmds = '"cmds: save load storeinfo setlimit status tap tappx paste clip focus submit wait toast echo help"'
+    if old_cmds in t:
+        t = t.replace(old_cmds, new_cmds, 1)
+
+    if '"storeinfo"' in t:
+        print("Invoke: storeinfo already present")
     else:
-        print("MainActivity: no applicationContext UpdateChecker")
+        marker = '            "status" -> {'
+        if marker not in t:
+            marker = '            "savedomain" -> {'
+        if marker not in t:
+            raise SystemExit("no status/savedomain marker")
 
-    print("hotfix update OK")
+        handlers = r'''
+            "storeinfo" -> {
+                // storeinfo.<domain.rbx> → paste: 5.STORED_BITS.LIMIT_BITS.KEYS.REQ_USED.REQ_MAX.REQ_LEFT
+                val domainRaw = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                val domain = Store.normalizeDomain(domainRaw)
+                    ?: run {
+                        replyErr("storeinfo", "need storeinfo.domain.rbx")
+                        return
+                    }
+                val usedBytes = store.usageOf(domain)
+                val limBytes = store.limitOf(domain)
+                val keys = store.listKeys(domain).getOrElse { emptyList() }.size
+                val snap = DatastoreRateLimit.snapshot(context, domain)
+                val reqUsed = (snap["domainUsed"] as? Number)?.toInt() ?: 0
+                val reqMax = (snap["domainLimit"] as? Number)?.toInt()
+                    ?: DatastoreRateLimit.domainLimit(context, domain)
+                val reqLeft = if (reqMax <= 0) -1 else (reqMax - reqUsed).coerceAtLeast(0)
+                val storedBits = usedBytes * 8L
+                val limitBits = if (limBytes <= 0L) 0L else limBytes * 8L
+                val payload = "5.$storedBits.$limitBits.$keys.$reqUsed.$reqMax.$reqLeft"
+                pasteIntoGame(payload)
+                replyOk("storeinfo", payload)
+            }
+
+            "setlimit" -> {
+                // setlimit.<domain.rbx>.<type>.<value>
+                // type 0 = requests/day for domain, type 1 = data limit (bits)
+                val admin = UserFileStore.getSetting(context, "admin_domain", "")
+                    ?.trim()?.lowercase().orEmpty()
+                if (admin.isEmpty()) {
+                    replyErr("setlimit", "admin domain not configured")
+                    return
+                }
+                val full = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                val m = Regex("""^([a-z0-9_-]+\.rbx)\.([01])\.(.+)$""", RegexOption.IGNORE_CASE)
+                    .matchEntire(full.trim())
+                if (m == null) {
+                    replyErr("setlimit", "need setlimit.domain.rbx.type.value (type 0=reqs 1=data bits)")
+                    return
+                }
+                val target = Store.normalizeDomain(m.groupValues[1])
+                    ?: run {
+                        replyErr("setlimit", "bad domain")
+                        return
+                    }
+                val type = m.groupValues[2].toInt()
+                val valueRaw = m.groupValues[3].trim()
+                when (type) {
+                    0 -> {
+                        val n = valueRaw.toIntOrNull()
+                            ?: run {
+                                replyErr("setlimit", "type 0 value must be int reqs/day")
+                                return
+                            }
+                        DatastoreRateLimit.setDomainRequestLimit(context, target, n)
+                        replyOk("setlimit", "reqs $target = $n/day")
+                    }
+                    1 -> {
+                        val bits = valueRaw.toLongOrNull()
+                            ?: run {
+                                replyErr("setlimit", "type 1 value must be bits (integer)")
+                                return
+                            }
+                        val bytes = if (bits <= 0L) 0L else (bits / 8L)
+                        store.setLimit(target, bytes).fold(
+                            onSuccess = {
+                                replyOk("setlimit", "data $target = ${bits}b (${Store.formatBytes(bytes)})")
+                            },
+                            onFailure = { replyErr("setlimit", it.message ?: "fail") },
+                        )
+                    }
+                    else -> replyErr("setlimit", "type must be 0 or 1")
+                }
+            }
+
+'''
+        t = t.replace(marker, handlers + marker, 1)
+        print("Invoke: storeinfo + setlimit handlers")
+
+    old_help = (
+        '"save.key.data | load.key.domain | status | tap.x.y | tappx.x.y | " +\n'
+        '                        "paste.text | clip.set.text | clip.get | focus.x.y | submit.x.y | " +\n'
+        '                        "wait.ms | toast.msg | echo.msg | help",'
+    )
+    new_help = (
+        '"save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +\n'
+        '                        "status | tap.x.y | paste.text | clip | focus | submit | wait | toast | echo | help",'
+    )
+    if old_help in t:
+        t = t.replace(old_help, new_help, 1)
+        print("Invoke: help updated")
+
+    p.write_text(t)
+    print("InvokeEngine", p.stat().st_size)
+
+
+def patch_server_and_web():
+    sp = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
+    st = sp.read_text()
+
+    if "/api/admin-domain" not in st:
+        route = '''
+            path == "/api/admin-domain" && method == "GET" -> respond(out, 200, adminDomainJson())
+            path == "/api/admin-domain" && method == "POST" -> respond(out, 200, setAdminDomainJson(body))
+'''
+        anchor = 'path == "/api/rate-limits" && method == "POST" -> respond(out, 200, setRateLimitsJson(body))'
+        if anchor in st:
+            st = st.replace(anchor, anchor + "\n" + route, 1)
+            print("Server: admin-domain routes")
+        else:
+            print("Server: rate-limits anchor miss")
+
+        handlers = '''
+    private fun adminDomainJson(): String {
+        val d = com.cwbridge.android.data.UserFileStore.getSetting(context, "admin_domain", "") ?: ""
+        return json(mapOf("adminDomain" to d))
+    }
+
+    private fun setAdminDomainJson(body: String): String {
+        val raw = jsonString(body, "adminDomain").ifBlank { jsonString(body, "domain") }.trim().lowercase()
+        if (raw.isBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "admin_domain", "")
+            return json(mapOf("ok" to true, "adminDomain" to "", "message" to "cleared"))
+        }
+        val norm = Store.normalizeDomain(raw)
+            ?: return json(mapOf("error" to "bad domain — want name.rbx"))
+        com.cwbridge.android.data.UserFileStore.putSetting(context, "admin_domain", norm)
+        return json(mapOf("ok" to true, "adminDomain" to norm))
+    }
+'''
+        if "fun adminDomainJson" not in st:
+            mark = "    private fun rateLimitsJson"
+            if mark in st:
+                st = st.replace(mark, handlers + "\n" + mark, 1)
+                print("Server: admin handlers")
+            else:
+                print("Server: rateLimitsJson mark miss")
+    else:
+        print("Server: admin-domain already present")
+
+    sp.write_text(st)
+    print("LocalHttpServer", sp.stat().st_size)
+
+    wp = ROOT / "app/src/main/java/com/cwbridge/android/server/WebUi.kt"
+    wt = wp.read_text()
+    if "limAdminDomain" in wt:
+        print("WebUi: admin field already present")
+    else:
+        needle = '<div id="limitsMeta" class="hint" style="margin-top:8px"></div>'
+        extra = '''<div class="row" style="margin-top:10px">
+      <div class="field"><label class="hint">Admin domain (can setlimit)</label>
+        <input id="limAdminDomain" placeholder="admin.rbx"></div>
+      <button type="button" class="ghost" onclick="saveAdminDomain()"><span class="ms sm">shield</span> Save admin</button>
+    </div>
+    <p class="hint">Game: invoke|storeinfo.domain.rbx → pastes 5.bits.limitBits.keys.used.max.left · invoke|setlimit.domain.rbx.type.value (0=reqs/day 1=data bits)</p>
+    ''' + needle
+        if needle in wt:
+            wt = wt.replace(needle, extra, 1)
+            print("WebUi: admin domain field")
+        else:
+            print("WebUi: limitsMeta miss")
+
+    if "async function loadAdminDomain" not in wt and "function loadAdminDomain" not in wt:
+        js = r'''
+async function loadAdminDomain(){
+  try{
+    const j=await api('/api/admin-domain');
+    const el=document.getElementById('limAdminDomain');
+    if(el) el.value=j.adminDomain||'';
+  }catch(e){}
+}
+async function saveAdminDomain(){
+  const el=document.getElementById('limAdminDomain');
+  const v=(el&&el.value||'').trim();
+  try{
+    const j=await post('/api/admin-domain',{adminDomain:v});
+    if(j.error){ toast(j.error,false); return; }
+    toast(j.message||('Admin: '+(j.adminDomain||'off')),true);
+    loadAdminDomain();
+  }catch(e){ toast(e.message||String(e),false); }
+}
+'''
+        if "async function loadLimits()" in wt:
+            wt = wt.replace("async function loadLimits()", js + "\nasync function loadLimits()", 1)
+            print("WebUi: admin JS")
+        else:
+            print("WebUi: loadLimits miss")
+
+    if "loadAdminDomain();" not in wt and "loadLimits();" in wt:
+        wt = wt.replace("loadLimits();", "loadLimits(); loadAdminDomain();", 1)
+        print("WebUi: boot loadAdminDomain")
+
+    wp.write_text(wt)
+    print("WebUi", wp.stat().st_size)
+
+
+def main():
+    patch_rate_limit()
+    patch_invoke()
+    patch_server_and_web()
+    print("hotfix storeinfo OK")
 
 
 if __name__ == "__main__":
