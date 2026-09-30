@@ -3,6 +3,9 @@ package com.cwbridge.android.server
 /**
  * Built-in control panel. Split into PART_* raw strings so check-webui.js can
  * reconstruct and syntax-check the inline JS at CI time.
+ *
+ * Stage 2: gooey status, material icons, readiness checklist, section nav,
+ * busy buttons, toasts, confirm modal, screenshot download, console polish.
  */
 object WebUi {
 
@@ -14,6 +17,7 @@ object WebUi {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>CWBridge</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
 <style>
 :root{
   --bg:#0c0e12; --panel:#151922; --panel2:#1b2030; --line:rgba(255,255,255,.08);
@@ -22,30 +26,55 @@ object WebUi {
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);
-  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   -webkit-text-size-adjust:100%}
 a{color:var(--accent)}
+.ms{font-family:"Material+Symbols+Rounded",sans-serif;font-weight:400;font-style:normal;
+  font-size:20px;line-height:1;vertical-align:middle;
+  font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;
+  user-select:none}
+.ms.sm{font-size:18px}
 header{
   position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
-  background:rgba(12,14,18,.88);border-bottom:1px solid var(--line);
-  padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:rgba(12,14,18,.9);border-bottom:1px solid var(--line);
+  padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
 }
-.brand{font-weight:700;letter-spacing:.02em}
+.brand{font-weight:700;letter-spacing:.02em;display:flex;align-items:center;gap:8px}
+.gooey-wrap{width:28px;height:28px;display:grid;place-items:center;filter:url(#goo)}
+.gooey-blob{width:14px;height:14px;border-radius:50%;background:var(--muted);
+  transition:background .35s,transform .35s,box-shadow .35s}
+.gooey-blob.ACTIVE{background:var(--ok);box-shadow:0 0 12px rgba(61,214,140,.55);transform:scale(1.15)}
+.gooey-blob.WAITING{background:var(--warn);box-shadow:0 0 12px rgba(245,165,36,.5);transform:scale(1.1)}
+.gooey-blob.ERROR{background:var(--danger);box-shadow:0 0 12px rgba(247,108,108,.55);transform:scale(1.1)}
+.gooey-blob.IDLE{background:var(--muted)}
+@media (prefers-reduced-motion:reduce){
+  .gooey-blob{transition:none}
+  .gooey-wrap{filter:none}
+}
 .chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
   padding:4px 10px;border-radius:999px;background:var(--panel2);color:var(--muted)}
 .chip.ACTIVE{background:rgba(61,214,140,.15);color:var(--ok)}
 .chip.WAITING{background:rgba(245,165,36,.15);color:var(--warn)}
 .chip.ERROR{background:rgba(247,108,108,.15);color:var(--danger)}
 .chip.IDLE{background:var(--panel2);color:var(--muted)}
-.detail{color:var(--muted);font-size:12px;flex:1;min-width:120px}
+.detail{color:var(--muted);font-size:12px;flex:1;min-width:100px}
+nav.sec{
+  display:flex;gap:6px;overflow-x:auto;padding:8px 14px;border-bottom:1px solid var(--line);
+  background:rgba(12,14,18,.6);position:sticky;top:52px;z-index:15;-webkit-overflow-scrolling:touch;
+}
+nav.sec a{
+  flex:0 0 auto;text-decoration:none;color:var(--muted);font-size:12px;font-weight:650;
+  padding:8px 12px;border-radius:999px;background:var(--panel2);display:flex;align-items:center;gap:6px;
+}
+nav.sec a:hover{color:var(--text)}
 main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:12px}
 .card{
   background:linear-gradient(180deg,var(--panel),var(--panel2));
   border:1px solid var(--line);border-radius:var(--radius);padding:14px 14px 12px;
-  box-shadow:0 8px 24px rgba(0,0,0,.25);
+  box-shadow:0 8px 24px rgba(0,0,0,.25);scroll-margin-top:110px;
 }
 .card h2{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--muted)}
+  text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
@@ -53,67 +82,122 @@ button,.btn{
   appearance:none;border:0;border-radius:12px;padding:11px 14px;min-height:44px;
   font:inherit;font-weight:650;cursor:pointer;color:#0b1020;background:var(--accent);
   touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
 }
-button:active{transform:scale(.98)}
+button:active{transform:translateY(1px)}
 button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
-button.soft{background:rgba(110,168,254,.14);color:var(--accent)}
-button.danger{background:rgba(247,108,108,.18);color:var(--danger)}
-button.block{width:100%}
-input,textarea,select{
-  width:100%;background:#0f131b;border:1px solid var(--line);border-radius:12px;
-  color:var(--text);padding:11px 12px;font:inherit;min-height:44px;
-}
-textarea{min-height:96px;resize:vertical}
-label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+button.soft{background:var(--panel2);color:var(--text)}
+button.danger{background:rgba(247,108,108,.2);color:var(--danger)}
+button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+button.busy{opacity:.7;pointer-events:none}
 .field{flex:1;min-width:120px}
-.msg{margin-top:8px;font-size:13px;color:var(--muted);word-break:break-word}
-.msg.good{color:var(--ok)}.msg.err{color:var(--danger)}
-pre{
-  margin:0;background:#0b0f16;border:1px solid var(--line);border-radius:12px;
-  padding:12px;max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;
-  color:#b7c7ff;white-space:pre-wrap;word-break:break-word;
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+input,textarea,select{
+  width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+  background:#0c0e12;color:var(--text);font:inherit;min-height:44px;
 }
+textarea{min-height:72px;resize:vertical}
+.hint{color:var(--muted);font-size:12px;margin:0 0 8px}
+.msg{font-size:13px;min-height:1.2em;margin-top:8px}
+.msg.good{color:var(--ok)}.msg.err{color:var(--danger)}
+.diag{list-style:none;padding:0;margin:8px 0 0}
+.diag li{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.diag li.ok{color:var(--ok)}.diag li.bad{color:var(--danger)}
+.ready{display:grid;gap:6px;margin-top:8px}
+.ready .r{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;
+  background:rgba(0,0,0,.2);border:1px solid var(--line);font-size:13px;
+}
+.ready .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:0 0 auto}
+.ready .dot.on{background:var(--ok);box-shadow:0 0 8px rgba(61,214,140,.5)}
+.ready .dot.off{background:var(--danger)}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-.svc{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
-.svc:last-child{border-bottom:0}
-.badge{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.06)}
-.badge.on{color:var(--ok)}.badge.off{color:var(--warn)}
-#shotImg{max-width:100%;border-radius:12px;border:1px solid var(--line);margin-top:8px}
-.hint{font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.4}
-ul.diag{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
-ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
-.footer{text-align:center;color:var(--muted);font-size:11px;padding:8px 0 24px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+pre#console{
+  margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);
+  max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;
+}
+#shotBox img{max-width:100%;border-radius:10px;border:1px solid var(--line);margin-top:8px}
+.empty{
+  color:var(--muted);font-size:13px;padding:16px;text-align:center;
+  border:1px dashed var(--line);border-radius:12px;display:flex;flex-direction:column;
+  align-items:center;gap:8px;
+}
+.footer{text-align:center;color:var(--muted);font-size:11px;padding:8px 14px 24px}
+#toastHost{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;flex-direction:column;gap:8px;width:min(420px,92vw);pointer-events:none;
+}
+.toast{
+  pointer-events:auto;padding:12px 14px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);box-shadow:0 12px 32px rgba(0,0,0,.45);font-size:13px;
+  animation:toastIn .2s ease;
+}
+.toast.good{border-color:rgba(61,214,140,.35)}.toast.err{border-color:rgba(247,108,108,.4)}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
+#modalBack{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:none;
+  align-items:center;justify-content:center;padding:16px;
+}
+#modalBack.show{display:flex}
+#modalCard{
+  width:min(400px,100%);background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:18px;box-shadow:0 20px 48px rgba(0,0,0,.5);
+}
+#modalCard h3{margin:0 0 8px;font-size:16px}
+#modalCard p{margin:0 0 14px;color:var(--muted);font-size:14px}
+#modalCard .row{justify-content:flex-end}
 </style>
 </head>
 <body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <filter id="goo">
+    <feGaussianBlur in="SourceGraphic" stdDeviation="3.2" result="blur"/>
+    <feColorMatrix in="blur" mode="matrix"
+      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="goo"/>
+    <feBlend in="SourceGraphic" in2="goo"/>
+  </filter>
+</svg>
 """.trimIndent()
 
     private val PART_B: String = """
 <div id="app">
 <header>
-  <div class="brand">CWBridge</div>
+  <div class="brand">
+    <div class="gooey-wrap" title="Bridge status"><div id="gooeyBlob" class="gooey-blob IDLE"></div></div>
+    CWBridge
+  </div>
   <span id="pill" class="chip IDLE">-</span>
   <span id="detail" class="detail"></span>
-  <button type="button" class="ghost" onclick="logout()">Lock</button>
+  <button type="button" class="ghost" onclick="logout()"><span class="ms sm">lock</span> Lock</button>
 </header>
+<nav class="sec" aria-label="Sections">
+  <a href="#sec-status"><span class="ms sm">monitor_heart</span> Status</a>
+  <a href="#sec-control"><span class="ms sm">tune</span> Control</a>
+  <a href="#sec-domains"><span class="ms sm">language</span> Domains</a>
+  <a href="#sec-store"><span class="ms sm">database</span> Store</a>
+  <a href="#sec-services"><span class="ms sm">extension</span> Services</a>
+  <a href="#sec-console"><span class="ms sm">terminal</span> Console</a>
+</nav>
 <main>
-  <div class="card">
-    <h2>Status</h2>
+  <div class="card" id="sec-status">
+    <h2><span class="ms sm">monitor_heart</span> Status</h2>
     <div class="row">
-      <button type="button" class="soft" onclick="runDiagnose()">Diagnose</button>
-      <button type="button" class="ghost" onclick="refreshAll()">Refresh</button>
+      <button type="button" class="soft" onclick="runDiagnose()"><span class="ms sm">troubleshoot</span> Diagnose</button>
+      <button type="button" class="ghost" onclick="refreshAll()"><span class="ms sm">refresh</span> Refresh</button>
     </div>
+    <div class="ready" id="readyList" aria-live="polite"></div>
     <ul id="diagOut" class="diag"></ul>
   </div>
 
-  <div class="card">
-    <h2>Remote control</h2>
+  <div class="card" id="sec-control">
+    <h2><span class="ms sm">tune</span> Remote control</h2>
     <div class="row">
-      <button type="button" onclick="ctl('restart-bridge')">Restart bridge</button>
-      <button type="button" onclick="ctl('restart-roblox')">Restart Roblox</button>
-      <button type="button" onclick="toggleBridge()">Toggle bridge</button>
+      <button type="button" id="btnRestartBridge" onclick="ctlBusy(this,'restart-bridge')"><span class="ms sm">restart_alt</span> Restart bridge</button>
+      <button type="button" id="btnRestartRoblox" onclick="ctlBusy(this,'restart-roblox')"><span class="ms sm">sports_esports</span> Restart Roblox</button>
+      <button type="button" onclick="toggleBridge()"><span class="ms sm">power_settings_new</span> Toggle bridge</button>
       <!--SCREENSHOT_BUTTON-->
     </div>
     <div id="ctlMsg" class="msg"></div>
@@ -123,32 +207,32 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
 
     private val PART_C: String = """
   <div class="card">
-    <h2>Keys</h2>
-    <p class="hint">Roblox must be on-screen. Ctrl+T tries many inject methods until one reports success.</p>
+    <h2><span class="ms sm">keyboard</span> Keys</h2>
+    <p class="hint">Roblox must be on-screen. Ctrl+T tries inject methods until one reports success.</p>
     <div class="row">
-      <button type="button" onclick="ctl('ctrl-t')">Ctrl+T</button>
-      <button type="button" onclick="ctl('enter')">Enter</button>
-      <button type="button" class="ghost" onclick="ctl('clipboard')">Read clipboard</button>
+      <button type="button" onclick="ctl('ctrl-t')"><span class="ms sm">tab</span> Ctrl+T</button>
+      <button type="button" onclick="ctl('enter')"><span class="ms sm">keyboard_return</span> Enter</button>
+      <button type="button" class="ghost" onclick="ctl('clipboard')"><span class="ms sm">content_paste</span> Clipboard</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Auto-open on CW load</h2>
-    <p class="hint">Single domain only. When CatWeb logs finished, opens this in the current tab. Empty = off.</p>
+  <div class="card" id="sec-domains">
+    <h2><span class="ms sm">language</span> Auto-open on CW load</h2>
+    <p class="hint">Single domain. When CatWeb logs finished, opens in the current tab. Empty = off.</p>
     <div class="row">
       <div class="field"><input id="autoDomain" placeholder="67.rbx" autocomplete="off"></div>
-      <button type="button" onclick="saveAutoDomain()">Save</button>
+      <button type="button" onclick="saveAutoDomain()"><span class="ms sm">save</span> Save</button>
       <button type="button" class="ghost" onclick="clearAutoDomain()">Clear</button>
     </div>
     <div id="autoDomMsg" class="msg"></div>
   </div>
 
   <div class="card">
-    <h2>Edit domain database</h2>
-    <p class="hint">Pick a domain, load keys, edit values, save or delete. Same store as invoke|save.</p>
+    <h2><span class="ms sm">edit_note</span> Edit domain database</h2>
+    <p class="hint">Load keys for a domain, edit values, save or delete. Same store as invoke|save.</p>
     <div class="row">
       <div class="field"><input id="editDomain" list="domainListDatalist" placeholder="example.rbx"></div>
-      <button type="button" onclick="loadDomainDb()">Load</button>
+      <button type="button" onclick="loadDomainDb()"><span class="ms sm">folder_open</span> Load</button>
     </div>
     <datalist id="domainListDatalist"></datalist>
     <div id="domainDbMeta" class="hint"></div>
@@ -156,14 +240,14 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
     <div class="row" style="margin-top:8px">
       <div class="field"><input id="newKey" placeholder="new key"></div>
       <div class="field"><input id="newVal" placeholder="value"></div>
-      <button type="button" onclick="addDomainKey()">Add</button>
+      <button type="button" onclick="addDomainKey()"><span class="ms sm">add</span> Add</button>
     </div>
     <div id="domainDbMsg" class="msg"></div>
   </div>
 
   <div class="card">
-    <h2>Open domains</h2>
-    <p class="hint">One domain per line. Flow: Ctrl+T, tap URL bar (X/Y %), type domain, Enter, wait, then Ctrl+1. Needs Shizuku.</p>
+    <h2><span class="ms sm">open_in_browser</span> Open domains</h2>
+    <p class="hint">One domain per line. Immediate open flow (not auto-on-load).</p>
     <textarea id="domainList" placeholder="example.rbx"></textarea>
     <div class="row" style="margin-top:8px">
       <div class="field"><label>URL bar X%</label><input id="urlX" value="50" inputmode="decimal"></div>
@@ -174,16 +258,16 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
   </div>
 
   <div class="card">
-    <h2>Send invoke</h2>
+    <h2><span class="ms sm">terminal</span> Send invoke</h2>
     <div class="row">
       <div class="field"><input id="inv" placeholder="tap 50 85 | paste hello | save key value"></div>
-      <button type="button" onclick="sendInvoke()">Send</button>
+      <button type="button" onclick="sendInvoke()"><span class="ms sm">send</span> Send</button>
     </div>
     <div id="invMsg" class="msg"></div>
   </div>
 
   <div class="card">
-    <h2>Tap</h2>
+    <h2><span class="ms sm">touch_app</span> Tap</h2>
     <div class="grid2">
       <div class="field"><label>X%</label><input id="tx" value="50" inputmode="decimal"></div>
       <div class="field"><label>Y%</label><input id="ty" value="50" inputmode="decimal"></div>
@@ -201,18 +285,18 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
 """.trimIndent()
 
     private val PART_D: String = """
-  <div class="card">
-    <h2>Services</h2>
+  <div class="card" id="sec-services">
+    <h2><span class="ms sm">extension</span> Services</h2>
     <div id="svcList"></div>
     <div class="row" style="margin-top:10px">
       <div class="field"><input id="svcName" placeholder="New service name"></div>
-      <button type="button" onclick="createService()">Create</button>
+      <button type="button" onclick="createService()"><span class="ms sm">add</span> Create</button>
     </div>
     <div id="svcMsg" class="msg"></div>
   </div>
 
-  <div class="card">
-    <h2>Storage</h2>
+  <div class="card" id="sec-store">
+    <h2><span class="ms sm">database</span> Storage</h2>
     <div style="overflow-x:auto">
       <table><thead><tr><th>Domain</th><th>Keys</th><th>Used</th><th>Limit</th><th></th></tr></thead>
       <tbody id="storeRows"></tbody></table>
@@ -226,7 +310,7 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
       <div class="field"><input id="sDomain" placeholder="domain"></div>
       <div class="field"><input id="sKey" placeholder="key"></div>
       <div class="field"><input id="sVal" placeholder="value"></div>
-      <button type="button" onclick="saveKey()">Save</button>
+      <button type="button" onclick="saveKey()"><span class="ms sm">save</span> Save</button>
     </div>
     <div id="storeMsg" class="msg"></div>
   </div>
@@ -234,17 +318,21 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
 
     private val PART_E: String = """
   <div class="card">
-    <h2>Variables</h2>
+    <h2><span class="ms sm">data_object</span> Variables</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button type="button" class="ghost" onclick="copyVars()"><span class="ms sm">content_copy</span> Copy</button>
+    </div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody id="varRows"></tbody></table>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Console</h2>
+  <div class="card" id="sec-console">
+    <h2><span class="ms sm">terminal</span> Console</h2>
     <pre id="console">-</pre>
     <div class="row" style="margin-top:10px">
-      <button type="button" class="ghost" onclick="refreshConsole()">Refresh</button>
+      <button type="button" class="ghost" onclick="refreshConsole()"><span class="ms sm">refresh</span> Refresh</button>
+      <button type="button" class="ghost" onclick="copyConsole()"><span class="ms sm">content_copy</span> Copy</button>
       <label style="display:flex;align-items:center;gap:6px;color:var(--muted)">
         <input type="checkbox" id="auto" checked style="width:auto;min-height:0"> auto
       </label>
@@ -253,52 +341,85 @@ ul.diag .ok{color:var(--ok)}ul.diag .bad{color:var(--danger)}
 </main>
 <div class="footer">CWBridge web panel</div>
 </div>
+<div id="toastHost" aria-live="polite" aria-relevant="additions"></div>
+<div id="modalBack" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="modalCard">
+    <h3 id="modalTitle">Confirm</h3>
+    <p id="modalBody">Are you sure?</p>
+    <div class="row">
+      <button type="button" class="ghost" id="modalCancel">Cancel</button>
+      <button type="button" class="danger" id="modalOk">Confirm</button>
+    </div>
+  </div>
+</div>
 """.trimIndent()
 
     private val PART_F: String = """
 <script>
-const D = function(id){ return document.getElementById(id); };
-let RELOADING = false;
-
+var RELOADING = false;
+function D(id){ return document.getElementById(id); }
 function esc(s){
-  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function arg(s){ return JSON.stringify(String(s == null ? "" : s)); }
+function toast(text, kind){
+  var host = D("toastHost");
+  if(!host) return;
+  var el = document.createElement("div");
+  el.className = "toast" + (kind === "good" || kind === true ? " good" : (kind === "err" || kind === false ? " err" : ""));
+  el.textContent = text;
+  host.appendChild(el);
+  setTimeout(function(){ try{ el.remove(); }catch(e){} }, 3200);
+}
+function msg(id, text, kind){
+  var el = D(id);
+  if(!el) return;
+  el.textContent = text || "";
+  el.className = "msg" + (kind === "good" || kind === true ? " good" : (kind === "err" || kind === false ? " err" : ""));
+  if(text) toast(text, kind);
+}
+function setBusy(btn, on){
+  if(!btn) return;
+  if(on){ btn.classList.add("busy"); btn.disabled = true; }
+  else { btn.classList.remove("busy"); btn.disabled = false; }
+}
+function confirmModal(title, body){
+  return new Promise(function(resolve){
+    var back = D("modalBack");
+    D("modalTitle").textContent = title || "Confirm";
+    D("modalBody").textContent = body || "Are you sure?";
+    back.classList.add("show");
+    function done(v){
+      back.classList.remove("show");
+      D("modalOk").onclick = null;
+      D("modalCancel").onclick = null;
+      resolve(v);
+    }
+    D("modalOk").onclick = function(){ done(true); };
+    D("modalCancel").onclick = function(){ done(false); };
   });
 }
-// Argument for an inline onclick="..." handler: JSON gives a valid JS literal,
-// esc() makes it survive a double-quoted HTML attribute. Without this a raw "
-// inside a key/service name ends the attribute and the button silently no-ops.
-function arg(v){
-  return esc(JSON.stringify(v == null ? "" : String(v)));
-}
-function msg(id, text, cls){
-  var el = D(id); if(!el) return;
-  el.className = "msg" + (cls ? (" " + cls) : "");
-  el.textContent = text || "";
-}
-// The server only ever hands the dashboard to an authenticated client, so a 401
-// means the session died (24h TTL, or the password was regenerated). Reloading
-// makes the server return its own lock page — no second unlock form here.
-function lockedOut(){
-  if(RELOADING) return;
-  RELOADING = true;
-  location.reload();
-}
-
-async function api(path, opts){
-  var res = await fetch(path, Object.assign({credentials:"same-origin"}, opts || {}));
-  if(res.status === 401){ lockedOut(); throw new Error("session expired — unlock again"); }
-  var ct = res.headers.get("content-type") || "";
-  if(ct.indexOf("application/json") < 0){
-    if(!res.ok) throw new Error(await res.text());
-    return res;
+async function api(path, opt){
+  var res = await fetch(path, Object.assign({credentials:"same-origin"}, opt || {}));
+  if(res.status === 401){
+    RELOADING = true;
+    location.reload();
+    throw new Error("locked");
   }
-  var data = await res.json();
-  if(!res.ok) throw new Error(data.error || ("error " + res.status));
-  return data;
+  var ct = res.headers.get("content-type") || "";
+  if(ct.indexOf("application/json") >= 0){
+    var data = await res.json();
+    if(!res.ok) throw new Error(data.error || data.message || ("HTTP " + res.status));
+    return data;
+  }
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  return res;
 }
 async function get(path){
   var r = await fetch(path, {credentials:"same-origin"});
+  if(r.status === 401){ RELOADING = true; location.reload(); throw new Error("locked"); }
   return r.json();
 }
 function post(path, body){
@@ -308,24 +429,40 @@ function post(path, body){
     body: JSON.stringify(body || {})
   });
 }
-
 async function logout(){
   try{ await post("/api/logout"); }catch(e){}
-  lockedOut();
+  RELOADING = true;
+  location.reload();
 }
-
+function renderReady(s){
+  var host = D("readyList");
+  if(!host) return;
+  function row(on, label, detail){
+    return "<div class=\"r\"><span class=\"dot " + (on ? "on" : "off") + "\"></span>" +
+      "<span><strong>" + esc(label) + "</strong>" +
+      (detail ? " <span style=\"color:var(--muted)\">" + esc(detail) + "</span>" : "") +
+      "</span></div>";
+  }
+  host.innerHTML =
+    row(!!s.accessibility, "Accessibility", s.accessibility ? "bound" : "off") +
+    row(!!s.shizuku, "Shizuku", s.shizuku ? "ready" : "not ready") +
+    row(!!s.catwebReady, "CatWeb ready", s.catwebReady ? "finished signal" : "waiting");
+}
 async function refreshStatus(){
   try{
     var s = await api("/api/status");
+    var st = (s.state || "IDLE").toUpperCase();
     var p = D("pill");
-    p.textContent = s.state || "-";
-    p.className = "chip " + (s.state || "IDLE");
+    p.textContent = st;
+    p.className = "chip " + st;
+    var g = D("gooeyBlob");
+    if(g) g.className = "gooey-blob " + st;
     D("detail").textContent = s.detail || "";
+    renderReady(s);
   }catch(e){
-    if(RELOADING) return;
+    if(String(e.message) === "locked") return;
   }
 }
-
 async function runDiagnose(){
   var ul = D("diagOut");
   ul.innerHTML = "<li>checking...</li>";
@@ -353,7 +490,6 @@ async function runDiagnose(){
     ul.innerHTML = "<li class=\"bad\">" + esc(e.message) + "</li>";
   }
 }
-
 async function openDomains(){
   var raw = D("domainList").value || "";
   var x = parseFloat(D("urlX").value); if(isNaN(x)) x = 50;
@@ -364,7 +500,6 @@ async function openDomains(){
     msg("domMsg", r.message || "done", "good");
   }catch(e){ msg("domMsg", e.message, "err"); }
 }
-
 async function ctl(action){
   msg("ctlMsg", "working...", "");
   try{
@@ -372,6 +507,11 @@ async function ctl(action){
     msg("ctlMsg", r.message || "ok", "good");
     refreshConsole();
   }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+async function ctlBusy(btn, action){
+  setBusy(btn, true);
+  try{ await ctl(action); }
+  finally{ setBusy(btn, false); }
 }
 async function toggleBridge(){
   try{
@@ -386,12 +526,15 @@ async function loadShot(){
     var res = await api("/api/screenshot");
     var blob = await res.blob();
     var url = URL.createObjectURL(blob);
-    D("shotBox").innerHTML = "<img id=\"shotImg\" alt=\"screenshot\" src=\"" + url + "\">";
+    var ts = new Date().toISOString().replace(/[:.]/g, "-");
+    D("shotBox").innerHTML =
+      "<img id=\"shotImg\" alt=\"screenshot\" src=\"" + url + "\">" +
+      "<div class=\"row\" style=\"margin-top:8px\">" +
+      "<a class=\"btn ghost\" id=\"shotDl\" download=\"cwbridge-" + ts + ".png\" href=\"" + url + "\">" +
+      "<span class=\"ms sm\">download</span> Download</a></div>";
     msg("ctlMsg", "screenshot ok", "good");
   }catch(e){ msg("ctlMsg", e.message, "err"); }
 }
-
-
 async function loadDomainDb(){
   var d = (D("editDomain").value || "").trim();
   if(!d){ msg("domainDbMsg", "enter a domain", false); return; }
@@ -401,7 +544,7 @@ async function loadDomainDb(){
     D("domainDbMeta").textContent = (r.domain || d) + " — " + (r.used || "?") + " / " + (r.limit || "?");
     var keys = r.keys || [];
     if(!keys.length){
-      D("domainDbRows").innerHTML = "<p class=\"hint\">No keys yet.</p>";
+      D("domainDbRows").innerHTML = "<div class=\"empty\"><span class=\"ms\">inbox</span>No keys yet</div>";
     } else {
       D("domainDbRows").innerHTML = keys.map(function(k, i){
         var key = k.key || "";
@@ -410,7 +553,7 @@ async function loadDomainDb(){
         return "<div class=\"row\" style=\"margin-bottom:6px;align-items:flex-start\">" +
           "<div class=\"field\" style=\"flex:0 0 28%\"><label>" + esc(key) + "</label></div>" +
           "<div class=\"field\" style=\"flex:1\"><textarea id=\"" + id + "\" rows=\"2\">" + esc(val) + "</textarea></div>" +
-          "<button type=\"button\" onclick=\"saveDomainKey(" + arg(key) + "," + arg(id) + ")\">Save</button>" +
+          "<button type=\"button\" onclick=\"saveDomainKey(" + arg(key) + ",'" + id + "')\">Save</button>" +
           "<button type=\"button\" class=\"danger\" onclick=\"deleteDomainKey(" + arg(key) + ")\">Del</button></div>";
       }).join("");
     }
@@ -431,7 +574,8 @@ async function saveDomainKey(key, inputId){
 }
 async function deleteDomainKey(key){
   var d = (D("editDomain").value || "").trim();
-  if(!confirm("Delete " + key + " from " + d + "?")) return;
+  var ok = await confirmModal("Delete key", "Delete " + key + " from " + d + "?");
+  if(!ok) return;
   try {
     var r = await post("/api/store/delete", {domain: d, key: key});
     msg("domainDbMsg", r.message || r.error || "deleted", !r.error);
@@ -459,7 +603,6 @@ async function refreshDomainDatalist(){
     }).join("");
   } catch(e){}
 }
-
 async function loadAutoDomain(){
   try {
     var r = await get("/api/auto-domain");
@@ -480,76 +623,62 @@ async function clearAutoDomain(){
   D("autoDomain").value = "";
   return saveAutoDomain();
 }
-
 async function sendInvoke(){
+  var cmd = (D("inv").value || "").trim();
+  if(!cmd){ msg("invMsg", "empty", "err"); return; }
   try{
-    var r = await post("/api/invoke", {line: D("inv").value});
-    msg("invMsg", r.message || "ok", "good");
+    var r = await post("/api/invoke", {command: cmd});
+    msg("invMsg", r.message || "sent", "good");
+    refreshConsole();
   }catch(e){ msg("invMsg", e.message, "err"); }
 }
 async function tapPercent(){
   try{
     var r = await post("/api/tap", {mode:"percent", x: parseFloat(D("tx").value), y: parseFloat(D("ty").value)});
-    msg("tapMsg", r.message, "good");
+    msg("tapMsg", r.message || "ok", "good");
   }catch(e){ msg("tapMsg", e.message, "err"); }
 }
 async function tapPx(){
   try{
     var r = await post("/api/tap", {mode:"px", x: parseFloat(D("tx").value), y: parseFloat(D("ty").value)});
-    msg("tapMsg", r.message, "good");
+    msg("tapMsg", r.message || "ok", "good");
   }catch(e){ msg("tapMsg", e.message, "err"); }
 }
 async function tapText(){
   try{
     var r = await post("/api/tap", {mode:"text", text: D("ttext").value});
-    msg("tapMsg", r.message, "good");
+    msg("tapMsg", r.message || "ok", "good");
   }catch(e){ msg("tapMsg", e.message, "err"); }
 }
-
 async function refreshServices(){
   try{
     var s = await api("/api/services");
     var list = s.services || [];
-    D("svcList").innerHTML = list.map(function(v){
-      var id = arg(v.id || v.name);
-      return "<div class=\"svc\"><strong>" + esc(v.name) + "</strong>" +
-        " <span class=\"badge " + (v.enabled ? "on" : "off") + "\">" + (v.enabled ? "ON" : "OFF") + "</span>" +
-        " <button type=\"button\" class=\"soft\" onclick=\"runService(" + id + ")\">Run</button>" +
-        " <button type=\"button\" class=\"ghost\" onclick=\"toggleService(" + id + "," + (!v.enabled) + ")\">" +
-        (v.enabled ? "Disable" : "Enable") + "</button>" +
-        " <button type=\"button\" class=\"danger\" onclick=\"deleteService(" + id + ")\">Delete</button></div>";
-    }).join("") || "<div class=\"hint\">No services yet</div>";
+    if(!list.length){
+      D("svcList").innerHTML = "<div class=\"empty\"><span class=\"ms\">extension_off</span>No services yet</div>";
+      return;
+    }
+    D("svcList").innerHTML = list.map(function(sv){
+      return "<div class=\"row\" style=\"margin-bottom:6px\">" +
+        "<span style=\"flex:1\">" + esc(sv.name || sv.id) + "</span>" +
+        "<button type=\"button\" class=\"soft\" onclick=\"runService(" + arg(sv.id) + ")\">Run</button></div>";
+    }).join("");
   }catch(e){}
 }
 async function createService(){
   try{
     var r = await post("/api/services", {name: D("svcName").value});
     msg("svcMsg", r.message || "created", "good");
+    D("svcName").value = "";
     refreshServices();
   }catch(e){ msg("svcMsg", e.message, "err"); }
 }
 async function runService(id){
   try{
     var r = await post("/api/services/" + encodeURIComponent(id) + "/run");
-    msg("svcMsg", r.message || "running", "good");
+    msg("svcMsg", r.message || "ran", "good");
   }catch(e){ msg("svcMsg", e.message, "err"); }
 }
-async function toggleService(id, enabled){
-  try{
-    var r = await post("/api/services/" + encodeURIComponent(id) + "/toggle", {enabled: enabled});
-    msg("svcMsg", r.message || "ok", "good");
-    refreshServices();
-  }catch(e){ msg("svcMsg", e.message, "err"); }
-}
-async function deleteService(id){
-  if(!confirm("Delete service?")) return;
-  try{
-    var r = await post("/api/services/" + encodeURIComponent(id) + "/delete");
-    msg("svcMsg", r.message || "deleted", "good");
-    refreshServices();
-  }catch(e){ msg("svcMsg", e.message, "err"); }
-}
-
 async function refreshStore(){
   try{
     var s = await api("/api/store");
@@ -558,7 +687,7 @@ async function refreshStore(){
       return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
         esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
         "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(" + arg(d.domain) + ")\">Clear</button></td></tr>";
-    }).join("") || "<tr><td colspan=\"5\" style=\"color:var(--muted)\">empty</td></tr>";
+    }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
   }catch(e){}
 }
 async function setLimit(){
@@ -574,7 +703,8 @@ async function saveKey(){
   }catch(e){ msg("storeMsg", e.message, "err"); }
 }
 async function clearDomain(d){
-  if(!confirm("Clear " + d + "?")) return;
+  var ok = await confirmModal("Clear domain", "Clear all keys in " + d + "?");
+  if(!ok) return;
   try{
     var r = await post("/api/store/clear", {domain: d});
     msg("storeMsg", r.message, "good"); refreshStore();
@@ -586,18 +716,35 @@ async function refreshVars(){
     var keys = Object.keys(s.vars || {});
     D("varRows").innerHTML = keys.map(function(k){
       return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
-    }).join("") || "<tr><td colspan=\"2\" style=\"color:var(--muted)\">none</td></tr>";
+    }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
   }catch(e){}
+}
+function copyVars(){
+  var rows = D("varRows").innerText || "";
+  if(navigator.clipboard) navigator.clipboard.writeText(rows).then(function(){ toast("vars copied", "good"); });
 }
 async function refreshConsole(){
   try{
     var s = await api("/api/logs");
-    D("console").textContent = (s.lines || []).join("\n") || "(no lines)";
+    var pre = D("console");
+    var atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+    pre.textContent = (s.lines || []).join("\\n") || "(no lines)";
+    if(atBottom) pre.scrollTop = pre.scrollHeight;
   }catch(e){}
+}
+function copyConsole(){
+  var t = D("console").textContent || "";
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast("console copied", "good"); });
 }
 function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
+  loadAutoDomain(); refreshDomainDatalist();
 }
+var inv = D("inv");
+if(inv) inv.addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
+});
+document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
 setInterval(function(){
   if(RELOADING) return;
   if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
@@ -675,7 +822,6 @@ button{padding:10px 16px;border-radius:10px;border:0;background:var(--accent);co
         msg.textContent = (x.j && x.j.error) || "wrong password";
         return;
       }
-      // Session cookie set by server — reload SAME path to receive dashboard HTML
       location.reload();
     }).catch(function(e){
       msg.textContent = String(e.message || e);
@@ -691,5 +837,5 @@ button{padding:10px 16px;border-radius:10px;border:0;background:var(--accent);co
 
     private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
     private const val SCREENSHOT_BUTTON =
-        """<button type="button" class="ghost" onclick="loadShot()">Screenshot</button>"""
+        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
 }
