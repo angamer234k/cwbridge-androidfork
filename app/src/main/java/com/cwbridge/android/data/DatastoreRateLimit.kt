@@ -7,12 +7,12 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Daily caps on datastore save/load actions.
+ * Daily request budget per domain (default 250). Weighted costs; editable via web/admin.
  * Exceeding → callers should surface "RATELIMIT".
  */
 object DatastoreRateLimit {
-    const val DEFAULT_GLOBAL_PER_DAY = 500
-    const val DEFAULT_DOMAIN_PER_DAY = 200
+    const val DEFAULT_GLOBAL_PER_DAY = 0 // 0 = unlimited global; domain budget is the real cap
+    const val DEFAULT_DOMAIN_PER_DAY = 250
 
     private fun dayKey(): String {
         val fmt = SimpleDateFormat("yyyyMMdd", Locale.US)
@@ -55,7 +55,14 @@ object DatastoreRateLimit {
      * @return null if allowed (and count incremented); "RATELIMIT" message if blocked.
      * limit 0 = unlimited for that scope.
      */
-    fun checkAndConsume(ctx: Context, domain: String): String? {
+    /**
+     * @param cost request weight (weather=2, save/load/keys=1, exists/alive=0).
+     * @return null if allowed; "RATELIMIT" if blocked.
+     * Domain budget only (default 250/day). Global limit optional (0 = off).
+     * limit 0 = unlimited for that scope. Editable via web + admin setlimit type 0.
+     */
+    fun checkAndConsume(ctx: Context, domain: String, cost: Int = 1): String? {
+        if (cost <= 0) return null
         UserFileStore.init(ctx)
         val day = dayKey()
         val gLim = globalLimit(ctx)
@@ -68,15 +75,15 @@ object DatastoreRateLimit {
         val gUsed = UserFileStore.getSetting(ctx, gKey, "0")?.toIntOrNull() ?: 0
         val dUsed = UserFileStore.getSetting(ctx, dKey, "0")?.toIntOrNull() ?: 0
 
-        if (gLim > 0 && gUsed >= gLim) {
+        if (gLim > 0 && gUsed + cost > gLim) {
             return "RATELIMIT global $gUsed/$gLim per day"
         }
-        if (dLim > 0 && dUsed >= dLim) {
+        if (dLim > 0 && dUsed + cost > dLim) {
             return "RATELIMIT domain $dNorm $dUsed/$dLim per day"
         }
 
-        UserFileStore.putSetting(ctx, gKey, (gUsed + 1).toString())
-        UserFileStore.putSetting(ctx, dKey, (dUsed + 1).toString())
+        UserFileStore.putSetting(ctx, gKey, (gUsed + cost).toString())
+        UserFileStore.putSetting(ctx, dKey, (dUsed + cost).toString())
         return null
     }
 

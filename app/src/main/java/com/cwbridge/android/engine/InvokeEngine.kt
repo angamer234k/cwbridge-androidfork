@@ -15,6 +15,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import com.cwbridge.android.ShizukuShell
 
 /**
  * Watches log lines for `invoke|request[.data1[.data2]]` and dispatches handlers.
@@ -32,6 +37,8 @@ class InvokeEngine(
 ) {
 
     private val store = Store(context)
+    private val httpClient = OkHttpClient()
+
     private val running = AtomicBoolean(false)
     private var job: Job? = null
 
@@ -53,7 +60,7 @@ class InvokeEngine(
         LogBuffer.i("Invoke", "engine on — watching for invoke|")
         LogBuffer.i(
             "Invoke",
-            "cmds: save load storeinfo setlimit status tap tappx paste clip focus submit wait toast echo help",
+            "cmds: save load storeinfo setlimit weather exists alive keys status tap paste help",
         )
     }
 
@@ -180,6 +187,11 @@ class InvokeEngine(
                         replyErr("storeinfo", "need storeinfo.domain.rbx")
                         return
                     }
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 1)
+                if (rl != null) {
+                    replyErr("storeinfo", rl)
+                    return
+                }
                 val usedBytes = store.usageOf(domain)
                 val limBytes = store.limitOf(domain)
                 val keys = store.listKeys(domain).getOrElse { emptyList() }.size
@@ -244,6 +256,85 @@ class InvokeEngine(
                     }
                     else -> replyErr("setlimit", "type must be 0 or 1")
                 }
+            }
+
+
+            "weather" -> {
+                // weather.<lat>.<lon>  OR  weather.<City>
+                // costs 2 against default domain budget
+                val domain = Store.DEFAULT_DOMAIN
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 2)
+                if (rl != null) {
+                    replyErr("weather", rl)
+                    return
+                }
+                val q = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                if (q.isEmpty()) {
+                    replyErr("weather", "need weather.lat.lon or weather.City")
+                    return
+                }
+                try {
+                    val payload = withContext(Dispatchers.IO) {
+                        val (lat, lon) = resolveWeatherPoint(q)
+                        val url =
+                            "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                                "&current=temperature_2m,relative_humidity_2m,weather_code"
+                        val body = httpGet(url)
+                        val cur = JSONObject(body).getJSONObject("current")
+                        val temp = cur.getDouble("temperature_2m")
+                        val hum = cur.optInt("relative_humidity_2m", 0)
+                        val code = cur.optInt("weather_code", 0)
+                        "${temp.toInt()}.$hum.$code"
+                    }
+                    pasteIntoGame(payload)
+                    replyOk("weather", payload)
+                } catch (t: Throwable) {
+                    replyErr("weather", t.message ?: "fetch failed")
+                }
+            }
+
+            "exists" -> {
+                // exists.<key>.<domain.rbx> — free, paste 1 or 0
+                if (data1.isEmpty() || data2.isEmpty()) {
+                    replyErr("exists", "need exists.key.domain.rbx")
+                    return
+                }
+                val domain = data2.trim()
+                val ok = store.load(domain, data1).isSuccess
+                val payload = if (ok) "1" else "0"
+                pasteIntoGame(payload)
+                replyOk("exists", payload)
+            }
+
+            "alive" -> {
+                // free — paste 1 if TapService up, else 0
+                val a11y = TapService.isConnected() || TapService.instance != null
+                val payload = if (a11y) "1" else "0"
+                pasteIntoGame(payload)
+                replyOk("alive", payload)
+            }
+
+            "keys" -> {
+                // keys.<domain.rbx> — cost 1, paste "n.key1.key2..." or just count if empty
+                val domainRaw = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                val domain = Store.normalizeDomain(domainRaw)
+                    ?: run {
+                        replyErr("keys", "need keys.domain.rbx")
+                        return
+                    }
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 1)
+                if (rl != null) {
+                    replyErr("keys", rl)
+                    return
+                }
+                val list = store.listKeys(domain).getOrElse { emptyList() }
+                val payload = if (list.isEmpty()) {
+                    "0"
+                } else {
+                    list.size.toString() + "." + list.joinToString(".")
+                }
+                pasteIntoGame(payload)
+                replyOk("keys", payload.take(500))
             }
 
             "status" -> {
@@ -445,6 +536,34 @@ class InvokeEngine(
         val clip = cm.primaryClip ?: return null
         if (clip.itemCount < 1) return null
         return clip.getItemAt(0).coerceToText(context)?.toString()
+    }
+
+
+    private fun httpGet(url: String): String {
+        val req = Request.Builder().url(url).get().header("User-Agent", "CWBridge/1.0").build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) error("HTTP ${resp.code}")
+            return resp.body?.string() ?: error("empty body")
+        }
+    }
+
+    /** lat,lon from "48.8.2.3" / "48.8,2.3" or city name via Open-Meteo geocoding. */
+    private fun resolveWeatherPoint(q: String): Pair<Double, Double> {
+        val cleaned = q.trim().replace(",", ".")
+        val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(cleaned).map { it.value.toDouble() }.toList()
+        if (nums.size >= 2) {
+            return nums[0] to nums[1]
+        }
+        val geoUrl =
+            "https://geocoding-api.open-meteo.com/v1/search?name=" +
+                java.net.URLEncoder.encode(q, Charsets.UTF_8.name()) +
+                "&count=1&language=en&format=json"
+        val body = httpGet(geoUrl)
+        val results = JSONObject(body).optJSONArray("results")
+            ?: error("city not found: $q")
+        if (results.length() == 0) error("city not found: $q")
+        val first = results.getJSONObject(0)
+        return first.getDouble("latitude") to first.getDouble("longitude")
     }
 
     private fun replyOk(request: String, payload: String) {

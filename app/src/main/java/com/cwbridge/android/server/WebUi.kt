@@ -339,14 +339,14 @@ pre#console{
 
   <div class="card" id="sec-limits">
     <h2><span class="ms sm">speed</span> Limits</h2>
-    <p class="hint">Storage default applies to domains without a custom limit. Request caps count save/load actions (0 = unlimited).</p>
+    <p class="hint">Storage default applies to domains without a custom limit. Request budget per domain (default 250/day; weather costs 2). Editable here or admin setlimit type 0. 0 = unlimited.</p>
     <div class="row">
       <div class="field"><label class="hint">Global data default</label>
         <input id="limDefault" placeholder="1GB"></div>
       <div class="field"><label class="hint">Reqs / day (global)</label>
         <input id="limGlobalReq" type="number" min="0" placeholder="500"></div>
       <div class="field"><label class="hint">Reqs / day / domain</label>
-        <input id="limDomainReq" type="number" min="0" placeholder="200"></div>
+        <input id="limDomainReq" type="number" min="0" placeholder="250"></div>
       <button type="button" onclick="saveLimits()"><span class="ms sm">save</span> Save limits</button>
       <button type="button" class="ghost" onclick="loadLimits()"><span class="ms sm">refresh</span> Refresh</button>
     </div>
