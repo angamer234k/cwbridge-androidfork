@@ -8,6 +8,7 @@ import com.cwbridge.android.TapService
 import com.cwbridge.android.bridge.LogBuffer
 import com.cwbridge.android.data.DatastoreRateLimit
 import com.cwbridge.android.data.Store
+import com.cwbridge.android.data.UserFileStore
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +53,7 @@ class InvokeEngine(
         LogBuffer.i("Invoke", "engine on — watching for invoke|")
         LogBuffer.i(
             "Invoke",
-            "cmds: save load status tap tappx paste clip focus submit wait toast echo help",
+            "cmds: save load storeinfo setlimit status tap tappx paste clip focus submit wait toast echo help",
         )
     }
 
@@ -170,6 +171,81 @@ class InvokeEngine(
                 replyErr("savedomain", "use save.key.data + load.key.domain")
             }
 
+
+            "storeinfo" -> {
+                // storeinfo.<domain.rbx> → paste: 5.STORED_BITS.LIMIT_BITS.KEYS.REQ_USED.REQ_MAX.REQ_LEFT
+                val domainRaw = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                val domain = Store.normalizeDomain(domainRaw)
+                    ?: run {
+                        replyErr("storeinfo", "need storeinfo.domain.rbx")
+                        return
+                    }
+                val usedBytes = store.usageOf(domain)
+                val limBytes = store.limitOf(domain)
+                val keys = store.listKeys(domain).getOrElse { emptyList() }.size
+                val snap = DatastoreRateLimit.snapshot(context, domain)
+                val reqUsed = (snap["domainUsed"] as? Number)?.toInt() ?: 0
+                val reqMax = (snap["domainLimit"] as? Number)?.toInt()
+                    ?: DatastoreRateLimit.domainLimit(context, domain)
+                val reqLeft = if (reqMax <= 0) -1 else (reqMax - reqUsed).coerceAtLeast(0)
+                val storedBits = usedBytes * 8L
+                val limitBits = if (limBytes <= 0L) 0L else limBytes * 8L
+                val payload = "5.$storedBits.$limitBits.$keys.$reqUsed.$reqMax.$reqLeft"
+                pasteIntoGame(payload)
+                replyOk("storeinfo", payload)
+            }
+
+            "setlimit" -> {
+                // setlimit.<domain.rbx>.<type>.<value>
+                // type 0 = requests/day for domain, type 1 = data limit (bits)
+                val admin = UserFileStore.getSetting(context, "admin_domain", "")
+                    ?.trim()?.lowercase().orEmpty()
+                if (admin.isEmpty()) {
+                    replyErr("setlimit", "admin domain not configured")
+                    return
+                }
+                val full = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                val m = Regex("""^([a-z0-9_-]+\.rbx)\.([01])\.(.+)$""", RegexOption.IGNORE_CASE)
+                    .matchEntire(full.trim())
+                if (m == null) {
+                    replyErr("setlimit", "need setlimit.domain.rbx.type.value (type 0=reqs 1=data bits)")
+                    return
+                }
+                val target = Store.normalizeDomain(m.groupValues[1])
+                    ?: run {
+                        replyErr("setlimit", "bad domain")
+                        return
+                    }
+                val type = m.groupValues[2].toInt()
+                val valueRaw = m.groupValues[3].trim()
+                when (type) {
+                    0 -> {
+                        val n = valueRaw.toIntOrNull()
+                            ?: run {
+                                replyErr("setlimit", "type 0 value must be int reqs/day")
+                                return
+                            }
+                        DatastoreRateLimit.setDomainRequestLimit(context, target, n)
+                        replyOk("setlimit", "reqs $target = $n/day")
+                    }
+                    1 -> {
+                        val bits = valueRaw.toLongOrNull()
+                            ?: run {
+                                replyErr("setlimit", "type 1 value must be bits (integer)")
+                                return
+                            }
+                        val bytes = if (bits <= 0L) 0L else (bits / 8L)
+                        store.setLimit(target, bytes).fold(
+                            onSuccess = {
+                                replyOk("setlimit", "data $target = ${bits}b (${Store.formatBytes(bytes)})")
+                            },
+                            onFailure = { replyErr("setlimit", it.message ?: "fail") },
+                        )
+                    }
+                    else -> replyErr("setlimit", "type must be 0 or 1")
+                }
+            }
+
             "status" -> {
                 val snap = DeviceStatus.read(context)
                 replyOk("status", snap.toPayload())
@@ -285,9 +361,8 @@ class InvokeEngine(
             "help" -> {
                 replyOk(
                     "help",
-                    "save.key.data | load.key.domain | status | tap.x.y | tappx.x.y | " +
-                        "paste.text | clip.set.text | clip.get | focus.x.y | submit.x.y | " +
-                        "wait.ms | toast.msg | echo.msg | help",
+                    "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
+                        "status | tap.x.y | paste.text | clip | focus | submit | wait | toast | echo | help",
                 )
             }
 

@@ -301,6 +301,10 @@ class LocalHttpServer(
             path == "/api/rate-limits" && method == "GET" -> respond(out, 200, rateLimitsJson(query))
             path == "/api/rate-limits" && method == "POST" -> respond(out, 200, setRateLimitsJson(body))
 
+            path == "/api/admin-domain" && method == "GET" -> respond(out, 200, adminDomainJson())
+            path == "/api/admin-domain" && method == "POST" -> respond(out, 200, setAdminDomainJson(body))
+
+
             path.startsWith("/api/services/") -> {
                 val rest = path.removePrefix("/api/services/")
                 val id = urlDecode(rest.substringBefore('/'))
@@ -634,6 +638,24 @@ class LocalHttpServer(
         )
     }
 
+
+
+    private fun adminDomainJson(): String {
+        val d = com.cwbridge.android.data.UserFileStore.getSetting(context, "admin_domain", "") ?: ""
+        return json(mapOf("adminDomain" to d))
+    }
+
+    private fun setAdminDomainJson(body: String): String {
+        val raw = jsonString(body, "adminDomain").ifBlank { jsonString(body, "domain") }.trim().lowercase()
+        if (raw.isBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "admin_domain", "")
+            return json(mapOf("ok" to true, "adminDomain" to "", "message" to "cleared"))
+        }
+        val norm = Store.normalizeDomain(raw)
+            ?: return json(mapOf("error" to "bad domain — want name.rbx"))
+        com.cwbridge.android.data.UserFileStore.putSetting(context, "admin_domain", norm)
+        return json(mapOf("ok" to true, "adminDomain" to norm))
+    }
 
     private fun rateLimitsJson(query: Map<String, String>): String {
         val domain = query["domain"]

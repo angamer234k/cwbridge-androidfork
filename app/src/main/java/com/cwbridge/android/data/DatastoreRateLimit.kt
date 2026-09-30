@@ -28,6 +28,20 @@ object DatastoreRateLimit {
         UserFileStore.getSetting(ctx, "rate_limit_domain_day", DEFAULT_DOMAIN_PER_DAY.toString())
             ?.toIntOrNull()?.coerceAtLeast(0) ?: DEFAULT_DOMAIN_PER_DAY
 
+    /** Per-domain override; falls back to global domain default. 0 = unlimited. */
+    fun domainLimit(ctx: Context, domain: String): Int {
+        val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        val override = UserFileStore.getSetting(ctx, "rate_limit_for_$d", null)
+            ?.toIntOrNull()
+        if (override != null) return override.coerceAtLeast(0)
+        return domainLimit(ctx)
+    }
+
+    fun setDomainRequestLimit(ctx: Context, domain: String, perDay: Int) {
+        val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        UserFileStore.putSetting(ctx, "rate_limit_for_$d", perDay.coerceAtLeast(0).toString())
+    }
+
     fun setLimits(ctx: Context, globalPerDay: Int?, domainPerDay: Int?) {
         globalPerDay?.let {
             UserFileStore.putSetting(ctx, "rate_limit_global_day", it.coerceAtLeast(0).toString())
@@ -45,10 +59,10 @@ object DatastoreRateLimit {
         UserFileStore.init(ctx)
         val day = dayKey()
         val gLim = globalLimit(ctx)
-        val dLim = domainLimit(ctx)
+        val dNorm = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
+        val dLim = domainLimit(ctx, dNorm)
 
         val gKey = "rate_count_global_$day"
-        val dNorm = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
         val dKey = "rate_count_domain_${dNorm}_$day"
 
         val gUsed = UserFileStore.getSetting(ctx, gKey, "0")?.toIntOrNull() ?: 0
@@ -80,8 +94,11 @@ object DatastoreRateLimit {
         if (domain != null) {
             val d = Store.normalizeDomain(domain) ?: domain.lowercase().trim()
             val dUsed = UserFileStore.getSetting(ctx, "rate_count_domain_${d}_$day", "0")?.toIntOrNull() ?: 0
+            val dLimEff = domainLimit(ctx, d)
             out["domain"] = d
             out["domainUsed"] = dUsed
+            out["domainLimit"] = dLimEff
+            out["domainLeft"] = if (dLimEff <= 0) -1 else (dLimEff - dUsed).coerceAtLeast(0)
         }
         return out
     }

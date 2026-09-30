@@ -350,6 +350,12 @@ pre#console{
       <button type="button" onclick="saveLimits()"><span class="ms sm">save</span> Save limits</button>
       <button type="button" class="ghost" onclick="loadLimits()"><span class="ms sm">refresh</span> Refresh</button>
     </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label class="hint">Admin domain (can setlimit)</label>
+        <input id="limAdminDomain" placeholder="admin.rbx"></div>
+      <button type="button" class="ghost" onclick="saveAdminDomain()"><span class="ms sm">shield</span> Save admin</button>
+    </div>
+    <p class="hint">Game: invoke|storeinfo.domain.rbx → pastes 5.bits.limitBits.keys.used.max.left · invoke|setlimit.domain.rbx.type.value (0=reqs/day 1=data bits)</p>
     <div id="limitsMeta" class="hint" style="margin-top:8px"></div>
     <div id="limitsMsg" class="msg"></div>
   </div>
@@ -593,6 +599,25 @@ async function loadShot(){
       "<span class=\"ms sm\">download</span> Download</a></div>";
     msg("ctlMsg", "screenshot ok", "good");
   }catch(e){ msg("ctlMsg", e.message, "err"); }
+}
+
+
+async function loadAdminDomain(){
+  try{
+    const j=await api('/api/admin-domain');
+    const el=document.getElementById('limAdminDomain');
+    if(el) el.value=j.adminDomain||'';
+  }catch(e){}
+}
+async function saveAdminDomain(){
+  const el=document.getElementById('limAdminDomain');
+  const v=(el&&el.value||'').trim();
+  try{
+    const j=await post('/api/admin-domain',{adminDomain:v});
+    if(j.error){ toast(j.error,false); return; }
+    toast(j.message||('Admin: '+(j.adminDomain||'off')),true);
+    loadAdminDomain();
+  }catch(e){ toast(e.message||String(e),false); }
 }
 
 async function loadLimits(){
