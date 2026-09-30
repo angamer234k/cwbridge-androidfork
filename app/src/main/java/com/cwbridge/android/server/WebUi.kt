@@ -337,6 +337,33 @@ pre#console{
     <div id="svcMsg" class="msg"></div>
   </div>
 
+  <div class="card" id="sec-ai">
+    <h2><span class="ms sm">smart_toy</span> AI (LLM)</h2>
+    <p class="hint">Used by invoke|ai.prompt — OpenAI-compatible. Token stays on device. Style: chat = /v1/chat/completions · responses = /v1/responses.</p>
+    <div class="row">
+      <div class="field" style="flex:2"><label class="hint">Base URL</label>
+        <input id="aiUrl" placeholder="https://api.openai.com"></div>
+      <div class="field"><label class="hint">Model</label>
+        <input id="aiModel" placeholder="gpt-4o-mini"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label class="hint">API style</label>
+        <select id="aiStyle">
+          <option value="chat">chat (v1 completions)</option>
+          <option value="responses">responses (v2)</option>
+        </select></div>
+      <div class="field" style="flex:2"><label class="hint">API token</label>
+        <input id="aiToken" type="password" placeholder="sk-… (leave blank to keep)" autocomplete="off"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" onclick="saveAiConfig()"><span class="ms sm">save</span> Save AI</button>
+      <button type="button" class="ghost" onclick="loadAiConfig()"><span class="ms sm">refresh</span> Reload</button>
+      <button type="button" class="ghost" onclick="clearAiToken()">Clear token</button>
+    </div>
+    <div id="aiMeta" class="hint" style="margin-top:8px"></div>
+    <div id="aiMsg" class="msg"></div>
+  </div>
+
   <div class="card" id="sec-limits">
     <h2><span class="ms sm">speed</span> Limits</h2>
     <p class="hint">Storage default applies to domains without a custom limit. Request budget per domain (default 250/day; weather costs 2). Editable here or admin setlimit type 0. 0 = unlimited.</p>
@@ -618,6 +645,45 @@ async function saveAdminDomain(){
     toast(j.message||('Admin: '+(j.adminDomain||'off')),true);
     loadAdminDomain();
   }catch(e){ toast(e.message||String(e),false); }
+}
+
+
+async function loadAiConfig(){
+  try{
+    const j=await api('/api/ai-config');
+    const u=document.getElementById('aiUrl');
+    const m=document.getElementById('aiModel');
+    const s=document.getElementById('aiStyle');
+    const meta=document.getElementById('aiMeta');
+    if(u) u.value=j.url||'';
+    if(m) m.value=j.model||'';
+    if(s) s.value=(j.style==='responses'?'responses':'chat');
+    if(meta) meta.textContent=j.tokenSet?('Token: '+(j.tokenMasked||'set')):'Token: not set';
+  }catch(e){}
+}
+async function saveAiConfig(){
+  const body={
+    url:(document.getElementById('aiUrl')&&document.getElementById('aiUrl').value||'').trim(),
+    model:(document.getElementById('aiModel')&&document.getElementById('aiModel').value||'').trim(),
+    style:(document.getElementById('aiStyle')&&document.getElementById('aiStyle').value)||'chat'
+  };
+  const tok=document.getElementById('aiToken');
+  if(tok&&tok.value) body.token=tok.value;
+  try{
+    const j=await post('/api/ai-config', body);
+    if(j.error){ msg('aiMsg', j.error, 'err'); toast(j.error,false); return; }
+    if(tok) tok.value='';
+    msg('aiMsg', 'AI settings saved', 'good');
+    toast('AI settings saved', true);
+    loadAiConfig();
+  }catch(e){ msg('aiMsg', e.message||String(e), 'err'); }
+}
+async function clearAiToken(){
+  try{
+    await post('/api/ai-config', {clearToken:true});
+    toast('Token cleared', true);
+    loadAiConfig();
+  }catch(e){ toast(e.message||String(e), false); }
 }
 
 async function loadLimits(){

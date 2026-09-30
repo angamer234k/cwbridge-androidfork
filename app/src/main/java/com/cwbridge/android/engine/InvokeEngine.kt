@@ -458,16 +458,44 @@ class InvokeEngine(
             }
 
             "ai" -> {
-                // Prompt is data1 + data2 (joined). No cloud key in-app yet — stash to clipboard
-                // and run paste sequence so game can receive / user can wire genai later.
+                // ai.<prompt> — uses web AI settings; pastes model text; costs 2
                 val prompt = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
                 if (prompt.isEmpty()) {
                     replyErr("ai", "need ai.prompt")
                     return
                 }
-                LogBuffer.w("Invoke", "ai: no in-app LLM yet — clipboard+paste prompt as passthrough")
-                runPasteSequence(prompt)
-                replyOk("ai", "passthrough ${prompt.length} chars (add genai key later)")
+                val domain = Store.DEFAULT_DOMAIN
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 2)
+                if (rl != null) {
+                    replyErr("ai", rl)
+                    return
+                }
+                val url = UserFileStore.getSetting(context, "ai_url", "")?.trim().orEmpty()
+                val token = UserFileStore.getSetting(context, "ai_token", "")?.trim().orEmpty()
+                val model = UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini")?.trim().orEmpty()
+                    .ifBlank { "gpt-4o-mini" }
+                val style = UserFileStore.getSetting(context, "ai_style", "chat")?.trim()?.lowercase().orEmpty()
+                if (url.isEmpty()) {
+                    replyErr("ai", "configure AI URL in web panel")
+                    return
+                }
+                if (token.isEmpty()) {
+                    replyErr("ai", "configure AI token in web panel")
+                    return
+                }
+                try {
+                    val text = withContext(Dispatchers.IO) {
+                        callLlm(baseUrl = url, token = token, model = model, style = style, prompt = prompt)
+                    }
+                    if (text.isBlank()) {
+                        replyErr("ai", "empty model reply")
+                        return
+                    }
+                    pasteIntoGame(text)
+                    replyOk("ai", text.take(500))
+                } catch (t: Throwable) {
+                    replyErr("ai", t.message ?: "llm failed")
+                }
             }
 
             else -> replyErr(request, "unknown request — invoke|help")
@@ -565,6 +593,94 @@ class InvokeEngine(
         val first = results.getJSONObject(0)
         return first.getDouble("latitude") to first.getDouble("longitude")
     }
+
+
+    /**
+     * OpenAI-compatible call.
+     * style "chat" → POST {base}/v1/chat/completions
+     * style "responses" → POST {base}/v1/responses
+     */
+    private fun callLlm(
+        baseUrl: String,
+        token: String,
+        model: String,
+        style: String,
+        prompt: String,
+    ): String {
+        val root = baseUrl.trim().trimEnd('/')
+        val useResponses = style == "responses" || style == "v2" || style == "response"
+        val endpoint = when {
+            useResponses && root.endsWith("/v1/responses") -> root
+            useResponses && root.endsWith("/v1") -> "$root/responses"
+            useResponses -> "$root/v1/responses"
+            root.endsWith("/v1/chat/completions") -> root
+            root.endsWith("/v1") -> "$root/chat/completions"
+            else -> "$root/v1/chat/completions"
+        }
+        val jsonBody = if (useResponses) {
+            JSONObject()
+                .put("model", model)
+                .put("input", prompt)
+                .toString()
+        } else {
+            val messages = JSONArray().put(
+                JSONObject().put("role", "user").put("content", prompt),
+            )
+            JSONObject()
+                .put("model", model)
+                .put("messages", messages)
+                .toString()
+        }
+        val media = "application/json; charset=utf-8".toMediaType()
+        val req = Request.Builder()
+            .url(endpoint)
+            .header("Authorization", "Bearer $token")
+            .header("Content-Type", "application/json")
+            .post(jsonBody.toRequestBody(media))
+            .build()
+        httpClient.newCall(req).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                val brief = body.take(180).replace('\n', ' ')
+                error("HTTP ${resp.code}: $brief")
+            }
+            val obj = JSONObject(body)
+            return if (useResponses) {
+                extractResponsesText(obj)
+            } else {
+                obj.getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                    .trim()
+            }
+        }
+    }
+
+    private fun extractResponsesText(obj: JSONObject): String {
+        if (obj.has("output_text")) {
+            val ot = obj.optString("output_text", "")
+            if (ot.isNotBlank()) return ot.trim()
+        }
+        val output = obj.optJSONArray("output") ?: return obj.toString().take(500)
+        val sb = StringBuilder()
+        for (i in 0 until output.length()) {
+            val item = output.optJSONObject(i) ?: continue
+            val content = item.optJSONArray("content") ?: continue
+            for (j in 0 until content.length()) {
+                val part = content.optJSONObject(j) ?: continue
+                val text = part.optString("text", "")
+                if (text.isNotBlank()) {
+                    if (sb.isNotEmpty()) sb.append('\n')
+                    sb.append(text)
+                }
+            }
+        }
+        val out = sb.toString().trim()
+        if (out.isNotEmpty()) return out
+        error("no text in responses payload")
+    }
+
 
     private fun replyOk(request: String, payload: String) {
         // Tagged so Roblox/MacroDroid can filter; also human-readable in the in-app log.

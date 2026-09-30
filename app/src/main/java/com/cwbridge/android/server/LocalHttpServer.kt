@@ -304,6 +304,10 @@ class LocalHttpServer(
             path == "/api/admin-domain" && method == "GET" -> respond(out, 200, adminDomainJson())
             path == "/api/admin-domain" && method == "POST" -> respond(out, 200, setAdminDomainJson(body))
 
+            path == "/api/ai-config" && method == "GET" -> respond(out, 200, aiConfigJson())
+            path == "/api/ai-config" && method == "POST" -> respond(out, 200, setAiConfigJson(body))
+
+
 
             path.startsWith("/api/services/") -> {
                 val rest = path.removePrefix("/api/services/")
@@ -638,6 +642,58 @@ class LocalHttpServer(
         )
     }
 
+
+
+
+    private fun aiConfigJson(): String {
+        val url = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_url", "") ?: ""
+        val model = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini") ?: "gpt-4o-mini"
+        val style = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_style", "chat") ?: "chat"
+        val tok = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "") ?: ""
+        val masked = when {
+            tok.isEmpty() -> ""
+            tok.length <= 8 -> "••••"
+            else -> tok.take(4) + "…" + tok.takeLast(4)
+        }
+        return json(
+            mapOf(
+                "url" to url,
+                "model" to model,
+                "style" to style,
+                "tokenSet" to tok.isNotEmpty(),
+                "tokenMasked" to masked,
+            ),
+        )
+    }
+
+    private fun setAiConfigJson(body: String): String {
+        val url = jsonString(body, "url").trim()
+        val model = jsonString(body, "model").trim()
+        val styleRaw = jsonString(body, "style").trim().lowercase()
+        val token = jsonString(body, "token")
+        val clearToken = bodyField(body, "clearToken")?.asBoolean == true
+
+        if (url.isNotBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_url", url.trimEnd('/'))
+        }
+        if (model.isNotBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_model", model)
+        }
+        if (styleRaw.isNotBlank()) {
+            val style = when (styleRaw) {
+                "responses", "v2", "response" -> "responses"
+                else -> "chat"
+            }
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_style", style)
+        }
+        if (clearToken) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_token", "")
+        } else if (token.isNotBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_token", token.trim())
+        }
+        LogBuffer.i("Server", "ai-config updated style=${com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_style", "chat")}")
+        return aiConfigJson()
+    }
 
 
     private fun adminDomainJson(): String {
