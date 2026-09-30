@@ -166,14 +166,12 @@ class UpdateChecker(
             append("Version ").append(versionName).append(" is available.\n")
             if (notes.isNotBlank()) append("\n").append(notes)
         }
-        onMain {
-            android.app.AlertDialog.Builder(context)
-                .setTitle("Update available")
-                .setMessage(message)
-                .setPositiveButton("Download") { _, _ -> requestDownloadPermission(apkAsset) }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
+        showSafeDialog(
+            title = "Update available",
+            message = message,
+            positive = "Download",
+            onPositive = { requestDownloadPermission(apkAsset) },
+        )
     }
 
     /** Run [block] on the main thread; safe to call from a background coroutine. */
@@ -183,18 +181,69 @@ class UpdateChecker(
         else handler.post(block)
     }
 
+    /** Prefer Activity for dialogs — applicationContext has no window token. */
+    private fun dialogUi(): android.content.Context {
+        val act = context as? android.app.Activity
+        if (act != null && !act.isFinishing) return act
+        var c: android.content.Context? = context
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity && !c.isFinishing) return c
+            c = c.baseContext
+        }
+        return context
+    }
+
+    private fun showSafeDialog(
+        title: String,
+        message: String,
+        positive: String? = null,
+        onPositive: (() -> Unit)? = null,
+    ) {
+        onMain {
+            try {
+                val ui = dialogUi()
+                if (ui !is android.app.Activity) {
+                    android.widget.Toast.makeText(
+                        context,
+                        ("$title: $message").take(180),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                    onPositive?.invoke()
+                    return@onMain
+                }
+                val b = android.app.AlertDialog.Builder(ui)
+                    .setTitle(title)
+                    .setMessage(message)
+                if (positive != null && onPositive != null) {
+                    b.setPositiveButton(positive) { _, _ -> onPositive.invoke() }
+                    b.setNegativeButton("Cancel", null)
+                } else {
+                    b.setPositiveButton("OK", null)
+                }
+                b.show()
+            } catch (t: Throwable) {
+                LogBuffer.e("UpdateChecker", "dialog failed: ${t.message}")
+                try {
+                    android.widget.Toast.makeText(
+                        context,
+                        ("$title — ${t.message}").take(160),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                } catch (_: Throwable) { }
+            }
+        }
+    }
+
     /**
      * Request explicit permission before downloading
      */
     private fun requestDownloadPermission(apkAsset: GitHubAsset) {
-        android.app.AlertDialog.Builder(context)
-            .setTitle("Download Update")
-            .setMessage("Download ${apkAsset.name}? This will use your mobile data.")
-            .setPositiveButton("Confirm Download") { _, _ ->
-                downloadAndInstall(apkAsset)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        showSafeDialog(
+            title = "Download Update",
+            message = "Download ${apkAsset.name}? This will use your mobile data.",
+            positive = "Confirm Download",
+            onPositive = { downloadAndInstall(apkAsset) },
+        )
     }
 
     /**
@@ -227,16 +276,11 @@ class UpdateChecker(
 
             LogBuffer.i("UpdateChecker", "Download started: ${apkAsset.name} (ID: $downloadId)")
 
-            onMain {
-                android.app.AlertDialog.Builder(context)
-                    .setTitle("Download started")
-                    .setMessage(
-                        "The update will appear in your notifications.\n" +
-                            "Tap it to install once the download finishes.",
-                    )
-                    .setPositiveButton("OK", null)
-                    .show()
-            }
+            showSafeDialog(
+                title = "Download started",
+                message = "The update will appear in your notifications.\n" +
+                    "Tap it to install once the download finishes.",
+            )
         } catch (t: Throwable) {
             val reason = t.message ?: t::class.java.simpleName
             LogBuffer.e("UpdateChecker", "Download failed: $reason")

@@ -759,7 +759,7 @@ class MainActivity : AppCompatActivity() {
         binding.logcatState.text = if (logcatReader.hasPermission()) "logcat OK" else "logcat needs grant"
         binding.statusDetail.text =
             if (bridgeRunning) "Watching invoke| in logcat" else "Idle — start after enabling Tap"
-        binding.versionText.text = "Version ${UpdateChecker(applicationContext).getCurrentVersion()}"
+        binding.versionText.text = "Version ${UpdateChecker(this@MainActivity).getCurrentVersion()}"
         refreshServerUi()
         when {
             !bridgeRunning -> BridgeStatus.set(OverlayState.IDLE, "Bridge off")
@@ -1064,7 +1064,7 @@ class MainActivity : AppCompatActivity() {
         val button = binding.btnCheckUpdate
         button.isEnabled = false
         button.text = "Checking…"
-        val checker = UpdateChecker(applicationContext)
+        val checker = UpdateChecker(this@MainActivity)
         lifecycleScope.launch {
             val result = checker.check()
             when (result) {
