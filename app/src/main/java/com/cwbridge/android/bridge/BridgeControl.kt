@@ -168,50 +168,74 @@ object BridgeControl {
     }
 
     private fun screencapPngBytes(context: Context): ByteArray? {
-        val attempts = listOf(
-            "screencap -p 2>/dev/null | base64",
-            "screencap -p /data/local/tmp/cwbridge_cap.png && base64 /data/local/tmp/cwbridge_cap.png && rm -f /data/local/tmp/cwbridge_cap.png",
-            "screencap -p /sdcard/cwbridge_cap.png && base64 /sdcard/cwbridge_cap.png && rm -f /sdcard/cwbridge_cap.png",
+        // Prefer write to tmp + copy into app-readable path (full binary, no 2KB truncate).
+        val dir = context.getExternalFilesDir(null) ?: context.cacheDir
+        val dest = File(dir, "cw_screencap_web.png")
+        try {
+            if (dest.exists()) dest.delete()
+        } catch (_: Throwable) {
+        }
+        val destPath = dest.absolutePath
+        val tmp = "/data/local/tmp/cwbridge_cap.png"
+
+        // Shell writes PNG, copies into our externalFilesDir, chmod so app can read.
+        val copyCmds = listOf(
+            "screencap -p $tmp && cp -f $tmp \"$destPath\" && chmod 644 \"$destPath\" && rm -f $tmp",
+            "screencap -p /sdcard/cwbridge_cap.png && cp -f /sdcard/cwbridge_cap.png \"$destPath\" && chmod 644 \"$destPath\"",
+            "screencap -p \"$destPath\" && chmod 644 \"$destPath\"",
         )
-        for (cmd in attempts) {
+        for (cmd in copyCmds) {
             try {
-                val (code, out) = ShizukuShell.exec(cmd)
-                LogBuffer.i("Control", "screencap try exit=$code outLen=${out.length} cmd=${cmd.take(40)}")
-                if (code != 0 || out.isBlank()) continue
+                val (code, out) = ShizukuShell.exec(cmd, maxOut = 4000)
+                LogBuffer.i(
+                    "Control",
+                    "screencap file exit=$code exists=${dest.exists()} size=${dest.length()} ${out.take(80)}",
+                )
+                if (code == 0 && dest.exists() && dest.length() > 1000L) {
+                    val bytes = dest.readBytes()
+                    if (isPng(bytes)) {
+                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via file")
+                        return bytes
+                    }
+                    if (bytes.size > 5000) {
+                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes file (no magic)")
+                        return bytes
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "screencap file: ${t.message}")
+            }
+        }
+
+        // Fallback: base64 over stdout — needs large maxOut (old default was 2000 = thin strip)
+        val b64Cmds = listOf(
+            "screencap -p $tmp && base64 $tmp && rm -f $tmp",
+            "screencap -p 2>/dev/null | base64",
+        )
+        for (cmd in b64Cmds) {
+            try {
+                val (code, out) = ShizukuShell.exec(cmd, maxOut = 0) // 0 = no truncate
+                LogBuffer.i("Control", "screencap b64 exit=$code outLen=${out.length}")
+                if (code != 0 || out.length < 500) continue
                 val cleaned = out.replace("\n", "").replace("\r", "").replace(" ", "")
                 val filtered = cleaned.filter {
                     it.isLetterOrDigit() || it == '+' || it == '/' || it == '='
                 }
-                if (filtered.length < 200) continue
+                if (filtered.length < 500) continue
                 val bytes = Base64.decode(filtered, Base64.DEFAULT)
-                if (bytes.size > 100 && isPng(bytes)) {
-                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via shell")
+                if (bytes.size > 1000 && isPng(bytes)) {
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via b64")
                     return bytes
                 }
-                if (bytes.size > 500) {
-                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes (no png magic)")
+                if (bytes.size > 5000) {
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes b64 (no magic)")
                     return bytes
                 }
             } catch (t: Throwable) {
-                LogBuffer.w("Control", "screencap attempt: ${t.message}")
+                LogBuffer.w("Control", "screencap b64: ${t.message}")
             }
         }
-        return try {
-            val dir = context.getExternalFilesDir(null) ?: context.cacheDir
-            val file = File(dir, "cw_screencap_web.png")
-            if (file.exists()) file.delete()
-            val path = file.absolutePath
-            val (code, out) = ShizukuShell.exec("screencap -p \"$path\" && chmod 644 \"$path\"")
-            LogBuffer.i(
-                "Control",
-                "screencap appdir exit=$code exists=${file.exists()} size=${file.length()} ${out.take(60)}",
-            )
-            if (code != 0 || !file.exists() || file.length() < 100L) null
-            else file.readBytes()
-        } catch (t: Throwable) {
-            LogBuffer.w("Control", "screencap appdir: ${t.message}")
-            null
-        }
+        return null
     }
 
     private fun isPng(bytes: ByteArray): Boolean {

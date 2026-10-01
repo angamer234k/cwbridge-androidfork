@@ -80,7 +80,7 @@ object ShizukuShell {
         }
     }
 
-    fun exec(command: String): Pair<Int, String> {
+    fun exec(command: String, maxOut: Int = 2000): Pair<Int, String> {
         ensureListeners()
         if (!isReady()) {
             return -1 to "Shizuku not ready (${statusLine()})"
@@ -117,15 +117,15 @@ object ShizukuShell {
                 -1
             }
             try {
-                readerThread.join(2000)
-                errThread.join(500)
+                readerThread.join(if (maxOut <= 0 || maxOut > 50_000) 30_000L else 2000L)
+                errThread.join(if (maxOut <= 0 || maxOut > 50_000) 5_000L else 500L)
             } catch (_: Throwable) {
             }
             try {
                 process.destroy()
             } catch (_: Throwable) {
             }
-            code to out.toString().trim().take(2000)
+            code to out.toString().trim().let { if (maxOut <= 0) it else it.take(maxOut) }
         } catch (t: Throwable) {
             -1 to "exec failed: ${t.javaClass.simpleName}: ${t.message}"
         }
