@@ -11,20 +11,15 @@ import kotlinx.coroutines.launch
 
 /**
  * Keep-alive while the bridge is running.
- *
- * Periodic taps every [KEEP_ALIVE_INTERVAL_MS] (not "idle after 5min"),
- * because CatWeb/FLog lines used to reset the idle clock and taps never fired.
- * Tap is mid-right (avoids status bar / gesture edge). Shizuku fallback if a11y down.
+ * Periodic taps at fixed 500px, 2px (top edge — outside CatWeb input/keyboard zone).
  */
 object AntiDisconnect {
-    /** How often to poke the screen while bridge is on. */
     private const val KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000L
     private const val TICK_MS = 15_000L
     private const val GRACE_MS = 25_000L
     private const val MIN_TAP_INTERVAL_MS = 90_000L
-    /** Right side, upper-mid — away from top chrome (~5%) and bottom gesture bar. */
-    private const val KEEP_ALIVE_X = 88f
-    private const val KEEP_ALIVE_Y = 40f
+    private const val KEEP_ALIVE_X_PX = 500f
+    private const val KEEP_ALIVE_Y_PX = 2f
 
     @Volatile private var startedAtMs: Long = 0L
     @Volatile private var enabled: Boolean = false
@@ -32,7 +27,7 @@ object AntiDisconnect {
     private var job: Job? = null
 
     fun noteActivity() {
-        // Kept for callers; no longer gates keep-alive (periodic only).
+        // Kept for callers; keep-alive is periodic only.
     }
 
     fun onLogLine(raw: String) {
@@ -48,19 +43,20 @@ object AntiDisconnect {
                 lower.contains("invoke|")
         if (!isConsole) return
 
-        if (lower.contains("disconnect") || lower.contains("disconnected") ||
+        if (
+            lower.contains("disconnect") || lower.contains("disconnected") ||
             lower.contains("connection lost")
         ) {
-            LogBuffer.w("AntiDC", "disconnect signal — soft recover (no spam tap)")
+            LogBuffer.w("AntiDC", "disconnect signal - soft recover (no spam tap)")
             noteActivity()
             CatWebTracker.armForNextReady()
             val hasReconnect = lower.contains("reconnect")
             if (!hasReconnect) {
                 val n = BridgeControl.bumpDisconnectFailsafe()
-                LogBuffer.w("AntiDC", "dead disconnect hint — failsafe=$n")
+                LogBuffer.w("AntiDC", "dead disconnect hint - failsafe=$n")
             }
             if (BridgeStatus.state != OverlayState.ERROR) {
-                BridgeStatus.set(OverlayState.WAITING, "Reconnecting\u2026")
+                BridgeStatus.set(OverlayState.WAITING, "Reconnecting...")
             }
         }
     }
@@ -74,7 +70,7 @@ object AntiDisconnect {
             LogBuffer.i(
                 "AntiDC",
                 "periodic keep-alive every ${KEEP_ALIVE_INTERVAL_MS / 1000}s " +
-                    "\u2192 tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% " +
+                    "-> tap ${KEEP_ALIVE_X_PX.toInt()}px,${KEEP_ALIVE_Y_PX.toInt()}px " +
                     "(grace ${GRACE_MS / 1000}s)",
             )
             while (isActive && enabled) {
@@ -104,30 +100,21 @@ object AntiDisconnect {
         }
         lastTapTime = now
 
+        val x = KEEP_ALIVE_X_PX
+        val y = KEEP_ALIVE_Y_PX
         val svc = TapService.instance
         if (svc != null) {
-            val ok = svc.clickAtPercent(KEEP_ALIVE_X, KEEP_ALIVE_Y)
-            LogBuffer.i(
-                "AntiDC",
-                "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) a11y ok=$ok",
-            )
+            val ok = svc.clickAt(x, y)
+            LogBuffer.i("AntiDC", "tap ${x.toInt()}px,${y.toInt()}px ($reason) a11y ok=$ok")
             return
         }
         if (ShizukuShell.isReady()) {
-            val (_, sizeOut) = ShizukuShell.exec("wm size")
-            var w = 1080
-            var h = 2400
-            val m = Regex("""(\d+)x(\d+)""").find(sizeOut)
-            if (m != null) {
-                w = m.groupValues[1].toIntOrNull() ?: w
-                h = m.groupValues[2].toIntOrNull() ?: h
-            }
-            val x = (w * KEEP_ALIVE_X / 100f).toInt()
-            val y = (h * KEEP_ALIVE_Y / 100f).toInt()
-            val (code, r) = ShizukuShell.exec("input tap $x $y")
-            LogBuffer.i("AntiDC", "tap ${KEEP_ALIVE_X.toInt()}%,${KEEP_ALIVE_Y.toInt()}% ($reason) shizuku $x,$y code=$code $r")
+            val xi = x.toInt()
+            val yi = y.toInt()
+            val (code, r) = ShizukuShell.exec("input tap $xi $yi")
+            LogBuffer.i("AntiDC", "tap ${xi}px,${yi}px ($reason) shizuku code=$code $r")
             return
         }
-        LogBuffer.w("AntiDC", "no accessibility/Shizuku — cannot tap ($reason)")
+        LogBuffer.w("AntiDC", "no accessibility/Shizuku - cannot tap ($reason)")
     }
 }
