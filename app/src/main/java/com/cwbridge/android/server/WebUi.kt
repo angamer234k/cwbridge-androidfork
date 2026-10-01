@@ -208,7 +208,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
       <button type="button" id="btnRestartRoblox" onclick="ctlBusy(this,'restart-roblox')"><span class="ms sm">sports_esports</span> Restart Roblox</button>
       <button type="button" onclick="toggleBridge()"><span class="ms sm">power_settings_new</span> Toggle bridge</button>
       <!--SCREENSHOT_BUTTON-->
-      <button type="button" id="btnStream" onclick="toggleStream()"><span class="ms sm">live_tv</span> Start stream</button>
+      <button type="button" id="btnStream" onclick="msg('ctlMsg','stream coming next build','')"><span class="ms sm">live_tv</span> Start stream</button>
     </div>
     <div id="ctlMsg" class="msg"></div>
     <div id="shotBox"></div>
@@ -618,90 +618,27 @@ async function toggleBridge(){
   }catch(e){ msg("ctlMsg", e.message, "err"); }
 }
 
-var streamTimer=null;
-var streamOn=false;
-var pressStart=0;
-function toggleStream(){
-  if(streamOn){ stopStream(); }
-  else { startStream(); }
-}
-function startStream(){
-  streamOn=true;
-  document.body.classList.add('stream-on');
-  var b=document.getElementById('btnStream');
-  if(b) b.innerHTML='<span class="ms sm">stop_circle</span> Stop stream';
-  msg('ctlMsg','stream on - tap image to control','good');
-  refreshShot(true);
-  streamTimer=setInterval(function(){ refreshShot(false); }, 1200);
-}
-function stopStream(){
-  streamOn=false;
-  document.body.classList.remove('stream-on');
-  var b=document.getElementById('btnStream');
-  if(b) b.innerHTML='<span class="ms sm">live_tv</span> Start stream';
-  if(streamTimer){ clearInterval(streamTimer); streamTimer=null; }
-  msg('ctlMsg','stream off','');
-}
-async function refreshShot(announce){
+async function loadShot(){
+  msg("ctlMsg", "capturing...", "");
   try{
-    var res=await api('/api/screenshot');
+    var res = await api("/api/screenshot");
     if(!res.ok){
-      var err=await res.json().catch(function(){return {};});
-      if(announce) msg('ctlMsg', err.error||('HTTP '+res.status), 'err');
+      var err = await res.json().catch(function(){return {};});
+      msg("ctlMsg", err.error||("HTTP "+res.status), "err");
       return;
     }
-    var blob=await res.blob();
-    var url=URL.createObjectURL(blob);
-    var box=D('shotBox');
-    var img=document.getElementById('shotImg');
-    if(img){
-      var old=img.src;
-      img.src=url;
-      if(old && old.indexOf('blob:')===0) try{ URL.revokeObjectURL(old);}catch(e){}
-    } else {
-      var ts=new Date().toISOString().replace(/[:.]/g,'-');
-      box.innerHTML='<img id="shotImg" alt="screenshot" src="'+url+'">'+ 
-        '<div class="row" style="margin-top:8px">'+ 
-        '<a class="btn ghost" download="cwbridge-'+ts+'.png" href="'+url+'">'+ 
-        '<span class="ms sm">download</span> Download</a></div>';
-      bindShotInput();
-    }
-    if(announce) msg('ctlMsg','screenshot ok','good');
-  }catch(e){
-    if(announce) msg('ctlMsg', e.message||String(e), 'err');
-  }
+    var blob = await res.blob();
+    var url = URL.createObjectURL(blob);
+    var ts = new Date().toISOString().replace(/[:.]/g, "-");
+    D("shotBox").innerHTML =
+      "<img id=\"shotImg\" alt=\"screenshot\" src=\"" + url + "\">" +
+      "<div class=\"row\" style=\"margin-top:8px\">" +
+      "<a class=\"btn ghost\" id=\"shotDl\" download=\"cwbridge-" + ts + ".png\" href=\"" + url + "\">" +
+      "<span class=\"ms sm\">download</span> Download</a></div>";
+    msg("ctlMsg", "screenshot ok", "good");
+  }catch(e){ msg("ctlMsg", e.message, "err"); }
 }
-function bindShotInput(){
-  var img=document.getElementById('shotImg');
-  if(!img || img._bound) return;
-  img._bound=true;
-  img.addEventListener('pointerdown', function(ev){
-    ev.preventDefault();
-    pressStart=Date.now();
-    img.setPointerCapture(ev.pointerId);
-  });
-  img.addEventListener('pointerup', function(ev){
-    ev.preventDefault();
-    var held=Date.now()-pressStart;
-    var rect=img.getBoundingClientRect();
-    var px=((ev.clientX-rect.left)/rect.width)*100;
-    var py=((ev.clientY-rect.top)/rect.height)*100;
-    px=Math.max(0,Math.min(100,px));
-    py=Math.max(0,Math.min(100,py));
-    var holdMs=held>=450?Math.min(2000,held):0;
-    sendRemoteTap(px,py,holdMs);
-  });
-}
-async function sendRemoteTap(x,y,holdMs){
-  try{
-    var j=await post('/api/tap',{mode:'percent',x:x,y:y,holdMs:holdMs||0});
-    if(j.error){ msg('ctlMsg', j.error, 'err'); toast(j.error,false); return; }
-    msg('ctlMsg', (holdMs?'hold ':'tap ')+x.toFixed(1)+'% '+y.toFixed(1)+'%', 'good');
-  }catch(e){ msg('ctlMsg', e.message||String(e), 'err'); }
-}
-async function loadShot(){
-  await refreshShot(true);
-  bindShotInput();
+
 
 async function loadAdminDomain(){
   try{
