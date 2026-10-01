@@ -94,6 +94,14 @@ class InvokeEngine(
         // Avoid re-entrancy on our own reply lines
         if (raw.contains("cwbridge|")) return
 
+        val now = System.currentTimeMillis()
+        if (payload == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
+            LogBuffer.i("Invoke", "dedup skip (${now - lastInvokeAtMs}ms) ${payload.take(60)}")
+            return
+        }
+        lastInvokePayload = payload
+        lastInvokeAtMs = now
+
         val parts = payload.split(".", limit = 3)
         val request = parts[0].trim().lowercase()
         val data1 = parts.getOrNull(1)?.trim().orEmpty()
@@ -101,6 +109,7 @@ class InvokeEngine(
 
         LogBuffer.i("Invoke", "→ $request data1=${data1.take(80)} data2=${data2.take(80)}")
 
+        job?.cancel()
         job = scope.launch(Dispatchers.Main) {
             try {
                 dispatch(request, data1, data2)
@@ -389,6 +398,18 @@ class InvokeEngine(
                 replyOk("focus", "set $x $y")
             }
 
+            
+            "enter", "return" -> {
+                val svc = TapService.instance
+                val ok = when {
+                    svc != null -> svc.pressEnter()
+                    ShizukuShell.isReady() -> ShizukuShell.pressEnter()
+                    else -> false
+                }
+                if (ok) replyOk("enter", "Enter sent")
+                else replyErr("enter", "Enter failed (need a11y or Shizuku)")
+            }
+
             "submit" -> {
                 val x = data1.toFloatOrNull()
                 val y = data2.toFloatOrNull()
@@ -456,7 +477,7 @@ class InvokeEngine(
                 replyOk(
                     "help",
                     "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
-                        "status | tap.x.y | paste.text | clip | focus | submit | wait | toast | echo | help",
+                        "status | tap.x.y | paste.text | enter | clip | focus | submit | wait | toast | echo | help",
                 )
             }
 
