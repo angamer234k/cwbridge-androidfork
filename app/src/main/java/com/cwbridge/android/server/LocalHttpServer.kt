@@ -247,7 +247,7 @@ class LocalHttpServer(
             path == "/api/vars" -> respond(out, 200, json(mapOf("vars" to VarStore.snapshot())))
 
             path == "/api/screenshot" -> {
-                val shot = BridgeControl.takeScreenshot()
+                val shot = BridgeControl.takeScreenshot(context)
                 shot.fold(
                     onSuccess = { bytes ->
                         respondBytes(out, 200, bytes, "image/png")
@@ -338,7 +338,7 @@ class LocalHttpServer(
         val shot = when {
             !BridgeControl.screenshotSupported() -> "unsupported (need Android 11+)"
             !a11yBound -> "needs CWBridge Tap connected"
-            else -> "supported (FLAG_SECURE games still fail)"
+            else -> "supported (Shizuku screencap preferred; a11y fallback)"
         }
         val issues = mutableListOf<String>()
         if (!a11yBound) {
@@ -419,28 +419,26 @@ class LocalHttpServer(
     private fun logsJson(): String =
         json(mapOf("lines" to RobloxLogBuffer.last(40).map { it.text }))
 
-    private fun tapJson(body: String): String {
+        private fun tapJson(body: String): String {
         val svc = TapService.instance
             ?: return json(mapOf("error" to "CWBridge Tap (accessibility) not connected"))
+        val holdMs = (jsonDouble(body, "holdMs") ?: 0.0).toLong().coerceIn(0L, 5000L)
         val ok = when (jsonString(body, "mode")) {
             "percent" -> {
                 val x = jsonDouble(body, "x") ?: return json(mapOf("error" to "x and y required"))
                 val y = jsonDouble(body, "y") ?: return json(mapOf("error" to "x and y required"))
-                svc.clickAtPercent(x.toFloat(), y.toFloat())
+                if (holdMs > 50L) svc.longPressPercent(x.toFloat(), y.toFloat(), holdMs)
+                else svc.clickAtPercent(x.toFloat(), y.toFloat())
             }
             "px" -> {
                 val x = jsonDouble(body, "x") ?: return json(mapOf("error" to "x and y required"))
                 val y = jsonDouble(body, "y") ?: return json(mapOf("error" to "x and y required"))
-                svc.clickAt(x.toFloat(), y.toFloat())
+                if (holdMs > 50L) svc.longPress(x.toFloat(), y.toFloat(), holdMs)
+                else svc.clickAt(x.toFloat(), y.toFloat())
             }
-            "text" -> {
-                val t = jsonString(body, "text")
-                if (t.isBlank()) return json(mapOf("error" to "text required"))
-                svc.clickByText(t)
-            }
-            else -> return json(mapOf("error" to "mode must be percent, px or text"))
+            else -> return json(mapOf("error" to "mode percent|px"))
         }
-        return json(mapOf("message" to if (ok) "tap ok" else "tap failed"))
+        return json(mapOf("ok" to ok, "holdMs" to holdMs))
     }
 
     private fun controlJson(action: String): String {

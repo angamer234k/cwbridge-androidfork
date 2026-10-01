@@ -154,6 +154,9 @@ pre#console{
 #modalCard h3{margin:0 0 8px;font-size:16px}
 #modalCard p{margin:0 0 14px;color:var(--muted);font-size:14px}
 #modalCard .row{justify-content:flex-end}
+
+img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(--line);cursor:crosshair;touch-action:none;user-select:none}
+.stream-on #btnStream{background:var(--good)}
 </style>
 </head>
 <body>
@@ -199,11 +202,13 @@ pre#console{
 
   <div class="card" id="sec-control">
     <h2><span class="ms sm">tune</span> Remote control</h2>
+    <p class="hint">Screenshot prefers Shizuku screencap (sees Roblox). Stream: live view — tap image to tap device; hold ~0.5s for long-press.</p>
     <div class="row">
       <button type="button" id="btnRestartBridge" onclick="ctlBusy(this,'restart-bridge')"><span class="ms sm">restart_alt</span> Restart bridge</button>
       <button type="button" id="btnRestartRoblox" onclick="ctlBusy(this,'restart-roblox')"><span class="ms sm">sports_esports</span> Restart Roblox</button>
       <button type="button" onclick="toggleBridge()"><span class="ms sm">power_settings_new</span> Toggle bridge</button>
       <!--SCREENSHOT_BUTTON-->
+      <button type="button" id="btnStream" onclick="toggleStream()"><span class="ms sm">live_tv</span> Start stream</button>
     </div>
     <div id="ctlMsg" class="msg"></div>
     <div id="shotBox"></div>

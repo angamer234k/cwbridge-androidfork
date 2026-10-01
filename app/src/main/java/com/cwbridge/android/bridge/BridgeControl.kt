@@ -12,6 +12,7 @@ import com.cwbridge.android.TapService
 import com.cwbridge.android.data.Service
 import com.cwbridge.android.engine.ExecutionEngine
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * Actions the web server can trigger remotely, kept apart from MainActivity so
@@ -136,15 +137,52 @@ object BridgeControl {
     /** True when this device can take screenshots (Android 11+). */
     fun screenshotSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
-    fun takeScreenshot(): Result<ByteArray> {
+    /**
+     * Prefer Shizuku `screencap` (works on many FLAG_SECURE surfaces like Roblox).
+     * Fall back to AccessibilityService.takeScreenshot (Android 11+).
+     */
+    fun takeScreenshot(context: Context? = null): Result<ByteArray> {
+        if (context != null && ShizukuShell.isReady()) {
+            val bytes = screencapPngBytes(context)
+            if (bytes != null) {
+                LogBuffer.i("Control", "screenshot via Shizuku screencap (${bytes.size} bytes)")
+                return Result.success(bytes)
+            }
+            LogBuffer.w("Control", "screencap failed — trying a11y")
+        }
         val svc = TapService.instance
-            ?: return Result.failure(IllegalStateException("CWBridge Tap (accessibility) is not connected"))
-        if (!screenshotSupported()) {
+        if (svc != null && screenshotSupported()) {
+            return takeScreenshotAsync(svc)
+        }
+        if (svc == null) {
             return Result.failure(
-                UnsupportedOperationException("screenshot needs Android 11 (API 30)+"),
+                IllegalStateException(
+                    "screenshot failed: need Shizuku (screencap) or CWBridge Tap accessibility",
+                ),
             )
         }
-        return takeScreenshotAsync(svc)
+        return Result.failure(
+            UnsupportedOperationException("screenshot needs Android 11 (API 30)+ or Shizuku"),
+        )
+    }
+
+    private fun screencapPngBytes(context: Context): ByteArray? {
+        return try {
+            val dir = context.getExternalFilesDir(null) ?: context.cacheDir
+            val file = File(dir, "cw_screencap_web.png")
+            if (file.exists()) file.delete()
+            val path = file.absolutePath
+            val (code, out) = ShizukuShell.exec("screencap -p \"$path\" && chmod 644 \"$path\"")
+            LogBuffer.i(
+                "Control",
+                "screencap exit=$code exists=${file.exists()} size=${file.length()} ${out.take(60)}",
+            )
+            if (code != 0 || !file.exists() || file.length() < 100L) return null
+            file.readBytes()
+        } catch (t: Throwable) {
+            LogBuffer.w("Control", "screencap: ${t.message}")
+            null
+        }
     }
 
     /**

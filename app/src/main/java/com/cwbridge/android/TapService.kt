@@ -57,6 +57,26 @@ class TapService : AccessibilityService() {
 
     fun clickAt(x: Float, y: Float): Boolean = gestureTap(x, y, "px")
 
+    fun longPress(x: Float, y: Float, holdMs: Long = 600L): Boolean =
+        gestureHold(x, y, holdMs.coerceIn(80L, 5000L), "px-hold")
+
+    fun longPressPercent(xPercent: Float, yPercent: Float, holdMs: Long = 600L): Boolean {
+        val dm = resources.displayMetrics
+        val x = dm.widthPixels * (xPercent / 100f)
+        val y = dm.heightPixels * (yPercent / 100f)
+        return longPress(x, y, holdMs)
+    }
+
+    private fun gestureHold(x: Float, y: Float, holdMs: Long, tag: String): Boolean {
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, holdMs)
+        val ok = dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        LogBuffer.i("A11y", "GESTURE_HOLD $tag at=(${x.toInt()},${y.toInt()}) ms=$holdMs ok=$ok")
+        return ok
+    }
+
+
+
     /**
      * Capture the screen. Android 11+ only — [Build.VERSION_CODES.R].
      * The callback fires with null when the system refuses the capture.
