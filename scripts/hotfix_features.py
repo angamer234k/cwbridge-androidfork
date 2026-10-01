@@ -1,152 +1,181 @@
 #!/usr/bin/env python3
-"""Screenshot strip bug: ShizukuShell.exec truncated stdout to 2000 chars."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def patch_shizuku():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
+def patch_layout():
+    p = ROOT / "app/src/main/res/layout/activity_main.xml"
     t = p.read_text()
-    if "maxOut: Int" in t or "maxOutChars" in t:
-        print("ShizukuShell: already has maxOut")
+    if "btnRemoteToggle" in t:
+        print("layout: remote already")
+        return
+    # Insert remote card before closing of categoryServer's first card is hard;
+    # insert after btnServerQuota block end — find WEB SERVER card end
+    marker = 'android:id="@+id/btnServerQuota"'
+    if marker not in t:
+        raise SystemExit("btnServerQuota missing")
+    # Find the MaterialButton for quota and the following closing tags, then insert after the LinearLayout of the card
+    # Simpler: after serverState TextView area - insert after btnRegenPassword if present
+    insert_after = None
+    for key in ["btnRegenPassword", "btnShowPassword", "btnServerQuota"]:
+        if f'@+id/{key}' in t:
+            insert_after = key
+            break
+    if not insert_after:
+        raise SystemExit("no server buttons")
+
+    block = '''
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
+                            android:text="REMOTE (pair code)"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:id="@+id/remoteState"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="Remote off — uses cw-control.vercel.app"
+                            android:textColor="@color/muted"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/remoteCode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="monospace"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/white"
+                            android:letterSpacing="0.2"
+                            android:text="" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRemoteToggle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="Start remote pair" />
+'''
+
+    # Append after the last server button's MaterialButton closing tag following insert_after
+    idx = t.find(f'android:id="@+id/{insert_after}"')
+    # find end of this MaterialButton element
+    end_tag = t.find("/>", idx)
+    if end_tag < 0:
+        raise SystemExit("button end miss")
+    end_tag += 2
+    t = t[:end_tag] + block + t[end_tag:]
+    p.write_text(t)
+    print("layout: remote UI")
+
+
+def patch_main():
+    p = ROOT / "app/src/main/java/com/cwbridge/android/MainActivity.kt"
+    t = p.read_text()
+    if "RemoteRelay" in t and "btnRemoteToggle" in t:
+        print("MainActivity: remote already")
         return
 
-    old = "    fun exec(command: String): Pair<Int, String> {"
-    new = "    fun exec(command: String, maxOut: Int = 2000): Pair<Int, String> {"
-    if old not in t:
-        raise SystemExit("exec signature not found")
-    t = t.replace(old, new, 1)
+    if "import com.cwbridge.android.bridge.RemoteRelay" not in t:
+        # after BridgeControl import if any
+        if "import com.cwbridge.android.bridge.BridgeControl" in t:
+            t = t.replace(
+                "import com.cwbridge.android.bridge.BridgeControl",
+                "import com.cwbridge.android.bridge.BridgeControl\nimport com.cwbridge.android.bridge.RemoteRelay",
+                1,
+            )
+        else:
+            t = t.replace(
+                "package com.cwbridge.android",
+                "package com.cwbridge.android\n\nimport com.cwbridge.android.bridge.RemoteRelay",
+                1,
+            )
 
-    old_take = "code to out.toString().trim().take(2000)"
-    new_take = "code to out.toString().trim().let { if (maxOut <= 0) it else it.take(maxOut) }"
-    if old_take not in t:
-        raise SystemExit("take(2000) not found")
-    t = t.replace(old_take, new_take, 1)
-
-    # longer join for large base64 drains
-    t = t.replace(
-        "readerThread.join(2000)\n                errThread.join(500)",
-        "readerThread.join(if (maxOut <= 0 || maxOut > 50_000) 30_000L else 2000L)\n"
-        "                errThread.join(if (maxOut <= 0 || maxOut > 50_000) 5_000L else 500L)",
-        1,
-    )
-
-    p.write_text(t)
-    print("ShizukuShell: maxOut param")
-
-
-def patch_bridge():
-    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
-    t = p.read_text()
-
-    # Use unlimited/large maxOut for base64 screencap paths
-    # Prefer tmp file then copy into app dir (avoids multi-MB strings when possible)
-    start = t.find("    private fun screencapPngBytes")
-    end = t.find("    private fun takeScreenshotAsync", start)
-    if start < 0 or end < 0:
-        raise SystemExit("screencap markers missing")
-
-    new = r'''    private fun screencapPngBytes(context: Context): ByteArray? {
-        // Prefer write to tmp + copy into app-readable path (full binary, no 2KB truncate).
-        val dir = context.getExternalFilesDir(null) ?: context.cacheDir
-        val dest = File(dir, "cw_screencap_web.png")
-        try {
-            if (dest.exists()) dest.delete()
-        } catch (_: Throwable) {
-        }
-        val destPath = dest.absolutePath
-        val tmp = "/data/local/tmp/cwbridge_cap.png"
-
-        // Shell writes PNG, copies into our externalFilesDir, chmod so app can read.
-        val copyCmds = listOf(
-            "screencap -p $tmp && cp -f $tmp \"$destPath\" && chmod 644 \"$destPath\" && rm -f $tmp",
-            "screencap -p /sdcard/cwbridge_cap.png && cp -f /sdcard/cwbridge_cap.png \"$destPath\" && chmod 644 \"$destPath\"",
-            "screencap -p \"$destPath\" && chmod 644 \"$destPath\"",
-        )
-        for (cmd in copyCmds) {
-            try {
-                val (code, out) = ShizukuShell.exec(cmd, maxOut = 4000)
-                LogBuffer.i(
-                    "Control",
-                    "screencap file exit=$code exists=${dest.exists()} size=${dest.length()} ${out.take(80)}",
+    if "btnRemoteToggle" not in t:
+        hook = "        binding.btnServerQuota.setOnClickListener { setDefaultDomainQuota() }"
+        add = hook + "\n        binding.btnRemoteToggle.setOnClickListener { toggleRemotePair() }\n        refreshRemoteUi()"
+        if hook in t:
+            t = t.replace(hook, add, 1)
+        else:
+            # try setupServerUi end
+            if "refreshServerUi()" in t and "setupServerUi" in t:
+                t = t.replace(
+                    "        binding.btnServerToggle.setOnClickListener { toggleLocalServer() }",
+                    "        binding.btnServerToggle.setOnClickListener { toggleLocalServer() }\n"
+                    "        binding.btnRemoteToggle.setOnClickListener { toggleRemotePair() }",
+                    1,
                 )
-                if (code == 0 && dest.exists() && dest.length() > 1000L) {
-                    val bytes = dest.readBytes()
-                    if (isPng(bytes)) {
-                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via file")
-                        return bytes
-                    }
-                    if (bytes.size > 5000) {
-                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes file (no magic)")
-                        return bytes
-                    }
-                }
-            } catch (t: Throwable) {
-                LogBuffer.w("Control", "screencap file: ${t.message}")
-            }
-        }
+                t = t.replace(
+                    "        refreshServerUi()\n    }\n\n    private fun refreshServerUi()",
+                    "        refreshServerUi()\n        refreshRemoteUi()\n    }\n\n    private fun refreshServerUi()",
+                    1,
+                )
 
-        // Fallback: base64 over stdout — needs large maxOut (old default was 2000 = thin strip)
-        val b64Cmds = listOf(
-            "screencap -p $tmp && base64 $tmp && rm -f $tmp",
-            "screencap -p 2>/dev/null | base64",
-        )
-        for (cmd in b64Cmds) {
-            try {
-                val (code, out) = ShizukuShell.exec(cmd, maxOut = 0) // 0 = no truncate
-                LogBuffer.i("Control", "screencap b64 exit=$code outLen=${out.length}")
-                if (code != 0 || out.length < 500) continue
-                val cleaned = out.replace("\n", "").replace("\r", "").replace(" ", "")
-                val filtered = cleaned.filter {
-                    it.isLetterOrDigit() || it == '+' || it == '/' || it == '='
-                }
-                if (filtered.length < 500) continue
-                val bytes = Base64.decode(filtered, Base64.DEFAULT)
-                if (bytes.size > 1000 && isPng(bytes)) {
-                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via b64")
-                    return bytes
-                }
-                if (bytes.size > 5000) {
-                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes b64 (no magic)")
-                    return bytes
-                }
-            } catch (t: Throwable) {
-                LogBuffer.w("Control", "screencap b64: ${t.message}")
+    if "fun toggleRemotePair" not in t:
+        methods = r'''
+
+    private fun refreshRemoteUi() {
+        try {
+            val running = RemoteRelay.isRunning()
+            binding.btnRemoteToggle.text = if (running) "Stop remote pair" else "Start remote pair"
+            val code = RemoteRelay.code
+            binding.remoteCode.text = code ?: ""
+            binding.remoteState.text = when {
+                !running -> "Remote off — ${RemoteRelay.DEFAULT_BASE}"
+                code != null && RemoteRelay.status == "waiting" ->
+                    "Code $code — open ${RemoteRelay.baseUrl} and enter it"
+                else -> RemoteRelay.status
             }
+        } catch (t: Throwable) {
+            LogBuffer.w("UI", "refreshRemoteUi: ${t.message}")
         }
-        return null
     }
 
-'''
-
-    # Keep existing isPng if present between screencap and takeScreenshotAsync
-    mid = t[start:end]
-    if "private fun isPng" in mid:
-        ispng_start = mid.find("    private fun isPng")
-        # include isPng from original mid after our new body
-        ispng = mid[ispng_start:]
-        t = t[:start] + new + ispng + t[end:]
-    else:
-        ispng = '''    private fun isPng(bytes: ByteArray): Boolean {
-        if (bytes.size < 8) return false
-        return bytes[0] == 0x89.toByte() &&
-            bytes[1] == 0x50.toByte() &&
-            bytes[2] == 0x4E.toByte() &&
-            bytes[3] == 0x47.toByte()
+    private fun toggleRemotePair() {
+        if (RemoteRelay.isRunning()) {
+            RemoteRelay.stop()
+            refreshRemoteUi()
+            Toast.makeText(this, "Remote stopped", Toast.LENGTH_SHORT).show()
+            return
+        }
+        RemoteRelay.setBaseUrl(RemoteRelay.DEFAULT_BASE)
+        RemoteRelay.start(lifecycleScope, applicationContext) { msg ->
+            runOnUiThread {
+                try {
+                    binding.remoteState.text = msg
+                    binding.remoteCode.text = RemoteRelay.code ?: ""
+                    binding.btnRemoteToggle.text =
+                        if (RemoteRelay.isRunning()) "Stop remote pair" else "Start remote pair"
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        refreshRemoteUi()
+        Toast.makeText(this, "Remote starting…", Toast.LENGTH_SHORT).show()
     }
-
 '''
-        t = t[:start] + new + ispng + t[end:]
+        # insert before last closing of class
+        last = t.rfind("\n}")
+        if last < 0:
+            raise SystemExit("class end miss")
+        t = t[:last] + methods + t[last:]
 
     p.write_text(t)
-    print("BridgeControl screencap full-frame", p.stat().st_size)
+    print("MainActivity: remote wired", p.stat().st_size)
 
 
 def main():
-    patch_shizuku()
-    patch_bridge()
-    print("hotfix full-frame OK")
+    patch_layout()
+    patch_main()
+    print("hotfix remote UI OK")
 
 
 if __name__ == "__main__":
