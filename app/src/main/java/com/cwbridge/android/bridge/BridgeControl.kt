@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.graphics.Bitmap
 import android.os.Build
+import android.util.Base64
 import com.cwbridge.android.ShizukuShell
 import com.cwbridge.android.TapService
 import com.cwbridge.android.data.Service
@@ -167,6 +168,44 @@ object BridgeControl {
     }
 
     private fun screencapPngBytes(context: Context): ByteArray? {
+        // Shizuku runs as shell — often cannot write app-private externalFilesDir.
+        // Prefer /data/local/tmp then base64 back to the app process.
+        val attempts = listOf(
+            // direct pipe (no intermediate file)
+            "screencap -p 2>/dev/null | base64",
+            // tmp file then base64
+            "screencap -p /data/local/tmp/cwbridge_cap.png && base64 /data/local/tmp/cwbridge_cap.png && rm -f /data/local/tmp/cwbridge_cap.png",
+            // sdcard fallback
+            "screencap -p /sdcard/cwbridge_cap.png && base64 /sdcard/cwbridge_cap.png && rm -f /sdcard/cwbridge_cap.png",
+        )
+        for (cmd in attempts) {
+            try {
+                val (code, out) = ShizukuShell.exec(cmd)
+                LogBuffer.i("Control", "screencap try exit=$code outLen=${out.length} cmd=${cmd.take(40)}")
+                if (code != 0 || out.isBlank()) continue
+                val cleaned = out.replace("
+", "").replace("", "").replace(" ", "")
+                // keep only base64 alphabet (ignore shell noise)
+                val filtered = cleaned.filter {
+                    it.isLetterOrDigit() || it == '+' || it == '/' || it == '='
+                }
+                if (filtered.length < 200) continue
+                val bytes = Base64.decode(filtered, Base64.DEFAULT)
+                if (bytes != null && bytes.size > 100 && isPng(bytes)) {
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via shell")
+                    return bytes
+                }
+                if (bytes != null && bytes.size > 500) {
+                    // accept even if PNG magic check fails (some OEMs)
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes (no png magic)")
+                    return bytes
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "screencap attempt: ${t.message}")
+            }
+        }
+
+        // last resort: write into app dir (works on some devices)
         return try {
             val dir = context.getExternalFilesDir(null) ?: context.cacheDir
             val file = File(dir, "cw_screencap_web.png")
@@ -175,20 +214,24 @@ object BridgeControl {
             val (code, out) = ShizukuShell.exec("screencap -p \"$path\" && chmod 644 \"$path\"")
             LogBuffer.i(
                 "Control",
-                "screencap exit=$code exists=${file.exists()} size=${file.length()} ${out.take(60)}",
+                "screencap appdir exit=$code exists=${file.exists()} size=${file.length()} ${out.take(60)}",
             )
-            if (code != 0 || !file.exists() || file.length() < 100L) return null
-            file.readBytes()
+            if (code != 0 || !file.exists() || file.length() < 100L) null
+            else file.readBytes()
         } catch (t: Throwable) {
-            LogBuffer.w("Control", "screencap: ${t.message}")
+            LogBuffer.w("Control", "screencap appdir: ${t.message}")
             null
         }
     }
 
-    /**
-     * AccessibilityService.takeScreenshot is callback-based; block briefly on a
-     * latch. The screenshot itself is small and this is off the main thread.
-     */
+    private fun isPng(bytes: ByteArray): Boolean {
+        if (bytes.size < 8) return false
+        return bytes[0] == 0x89.toByte() &&
+            bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() &&
+            bytes[3] == 0x47.toByte()
+    }
+
     private fun takeScreenshotAsync(svc: TapService): Result<ByteArray> {
         val latch = java.util.concurrent.CountDownLatch(1)
         var result: Result<ByteArray> = Result.failure(IllegalStateException("screenshot timed out"))
