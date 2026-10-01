@@ -1,96 +1,153 @@
 #!/usr/bin/env python3
-import urllib.request
+"""Screenshot strip bug: ShizukuShell.exec truncated stdout to 2000 chars."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
 
-# Restore full file from last known-good commit (before truncation)
-url = (
-    "https://raw.githubusercontent.com/angamer234k/cwbridge-androidfork/"
-    "3ca6b3b7039acd76d2101c34229e4117a2153ec8/"
-    "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
-)
-t = urllib.request.urlopen(url, timeout=90).read().decode()
-if "fun openDomains" not in t or len(t) < 10000:
-    raise SystemExit("restore source invalid")
 
-if "import android.util.Base64" not in t:
-    t = t.replace("import android.os.Build", "import android.os.Build\nimport android.util.Base64", 1)
+def patch_shizuku():
+    p = ROOT / "app/src/main/java/com/cwbridge/android/ShizukuShell.kt"
+    t = p.read_text()
+    if "maxOut: Int" in t or "maxOutChars" in t:
+        print("ShizukuShell: already has maxOut")
+        return
 
-start = t.find("    private fun screencapPngBytes")
-end = t.find("    private fun takeScreenshotAsync", start)
-if start < 0 or end < 0:
-    raise SystemExit("markers missing")
+    old = "    fun exec(command: String): Pair<Int, String> {"
+    new = "    fun exec(command: String, maxOut: Int = 2000): Pair<Int, String> {"
+    if old not in t:
+        raise SystemExit("exec signature not found")
+    t = t.replace(old, new, 1)
 
-new = (
-    "    private fun screencapPngBytes(context: Context): ByteArray? {\n"
-    "        val attempts = listOf(\n"
-    '            "screencap -p 2>/dev/null | base64",\n'
-    '            "screencap -p /data/local/tmp/cwbridge_cap.png && base64 /data/local/tmp/cwbridge_cap.png && rm -f /data/local/tmp/cwbridge_cap.png",\n'
-    '            "screencap -p /sdcard/cwbridge_cap.png && base64 /sdcard/cwbridge_cap.png && rm -f /sdcard/cwbridge_cap.png",\n'
-    "        )\n"
-    "        for (cmd in attempts) {\n"
-    "            try {\n"
-    "                val (code, out) = ShizukuShell.exec(cmd)\n"
-    '                LogBuffer.i("Control", "screencap try exit=$code outLen=${out.length} cmd=${cmd.take(40)}")\n'
-    "                if (code != 0 || out.isBlank()) continue\n"
-    '                val cleaned = out.replace("\\n", "").replace("\\r", "").replace(" ", "")\n'
-    "                val filtered = cleaned.filter {\n"
-    "                    it.isLetterOrDigit() || it == '+' || it == '/' || it == '='\n"
-    "                }\n"
-    "                if (filtered.length < 200) continue\n"
-    "                val bytes = Base64.decode(filtered, Base64.DEFAULT)\n"
-    "                if (bytes.size > 100 && isPng(bytes)) {\n"
-    '                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via shell")\n'
-    "                    return bytes\n"
-    "                }\n"
-    "                if (bytes.size > 500) {\n"
-    '                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes (no png magic)")\n'
-    "                    return bytes\n"
-    "                }\n"
-    "            } catch (t: Throwable) {\n"
-    '                LogBuffer.w("Control", "screencap attempt: ${t.message}")\n'
-    "            }\n"
-    "        }\n"
-    "        return try {\n"
-    "            val dir = context.getExternalFilesDir(null) ?: context.cacheDir\n"
-    '            val file = File(dir, "cw_screencap_web.png")\n'
-    "            if (file.exists()) file.delete()\n"
-    "            val path = file.absolutePath\n"
-    '            val (code, out) = ShizukuShell.exec("screencap -p \\"$path\\" && chmod 644 \\"$path\\"")\n'
-    "            LogBuffer.i(\n"
-    '                "Control",\n'
-    '                "screencap appdir exit=$code exists=${file.exists()} size=${file.length()} ${out.take(60)}",\n'
-    "            )\n"
-    "            if (code != 0 || !file.exists() || file.length() < 100L) null\n"
-    "            else file.readBytes()\n"
-    "        } catch (t: Throwable) {\n"
-    '            LogBuffer.w("Control", "screencap appdir: ${t.message}")\n'
-    "            null\n"
-    "        }\n"
-    "    }\n"
-    "\n"
-    "    private fun isPng(bytes: ByteArray): Boolean {\n"
-    "        if (bytes.size < 8) return false\n"
-    "        return bytes[0] == 0x89.toByte() &&\n"
-    "            bytes[1] == 0x50.toByte() &&\n"
-    "            bytes[2] == 0x4E.toByte() &&\n"
-    "            bytes[3] == 0x47.toByte()\n"
-    "    }\n"
-    "\n"
-)
+    old_take = "code to out.toString().trim().take(2000)"
+    new_take = "code to out.toString().trim().let { if (maxOut <= 0) it else it.take(maxOut) }"
+    if old_take not in t:
+        raise SystemExit("take(2000) not found")
+    t = t.replace(old_take, new_take, 1)
 
-t = t[:start] + new + t[end:]
-# dedupe isPng
-first = t.find("private fun isPng")
-second = t.find("private fun isPng", first + 1)
-if second > 0:
-    third = t.find("\n    private fun ", second + 1)
-    if third > 0:
-        t = t[:second] + t[third + 1 :]  # keep newline via slice carefully
-        # better:
+    # longer join for large base64 drains
+    t = t.replace(
+        "readerThread.join(2000)\n                errThread.join(500)",
+        "readerThread.join(if (maxOut <= 0 || maxOut > 50_000) 30_000L else 2000L)\n"
+        "                errThread.join(if (maxOut <= 0 || maxOut > 50_000) 5_000L else 500L)",
+        1,
+    )
 
-p.write_text(t)
-print("BridgeControl restored", p.stat().st_size, "openDomains", "openDomains" in t)
-print("cleaned", [l for l in t.splitlines() if "val cleaned" in l][:1])
+    p.write_text(t)
+    print("ShizukuShell: maxOut param")
+
+
+def patch_bridge():
+    p = ROOT / "app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt"
+    t = p.read_text()
+
+    # Use unlimited/large maxOut for base64 screencap paths
+    # Prefer tmp file then copy into app dir (avoids multi-MB strings when possible)
+    start = t.find("    private fun screencapPngBytes")
+    end = t.find("    private fun takeScreenshotAsync", start)
+    if start < 0 or end < 0:
+        raise SystemExit("screencap markers missing")
+
+    new = r'''    private fun screencapPngBytes(context: Context): ByteArray? {
+        // Prefer write to tmp + copy into app-readable path (full binary, no 2KB truncate).
+        val dir = context.getExternalFilesDir(null) ?: context.cacheDir
+        val dest = File(dir, "cw_screencap_web.png")
+        try {
+            if (dest.exists()) dest.delete()
+        } catch (_: Throwable) {
+        }
+        val destPath = dest.absolutePath
+        val tmp = "/data/local/tmp/cwbridge_cap.png"
+
+        // Shell writes PNG, copies into our externalFilesDir, chmod so app can read.
+        val copyCmds = listOf(
+            "screencap -p $tmp && cp -f $tmp \"$destPath\" && chmod 644 \"$destPath\" && rm -f $tmp",
+            "screencap -p /sdcard/cwbridge_cap.png && cp -f /sdcard/cwbridge_cap.png \"$destPath\" && chmod 644 \"$destPath\"",
+            "screencap -p \"$destPath\" && chmod 644 \"$destPath\"",
+        )
+        for (cmd in copyCmds) {
+            try {
+                val (code, out) = ShizukuShell.exec(cmd, maxOut = 4000)
+                LogBuffer.i(
+                    "Control",
+                    "screencap file exit=$code exists=${dest.exists()} size=${dest.length()} ${out.take(80)}",
+                )
+                if (code == 0 && dest.exists() && dest.length() > 1000L) {
+                    val bytes = dest.readBytes()
+                    if (isPng(bytes)) {
+                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via file")
+                        return bytes
+                    }
+                    if (bytes.size > 5000) {
+                        LogBuffer.i("Control", "screencap ok ${bytes.size} bytes file (no magic)")
+                        return bytes
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "screencap file: ${t.message}")
+            }
+        }
+
+        // Fallback: base64 over stdout — needs large maxOut (old default was 2000 = thin strip)
+        val b64Cmds = listOf(
+            "screencap -p $tmp && base64 $tmp && rm -f $tmp",
+            "screencap -p 2>/dev/null | base64",
+        )
+        for (cmd in b64Cmds) {
+            try {
+                val (code, out) = ShizukuShell.exec(cmd, maxOut = 0) // 0 = no truncate
+                LogBuffer.i("Control", "screencap b64 exit=$code outLen=${out.length}")
+                if (code != 0 || out.length < 500) continue
+                val cleaned = out.replace("\n", "").replace("\r", "").replace(" ", "")
+                val filtered = cleaned.filter {
+                    it.isLetterOrDigit() || it == '+' || it == '/' || it == '='
+                }
+                if (filtered.length < 500) continue
+                val bytes = Base64.decode(filtered, Base64.DEFAULT)
+                if (bytes.size > 1000 && isPng(bytes)) {
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes via b64")
+                    return bytes
+                }
+                if (bytes.size > 5000) {
+                    LogBuffer.i("Control", "screencap ok ${bytes.size} bytes b64 (no magic)")
+                    return bytes
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Control", "screencap b64: ${t.message}")
+            }
+        }
+        return null
+    }
+
+'''
+
+    # Keep existing isPng if present between screencap and takeScreenshotAsync
+    mid = t[start:end]
+    if "private fun isPng" in mid:
+        ispng_start = mid.find("    private fun isPng")
+        # include isPng from original mid after our new body
+        ispng = mid[ispng_start:]
+        t = t[:start] + new + ispng + t[end:]
+    else:
+        ispng = '''    private fun isPng(bytes: ByteArray): Boolean {
+        if (bytes.size < 8) return false
+        return bytes[0] == 0x89.toByte() &&
+            bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() &&
+            bytes[3] == 0x47.toByte()
+    }
+
+'''
+        t = t[:start] + new + ispng + t[end:]
+
+    p.write_text(t)
+    print("BridgeControl screencap full-frame", p.stat().st_size)
+
+
+def main():
+    patch_shizuku()
+    patch_bridge()
+    print("hotfix full-frame OK")
+
+
+if __name__ == "__main__":
+    main()
