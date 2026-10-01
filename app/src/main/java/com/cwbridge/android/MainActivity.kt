@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cwbridge.android.bridge.AntiDisconnect
 import com.cwbridge.android.bridge.BridgeControl
+import com.cwbridge.android.bridge.RemoteRelay
 import com.cwbridge.android.bridge.BridgeStatus
 import com.cwbridge.android.bridge.CatWebTracker
 import com.cwbridge.android.bridge.DisconnectOcrWatch
@@ -938,6 +939,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnShowPassword.setOnClickListener { showServerPassword() }
         binding.btnRegenPassword.setOnClickListener { regenerateServerPassword() }
         binding.btnServerQuota.setOnClickListener { setDefaultDomainQuota() }
+        binding.btnRemoteToggle.setOnClickListener { toggleRemotePair() }
+        refreshRemoteUi()
         refreshServerUi()
     }
 
@@ -1095,4 +1098,45 @@ class MainActivity : AppCompatActivity() {
             button.text = "Check for updates"
         }
     }
+
+    private fun refreshRemoteUi() {
+        try {
+            val running = RemoteRelay.isRunning()
+            binding.btnRemoteToggle.text = if (running) "Stop remote pair" else "Start remote pair"
+            val code = RemoteRelay.code
+            binding.remoteCode.text = code ?: ""
+            binding.remoteState.text = when {
+                !running -> "Remote off — ${RemoteRelay.DEFAULT_BASE}"
+                code != null && RemoteRelay.status == "waiting" ->
+                    "Code $code — open ${RemoteRelay.baseUrl} and enter it"
+                else -> RemoteRelay.status
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("UI", "refreshRemoteUi: ${t.message}")
+        }
+    }
+
+    private fun toggleRemotePair() {
+        if (RemoteRelay.isRunning()) {
+            RemoteRelay.stop()
+            refreshRemoteUi()
+            Toast.makeText(this, "Remote stopped", Toast.LENGTH_SHORT).show()
+            return
+        }
+        RemoteRelay.setBaseUrl(RemoteRelay.DEFAULT_BASE)
+        RemoteRelay.start(lifecycleScope, applicationContext) { msg ->
+            runOnUiThread {
+                try {
+                    binding.remoteState.text = msg
+                    binding.remoteCode.text = RemoteRelay.code ?: ""
+                    binding.btnRemoteToggle.text =
+                        if (RemoteRelay.isRunning()) "Stop remote pair" else "Start remote pair"
+                } catch (_: Throwable) {
+                }
+            }
+        }
+        refreshRemoteUi()
+        Toast.makeText(this, "Remote starting…", Toast.LENGTH_SHORT).show()
+    }
+
 }

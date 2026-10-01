@@ -589,6 +589,44 @@
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="16dp"
+                            android:text="REMOTE (pair code)"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:id="@+id/remoteState"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="Remote off — uses cw-control.vercel.app"
+                            android:textColor="@color/muted"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/remoteCode"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="monospace"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            android:textColor="@android:color/white"
+                            android:letterSpacing="0.2"
+                            android:text="" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnRemoteToggle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="Start remote pair" />
+
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
                             android:layout_marginTop="18dp"
                             android:text="STORAGE"
                             android:textAllCaps="true"
