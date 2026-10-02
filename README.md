@@ -41,45 +41,90 @@ To publish a new build: **Actions → Release APKs → Run workflow** (tag e.g. 
    ```bash
    adb shell pm grant com.cwbridge.android.debug android.permission.READ_LOGS
    ```
-4. Optionally allow **Display over other apps** for the floating status dot (green = listening, yellow = waiting, red = error). Tap the dot to see the last console lines.
-5. Open CWBridge → **Start bridge**.
+4. Optionally allow **Display over other apps** for the floating status dot (green = listening, yellow = waiting, red = error).
+5. Open the app → **Start bridge**. Keep Roblox (or your target app) in the foreground so logcat advances and taps land correctly.
 
-Commands use the `invoke|…` format (same idea as the old MacroDroid flow), e.g. save/load keys, status, tap, paste. `paste` with no text argument pastes whatever is already on the clipboard.
+## Built-in `invoke|` commands
+
+The bridge watches **Roblox logcat** for lines that contain `invoke|…`. Format:
+
+```text
+invoke|<command>[.<arg1>[.<arg2>…]]
+```
+
+Dots separate parts. Example from a CatWeb / game print:
+
+```text
+invoke|load.mykey.weather.rbx
+invoke|tap.50.85
+invoke|enter
+```
+
+Replies (when the engine answers) show up as log-style `cwbridge|…` lines the game can read back if it watches output.
+
+Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt).
+
+### Datastore
+
+| Command | Form | Notes |
+|---------|------|--------|
+| **save** | `save.<key>.<value>[.<domain.rbx>]` | Stores text. Optional domain; default domain if omitted. Counts toward rate limit. |
+| **load** | `load.<key>.<domain.rbx>` | Loads value and **pastes** it into the focused field (~1–2s). |
+| **savedomain** | `savedomain.<domain>.…` | Domain-oriented save helper (see engine). |
+| **storeinfo** | `storeinfo.<domain.rbx>` | Pastes numbers: `5.STORED_BITS.LIMIT_BITS.KEYS.REQ_USED.REQ_MAX.REQ_LEFT` |
+| **setlimit** | `setlimit.<domain.rbx>.<type>.<value>` | **Admin domain only.** type `0` = requests/day, `1` = data limit (bits). |
+| **exists** | `exists.<key>.<domain.rbx>` | Free. Pastes `1` or `0`. |
+| **keys** | `keys.<domain.rbx>` | Cost 1. Pastes key list / count. |
+
+### Services (built-in handlers)
+
+| Command | Form | Notes |
+|---------|------|--------|
+| **weather** | `weather.<lat>.<lon>` or `weather.<City>` | Cost **2**. Fetches weather and pastes a short result. |
+| **alive** | `alive` | Free. Pastes `1` if accessibility is up, else `0`. |
+| **ai** | `ai.<prompt>` | Cost **2**. Uses AI settings from the web panel; pastes model text (may auto-Enter depending on build). |
+
+### Input / UI
+
+| Command | Form | Notes |
+|---------|------|--------|
+| **tap** | `tap.<xPct>.<yPct>` | Percent of screen (0–100). |
+| **tappx** | `tappx.<xPx>.<yPx>` | Absolute pixels. |
+| **focus** | `focus.<xPct>.<yPct>` | Sets where **load/paste** tap before pasting (default 50,50). |
+| **submit** | `submit.<xPx>.<yPx>` | Sets optional post-paste tap coords (`0` = skip). |
+| **paste** | `paste.<text>` or `paste` | Pastes text, or clipboard if no arg. |
+| **enter** / **return** | `enter` | Presses Enter (accessibility or Shizuku). |
+| **clip** | `clip.set.<text>` / `clip.get` | Clipboard set / get. |
+
+### Utility
+
+| Command | Form | Notes |
+|---------|------|--------|
+| **status** | `status` | Device / bridge snapshot. |
+| **wait** | `wait.<ms>` | Delay 0–30000 ms. |
+| **toast** | `toast.<message>` | Android toast. |
+| **echo** | `echo.<message>` | Echoes in reply only. |
+| **help** | `help` | Short command list in the reply. |
+
+### Timing note (load / paste)
+
+After `load` or `paste`, expect roughly **1.5–2.5s** before text appears (focus tap → **1s** wait → paste). Identical `invoke|` lines within **3s** are **deduped** so Roblox does not triple-fire the same command.
 
 ## Web server (control panel)
 
-Open **CWBridge → Server** and tap **Start server**. The app listens on port `8080` (falls back to 8765, then 80), so from any browser on the same network go to:
-
-```
-http://<device-ip>:8080
-```
-
-The panel lets you:
-
-- **Remote control** — take a screenshot, restart the bridge, restart Roblox, toggle the bridge, send Ctrl+T / Enter, read the clipboard
-- **Tap** — by percentage, by pixels, or by on-screen button text
-- **Send invoke commands** — e.g. `tap.50.85`, `paste.hello`, `save.key.value`
-- **Services creator** — list, create, edit (JSON), enable/disable, delete and run services
-- **Storage** — browse domains (`name.rbx`), set a per-domain size limit, save/clear keys, and see usage bars
-- **Variables and console** — live `VarStore` values and the last Roblox/CatWeb console lines
+When the local server is on, open `http://<device-ip>:<port>/` (port tries **8080**, then **8765**, then **80**).
 
 ### Access rules
 
-| Where you connect from | Password |
-|------------------------|----------|
-| Local network (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`, loopback) | **Not required** |
-| Anywhere else (proxied, tunneled, internet) | Generated password required |
-
-Find or regenerate the password under **Server → Show password**. Remote sessions use a cookie, so the password is only needed once per browser.
-
-Limits accept `bits`, `bytes`, `KB`, `MB`, `GB` (e.g. `512KB`, `2MB`, `1gb`), or `0`/`unlimited` to remove the cap. Saves that would push a domain past its limit are rejected with an error instead of silently growing.
+- Password lock is served first; the dashboard is only after login (session cookie).
+- Prefer the same Wi‑Fi network as the phone.
 
 ### Known limits
 
-- **Take screenshot** requires **Android 11 (API 30)+**. On older versions the button is not shown in the web panel at all.
+- **Screenshot** requires **Android 11 (API 30)+**. On older versions the button is not shown in the web panel at all.
 - **Ctrl+T / Enter / Restart Roblox** need **Shizuku** running with CWBridge allowed. Without it, Restart Roblox cannot force-stop Roblox and says so.
 - The first time you open the app after installing, CWBridge shows a one-time notice listing which of these may not work on your device.
-- The 6-digit **pair code** from the roadmap is not implemented yet — it needs the separate pairing service.
+- The 6-digit **pair code** remote control lives at the separate web control service when enabled in-app.
 
 ## Updates
 
