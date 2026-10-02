@@ -45,16 +45,15 @@ class InvokeEngine(
     private val running = AtomicBoolean(false)
     private var job: Job? = null
 
-    /** Same invoke| line often appears 2–3x in Roblox logcat. */
     @Volatile private var lastInvokePayload: String = ""
     @Volatile private var lastInvokeAtMs: Long = 0L
     private val invokeDedupMs: Long = 3000L
 
-    /** Default focus for paste sequence (percent). */
+    
     @Volatile var focusXPct = 50f
     @Volatile var focusYPct = 50f
 
-    /** Default keyboard-submit tap (pixels). 0 = skip submit. */
+    
     @Volatile var submitXPx = 0f
     @Volatile var submitYPx = 0f
 
@@ -125,7 +124,7 @@ class InvokeEngine(
     }
 
 
-    /** If raw ends with .name.rbx, peel domain; else default local.rbx. */
+    /** If raw ends with .name.rbx, peel; otherwise return */
     private fun splitOptionalDomain(raw: String): Pair<String, String> {
         val m = Regex("""^(.*)\.([a-z0-9_-]+\.rbx)$""", RegexOption.IGNORE_CASE).matchEntire(raw.trim())
         return if (m != null) {
