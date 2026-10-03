@@ -1,0 +1,259 @@
+{
+  "title": "CWBridge client (s.eof.rbx)",
+  "description": "Public client protocol + CatWeb UI/script outline. Host = s.eof.rbx. Server script is NOT published.",
+  "host": "s.eof.rbx",
+  "host_page": "s.eof.rbx/main",
+  "protocol": {
+    "request": "REQ|<id>|<payload>",
+    "payload_examples": [
+      "alive",
+      "enter",
+      "load.mykey.domain.rbx",
+      "paste.hello",
+      "weather.London",
+      "storeinfo.domain.rbx"
+    ],
+    "response_simple": "RES|<id>|OK|<text>",
+    "response_error": "RES|<id>|ERR|<reason>",
+    "response_timeout": "RES|<id>|TIMEOUT",
+    "response_chunked": {
+      "part": "RES|<id>|PART|<index>|<total>|<chunk>",
+      "note": "index is 0-based. Concatenate chunk fields in order until all total parts arrive. Keep each broadcast under ~900 bytes (limit 979).",
+      "example": [
+        "RES|a1|PART|0|3|hello ",
+        "RES|a1|PART|1|3|world ",
+        "RES|a1|PART|2|3|!"
+      ]
+    },
+    "id_rules": "2-6 alphanumeric chars. Prefer one pending request at a time.",
+    "rate_limit": "Cross-site uncached ~4 per 20s — do not spam."
+  },
+  "favicon": "16944769468",
+  "background": "#0b0e13",
+  "webcontent": [
+    {
+      "class": "Frame",
+      "globalid": "rt",
+      "alias": "root",
+      "size": "{1,0},{1,0}",
+      "position": "{0,0},{0,0}",
+      "background_color": "#0b0e13",
+      "background_transparency": "0",
+      "children": [
+        {
+          "class": "UIListLayout",
+          "globalid": "rl",
+          "direction": "Vertical",
+          "padding": "0,12",
+          "alignment_horizontal": "Center",
+          "alignment_vertical": "Top"
+        },
+        {
+          "class": "UIPadding",
+          "globalid": "rp",
+          "top": "0,20",
+          "bottom": "0,20",
+          "left": "0,20",
+          "right": "0,20"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "tt",
+          "size": "{1,0},{0,28}",
+          "text": "CWBridge client → s.eof.rbx",
+          "font": "GothamBold",
+          "font_size": "18",
+          "font_color": "#e6e8eb",
+          "background_transparency": "1",
+          "align_x": "Center"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "st",
+          "alias": "status_label",
+          "size": "{1,0},{0,64}",
+          "text": "idle — wire cross-site Broadcast in editor; see protocol in this JSON",
+          "font": "Gotham",
+          "font_size": "13",
+          "font_color": "#9aa3ae",
+          "background_transparency": "1",
+          "align_x": "Center"
+        },
+        {
+          "class": "TextButton",
+          "globalid": "ba",
+          "alias": "btn_alive",
+          "size": "{1,0},{0,44}",
+          "text": "Ping alive",
+          "font": "GothamBold",
+          "font_size": "15",
+          "font_color": "#ffffff",
+          "background_color": "#2563eb",
+          "auto_color": "true",
+          "children": [
+            { "class": "UICorner", "globalid": "bac", "radius": "0,8" }
+          ]
+        },
+        {
+          "class": "TextButton",
+          "globalid": "bl",
+          "alias": "btn_load",
+          "size": "{1,0},{0,44}",
+          "text": "Demo load (edit payload in script)",
+          "font": "GothamBold",
+          "font_size": "15",
+          "font_color": "#ffffff",
+          "background_color": "#171c24",
+          "auto_color": "true",
+          "children": [
+            { "class": "UICorner", "globalid": "blc", "radius": "0,8" }
+          ]
+        },
+        {
+          "class": "script",
+          "globalid": "sc1",
+          "alias": "cwbridge_client",
+          "enabled": "true",
+          "content": [
+            {
+              "id": "0",
+              "globalid": "ev0",
+              "x": "4000",
+              "y": "4500",
+              "width": "380",
+              "text": ["When website loaded..."],
+              "actions": [
+                {
+                  "id": "11",
+                  "globalid": "ac0",
+                  "text": [
+                    "Set",
+                    { "value": "pendingId", "t": "string", "l": "variable" },
+                    "to",
+                    { "value": "", "t": "string", "l": "any" }
+                  ]
+                },
+                {
+                  "id": "11",
+                  "globalid": "ac1",
+                  "text": [
+                    "Set",
+                    { "value": "chunkBuf", "t": "string", "l": "variable" },
+                    "to",
+                    { "value": "", "t": "string", "l": "any" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "1",
+              "globalid": "ev1",
+              "x": "4400",
+              "y": "4500",
+              "width": "380",
+              "text": [
+                "When",
+                { "value": "ba", "t": "object", "l": "button" },
+                "pressed..."
+              ],
+              "actions": [
+                {
+                  "id": "0",
+                  "globalid": "ac3",
+                  "text": [
+                    "Log",
+                    { "value": "CLIENT: Broadcast REQ|<id>|alive cross-site to s.eof.rbx (add Broadcast block in editor)", "t": "any" }
+                  ]
+                },
+                {
+                  "id": "31",
+                  "globalid": "ac4",
+                  "text": [
+                    "Set",
+                    { "value": "Text", "t": "string", "l": "property" },
+                    "of",
+                    { "value": "st", "t": "object" },
+                    "to",
+                    { "value": "alive requested — waiting RES from s.eof.rbx", "t": "any" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "1",
+              "globalid": "ev2",
+              "x": "4400",
+              "y": "5000",
+              "width": "380",
+              "text": [
+                "When",
+                { "value": "bl", "t": "object", "l": "button" },
+                "pressed..."
+              ],
+              "actions": [
+                {
+                  "id": "0",
+                  "globalid": "ac5",
+                  "text": [
+                    "Log",
+                    { "value": "CLIENT: REQ load.<key>.<domain.rbx> cross-site s.eof.rbx", "t": "any" }
+                  ]
+                },
+                {
+                  "id": "31",
+                  "globalid": "ac6",
+                  "text": [
+                    "Set",
+                    { "value": "Text", "t": "string", "l": "property" },
+                    "of",
+                    { "value": "st", "t": "object" },
+                    "to",
+                    { "value": "load demo — set real payload in script", "t": "any" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "14",
+              "globalid": "ev3",
+              "x": "4800",
+              "y": "4500",
+              "width": "400",
+              "text": ["When cross-site message received..."],
+              "actions": [
+                {
+                  "id": "0",
+                  "globalid": "ac7",
+                  "text": [
+                    "Log",
+                    { "value": "CLIENT from {l!sourceDomain}: {l!messageContent}", "t": "any" }
+                  ]
+                },
+                {
+                  "id": "31",
+                  "globalid": "ac8",
+                  "text": [
+                    "Set",
+                    { "value": "Text", "t": "string", "l": "property" },
+                    "of",
+                    { "value": "st", "t": "object" },
+                    "to",
+                    { "value": "{l!messageContent}", "t": "any" }
+                  ]
+                },
+                {
+                  "id": "0",
+                  "globalid": "ac9",
+                  "text": [
+                    "Log",
+                    { "value": "Parse RES|id|PART|i|n|chunk → chunkBuf; RES|id|OK|text → lastResult", "t": "any" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
