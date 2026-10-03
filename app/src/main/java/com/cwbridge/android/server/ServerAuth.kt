@@ -16,8 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
  * A successful login returns a session token that is sent back as the
  * `CWBridge-Session` cookie, so the password is only needed once per browser.
  *
- * NOTE: the 6-digit pair code from the TODO is intentionally not implemented here.
- * It needs the separate Vercel/Firestore pairing service, which does not exist yet.
+ * NOTE: the 6-digit pair code is handled by the separate cloud relay
+ * (see bridge/RemoteRelay.kt, cw-control.vercel.app) and is intentionally not
+ * part of this local password gate.
  */
 object ServerAuth {
 

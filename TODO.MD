@@ -7,7 +7,7 @@
 + FLOATING OVERLAY — status colors (red=error, yellow=waiting CatWeb, green=active)
 + TAP OVERLAY → last Roblox/CatWeb console lines
 + CHECK FOR UPDATES — works (version suffix handling fixed)
-+ WEB SERVER — port 8080/80/8765 control panel
++ WEB SERVER — port 8080 / 8765 / 80 control panel
 + `paste` with no arg pastes current clipboard
 + APP DOESN'T CRASH if a tool/service fails
 + PER-DOMAIN STORAGE LIMIT (bits/bytes/KB/MB/GB) — over-cap saves rejected
@@ -17,7 +17,7 @@
 + FIRST-RUN COMPATIBILITY NOTICE
 + RESTART BRIDGE / RESTART ROBLOX (Shizuku force-stop + relaunch)
 + Ctrl+T, Enter, read clipboard, toggle bridge, tap by %/px/text, send invoke, live console, variables
-+ SERVER UI WIRING — real categoryServer section, password + quota controls
++ SERVER UI WIRING — real categoryServer section, password + quota controls + remote pair (code/status)
 + README — web server, LAN-vs-remote auth, known limits
 + PACKAGE FOLDERS — bridge/ data/ engine/ server/ under com.cwbridge.android
 + CI GUARDS — scripts/check-webui.js (gates every build); LOGIN_SHELL verified
@@ -28,10 +28,24 @@
   readiness checklist (a11y / Shizuku / CatWeb) from /api/status, section nav, busy buttons,
   aria-live toasts, confirm modal, screenshot download+timestamp, console/vars copy + autoscroll,
   Enter-to-send invoke, icon empty states; check-webui D(id)/onclick/no external script extras
++ STAGE 3 WEB PANEL — left sidebar pages (overview / control / domains / services / store / console)
+  instead of one long scroll; showPage() + localStorage page memory, off-canvas list on small screens
++ PAIR WITH 6-DIGIT CODE — phone creates a code, browser claims it at cw-control.vercel.app
+  (RemoteRelay, Vercel + Upstash); Server section shows the code and live pair status
++ AI (LLM) — invoke|ai.prompt via any OpenAI-compatible endpoint; /api/ai-config (chat vs responses
+  style, masked token, clear) — the token stays on device
++ CATWEB AUTO-OPEN — /api/auto-domain; when CatWeb logs "finished", the saved domain opens in-tab
++ SHIZUKU KEY SHORTCUTS — Ctrl+T / Enter via Shizuku; server port fallback 8080-8765-80
++ EXTRAS — public CatWeb client for s.eof.rbx (chunk-aware REQ|/RES| protocol) in extras/
 
 ## STILL TO DO
 
-- PAIR WITH 6-DIGIT CODE — next month's problem; needs Vercel/Railway pairing service
+### Web panel
+- LIVE STREAM / LIVE VIEW — "Start stream" is still a placeholder ("stream coming next build");
+  tap-image-to-tap and ~0.5s long-press are not wired yet
+
+### Remote relay
+= REMOTE CLIPBOARD — relay "clipboard" command returns a stub ("use local web clipboard"), not a real read
 
 ### Windows helper
 - REAL-DEVICE TEST — GUI not yet run by a human against a plugged-in phone (self-test only)

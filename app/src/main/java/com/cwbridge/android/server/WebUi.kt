@@ -830,7 +830,7 @@ async function loadDomainDb(){
         return "<div class=\"row\" style=\"margin-bottom:6px;align-items:flex-start\">" +
           "<div class=\"field\" style=\"flex:0 0 28%\"><label>" + esc(key) + "</label></div>" +
           "<div class=\"field\" style=\"flex:1\"><textarea id=\"" + id + "\" rows=\"2\">" + esc(val) + "</textarea></div>" +
-          "<button type=\"button\" onclick='saveDomainKey(" + arg(key) + ",\'' + id + "\'')'>Save</button>" +
+          "<button type=\"button\" onclick='saveDomainKey(" + arg(key) + "," + arg(id) + ")'>Save</button>" +
           "<button type=\"button\" class=\"danger\" onclick='deleteDomainKey(" + arg(key) + ")'>Del</button></div>";
       }).join("");
     }
