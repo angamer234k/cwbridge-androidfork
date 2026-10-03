@@ -830,8 +830,8 @@ async function loadDomainDb(){
         return "<div class=\"row\" style=\"margin-bottom:6px;align-items:flex-start\">" +
           "<div class=\"field\" style=\"flex:0 0 28%\"><label>" + esc(key) + "</label></div>" +
           "<div class=\"field\" style=\"flex:1\"><textarea id=\"" + id + "\" rows=\"2\">" + esc(val) + "</textarea></div>" +
-          "<button type=\"button\" onclick=\"saveDomainKey(" + arg(key) + ",'" + id + "')\">Save</button>" +
-          "<button type=\"button\" class=\"danger\" onclick=\"deleteDomainKey(" + arg(key) + ")\">Del</button></div>";
+          "<button type=\"button\" onclick='saveDomainKey(" + arg(key) + ",\'' + id + "\'')'>Save</button>" +
+          "<button type=\"button\" class=\"danger\" onclick='deleteDomainKey(" + arg(key) + ")'>Del</button></div>";
       }).join("");
     }
     msg("domainDbMsg", keys.length + " key(s)", true);
@@ -1090,7 +1090,7 @@ async function refreshStore(){
     D("storeRows").innerHTML = rows.map(function(d){
       return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
         esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
-        "<button type=\"button\" class=\"danger\" onclick=\"clearDomain(" + arg(d.domain) + ")\">Clear</button></td></tr>";
+        "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
     }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
   }catch(e){}
 }
