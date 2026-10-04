@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AI timeouts for OpenRouter free tier (default 90s, setting ai_timeout_sec)."""
+"""AI: temperature + max_tokens settings."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,134 +8,80 @@ SRV = ROOT / "app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt"
 
 
 def main():
-    n = 0
     t = ENG.read_text()
-
-    old_client = "    private val httpClient = OkHttpClient()\n"
-    new_client = (
-        "    private val httpClient = OkHttpClient.Builder()\n"
-        "        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)\n"
-        "        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)\n"
-        "        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)\n"
-        "        .callTimeout(45, java.util.concurrent.TimeUnit.SECONDS)\n"
-        "        .build()\n"
-    )
-    if old_client in t:
-        t = t.replace(old_client, new_client, 1)
-        n += 1
-        print("client")
-    elif "callTimeout" in t and "OkHttpClient.Builder()" in t:
-        print("client already")
-        n += 1
-    else:
-        raise SystemExit("client miss")
+    n = 0
 
     old_sig = (
-        "    private fun callLlm(\n"
-        "        baseUrl: String,\n"
-        "        token: String,\n"
-        "        model: String,\n"
-        "        style: String,\n"
-        "        prompt: String,\n"
-        "    ): String {"
-    )
-    new_sig = (
-        "    private fun callLlm(\n"
-        "        baseUrl: String,\n"
-        "        token: String,\n"
-        "        model: String,\n"
-        "        style: String,\n"
         "        prompt: String,\n"
         "        timeoutSec: Int = 90,\n"
         "    ): String {"
     )
-    if old_sig in t:
+    new_sig = (
+        "        prompt: String,\n"
+        "        timeoutSec: Int = 90,\n"
+        "        temperature: Double = 0.7,\n"
+        "        maxTokens: Int = 1024,\n"
+        "    ): String {"
+    )
+    if "maxTokens: Int" not in t:
+        if old_sig not in t:
+            raise SystemExit("sig miss")
         t = t.replace(old_sig, new_sig, 1)
         n += 1
         print("sig")
-    elif "timeoutSec: Int = 90" in t:
+    else:
         print("sig already")
         n += 1
-    else:
-        raise SystemExit("sig miss")
 
-    needle = (
-        '            .header("Authorization", "Bearer $token")\n'
-        '            .header("Content-Type", "application/json")\n'
-        '            .post(jsonBody.toRequestBody(media))\n'
-        '            .build()\n'
-        '        httpClient.newCall(req).execute().use { resp ->\n'
+    old_body = (
+        "        val jsonBody = if (useResponses) {\n"
+        "            JSONObject()\n"
+        "                .put(\"model\", model)\n"
+        "                .put(\"input\", prompt)\n"
+        "                .toString()\n"
+        "        } else {\n"
+        "            val messages = JSONArray().put(\n"
+        "                JSONObject().put(\"role\", \"user\").put(\"content\", prompt),\n"
+        "            )\n"
+        "            JSONObject()\n"
+        "                .put(\"model\", model)\n"
+        "                .put(\"messages\", messages)\n"
+        "                .toString()\n"
+        "        }"
     )
-    new_exec = (
-        '            .header("Authorization", "Bearer $token")\n'
-        '            .header("Content-Type", "application/json")\n'
-        '            .post(jsonBody.toRequestBody(media))\n'
-        '            .build()\n'
-        '        val sec = timeoutSec.coerceIn(15, 300)\n'
-        '        val client = httpClient.newBuilder()\n'
-        '            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)\n'
-        '            .readTimeout(sec.toLong(), java.util.concurrent.TimeUnit.SECONDS)\n'
-        '            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)\n'
-        '            .callTimeout((sec + 15).toLong(), java.util.concurrent.TimeUnit.SECONDS)\n'
-        '            .build()\n'
-        '        try {\n'
-        '            client.newCall(req).execute().use { resp ->\n'
+    new_body = (
+        "        val temp = temperature.coerceIn(0.0, 2.0)\n"
+        "        val maxTok = maxTokens.coerceIn(1, 16384)\n"
+        "        val jsonBody = if (useResponses) {\n"
+        "            JSONObject()\n"
+        "                .put(\"model\", model)\n"
+        "                .put(\"input\", prompt)\n"
+        "                .put(\"temperature\", temp)\n"
+        "                .put(\"max_output_tokens\", maxTok)\n"
+        "                .toString()\n"
+        "        } else {\n"
+        "            val messages = JSONArray().put(\n"
+        "                JSONObject().put(\"role\", \"user\").put(\"content\", prompt),\n"
+        "            )\n"
+        "            JSONObject()\n"
+        "                .put(\"model\", model)\n"
+        "                .put(\"messages\", messages)\n"
+        "                .put(\"temperature\", temp)\n"
+        "                .put(\"max_tokens\", maxTok)\n"
+        "                .toString()\n"
+        "        }"
     )
-    if needle in t:
-        t = t.replace(needle, new_exec, 1)
+    if "max_output_tokens" not in t:
+        if old_body not in t:
+            raise SystemExit("body miss")
+        t = t.replace(old_body, new_body, 1)
         n += 1
-        print("exec")
-    elif "AI timeout after" in t:
-        print("exec already")
-        n += 1
+        print("body")
     else:
-        raise SystemExit("exec miss")
-
-    old_tail = (
-        '                obj.getJSONArray("choices")\n'
-        '                    .getJSONObject(0)\n'
-        '                    .getJSONObject("message")\n'
-        '                    .getString("content")\n'
-        '                    .trim()\n'
-        '            }\n'
-        '        }\n'
-        '    }\n'
-        '\n'
-        '    private fun extractResponsesText'
-    )
-    new_tail = (
-        '                obj.getJSONArray("choices")\n'
-        '                    .getJSONObject(0)\n'
-        '                    .getJSONObject("message")\n'
-        '                    .getString("content")\n'
-        '                    .trim()\n'
-        '            }\n'
-        '            }\n'
-        '        } catch (e: java.net.SocketTimeoutException) {\n'
-        '            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")\n'
-        '        } catch (e: java.io.InterruptedIOException) {\n'
-        '            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")\n'
-        '        }\n'
-        '    }\n'
-        '\n'
-        '    private fun extractResponsesText'
-    )
-    if old_tail in t:
-        t = t.replace(old_tail, new_tail, 1)
+        print("body already")
         n += 1
-        print("tail")
-    elif "SocketTimeoutException" in t:
-        print("tail already")
-        n += 1
-    else:
-        raise SystemExit("tail miss")
 
     old_call = (
-        "                    val text = withContext(Dispatchers.IO) {\n"
-        "                        callLlm(baseUrl = url, token = token, model = model, style = style, prompt = prompt)\n"
-        "                    }"
-    )
-    new_call = (
         "                    val timeoutSec = UserFileStore.getSetting(context, \"ai_timeout_sec\", \"90\")\n"
         "                        ?.trim()?.toIntOrNull()?.coerceIn(15, 300) ?: 90\n"
         "                    val text = withContext(Dispatchers.IO) {\n"
@@ -149,78 +95,107 @@ def main():
         "                        )\n"
         "                    }"
     )
-    if old_call in t:
+    new_call = (
+        "                    val timeoutSec = UserFileStore.getSetting(context, \"ai_timeout_sec\", \"90\")\n"
+        "                        ?.trim()?.toIntOrNull()?.coerceIn(15, 300) ?: 90\n"
+        "                    val temperature = UserFileStore.getSetting(context, \"ai_temperature\", \"0.7\")\n"
+        "                        ?.trim()?.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7\n"
+        "                    val maxTokens = UserFileStore.getSetting(context, \"ai_max_tokens\", \"1024\")\n"
+        "                        ?.trim()?.toIntOrNull()?.coerceIn(1, 16384) ?: 1024\n"
+        "                    val text = withContext(Dispatchers.IO) {\n"
+        "                        callLlm(\n"
+        "                            baseUrl = url,\n"
+        "                            token = token,\n"
+        "                            model = model,\n"
+        "                            style = style,\n"
+        "                            prompt = prompt,\n"
+        "                            timeoutSec = timeoutSec,\n"
+        "                            temperature = temperature,\n"
+        "                            maxTokens = maxTokens,\n"
+        "                        )\n"
+        "                    }"
+    )
+    if "ai_temperature" not in t:
+        if old_call not in t:
+            raise SystemExit("call miss")
         t = t.replace(old_call, new_call, 1)
         n += 1
         print("call")
-    elif "ai_timeout_sec" in t:
+    else:
         print("call already")
         n += 1
-    else:
-        raise SystemExit("call miss")
 
     ENG.write_text(t)
-    print("engine ok", n, ENG.stat().st_size)
+    print("engine", n, ENG.stat().st_size)
 
     s = SRV.read_text()
-    if "ai_timeout_sec" not in s:
-        sn = 0
-        g = (
-            '        val tok = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "") ?: ""\n'
-            '        val masked = when {\n'
-        )
-        g2 = (
-            '        val tok = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "") ?: ""\n'
+    sn = 0
+    if "ai_temperature" not in s:
+        old_get = (
             '        val timeoutSec = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_timeout_sec", "90") ?: "90"\n'
             '        val masked = when {\n'
         )
-        if g in s:
-            s = s.replace(g, g2, 1)
-            sn += 1
-        needle2 = (
-            '                "tokenSet" to tok.isNotEmpty(),\n'
-            '                "tokenMasked" to masked,\n'
+        new_get = (
+            '        val timeoutSec = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_timeout_sec", "90") ?: "90"\n'
+            '        val temperature = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_temperature", "0.7") ?: "0.7"\n'
+            '        val maxTokens = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_max_tokens", "1024") ?: "1024"\n'
+            '        val masked = when {\n'
         )
-        if needle2 in s:
-            s = s.replace(
-                needle2,
-                needle2 + '                "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),\n',
-                1,
-            )
+        if old_get in s:
+            s = s.replace(old_get, new_get, 1)
+            sn += 1
+        old_map = (
+            '                "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),\n'
+        )
+        new_map = (
+            '                "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),\n'
+            '                "temperature" to (temperature.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7),\n'
+            '                "maxTokens" to (maxTokens.toIntOrNull()?.coerceIn(1, 16384) ?: 1024),\n'
+        )
+        if old_map in s:
+            s = s.replace(old_map, new_map, 1)
             sn += 1
         old_set = (
-            '        val token = jsonString(body, "token")\n'
-            '        val clearToken = bodyField(body, "clearToken")?.asBoolean == true\n'
+            '        val timeoutRaw = jsonString(body, "timeoutSec").trim()\n'
+        )
+        new_set = (
+            '        val timeoutRaw = jsonString(body, "timeoutSec").trim()\n'
+            '        val temperatureRaw = jsonString(body, "temperature").trim()\n'
+            '        val maxTokensRaw = jsonString(body, "maxTokens").trim()\n'
         )
         if old_set in s:
-            s = s.replace(
-                old_set,
-                old_set + '        val timeoutRaw = jsonString(body, "timeoutSec").trim()\n',
-                1,
-            )
+            s = s.replace(old_set, new_set, 1)
             sn += 1
-        insert_after = 'com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_style", style)\n        }\n'
-        idx = s.find("fun setAiConfigJson")
-        if idx > 0 and "ai_timeout_sec" not in s[idx : idx + 1500]:
-            pos = s.find(insert_after, idx)
-            if pos > 0:
-                add = (
-                    'com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_style", style)\n'
-                    '        }\n'
-                    '        if (timeoutRaw.isNotBlank()) {\n'
-                    '            val sec = timeoutRaw.toIntOrNull()?.coerceIn(15, 300) ?: 90\n'
-                    '            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_timeout_sec", sec.toString())\n'
-                    '        }\n'
-                )
-                s = s[:pos] + add + s[pos + len(insert_after) :]
-                sn += 1
+        timeout_block = (
+            '        if (timeoutRaw.isNotBlank()) {\n'
+            '            val sec = timeoutRaw.toIntOrNull()?.coerceIn(15, 300) ?: 90\n'
+            '            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_timeout_sec", sec.toString())\n'
+            '        }\n'
+        )
+        if timeout_block in s and "ai_temperature" not in s:
+            extra = (
+                '        if (timeoutRaw.isNotBlank()) {\n'
+                '            val sec = timeoutRaw.toIntOrNull()?.coerceIn(15, 300) ?: 90\n'
+                '            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_timeout_sec", sec.toString())\n'
+                '        }\n'
+                '        if (temperatureRaw.isNotBlank()) {\n'
+                '            val temp = temperatureRaw.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7\n'
+                '            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_temperature", temp.toString())\n'
+                '        }\n'
+                '        if (maxTokensRaw.isNotBlank()) {\n'
+                '            val mt = maxTokensRaw.toIntOrNull()?.coerceIn(1, 16384) ?: 1024\n'
+                '            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_max_tokens", mt.toString())\n'
+                '        }\n'
+            )
+            s = s.replace(timeout_block, extra, 1)
+            sn += 1
         SRV.write_text(s)
-        print("server ok", sn, SRV.stat().st_size)
+        print("server", sn, SRV.stat().st_size)
     else:
         print("server already")
 
-    if n < 5:
-        raise SystemExit("incomplete engine %s" % n)
+    if n < 3:
+        raise SystemExit("incomplete %s" % n)
 
 
 if __name__ == "__main__":
