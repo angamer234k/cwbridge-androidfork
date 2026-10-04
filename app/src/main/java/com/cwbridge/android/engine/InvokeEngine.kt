@@ -40,7 +40,12 @@ class InvokeEngine(
 ) {
 
     private val store = Store(context)
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
 
     private val running = AtomicBoolean(false)
     private var job: Job? = null
@@ -512,8 +517,17 @@ class InvokeEngine(
                     return
                 }
                 try {
+                    val timeoutSec = UserFileStore.getSetting(context, "ai_timeout_sec", "90")
+                        ?.trim()?.toIntOrNull()?.coerceIn(15, 300) ?: 90
                     val text = withContext(Dispatchers.IO) {
-                        callLlm(baseUrl = url, token = token, model = model, style = style, prompt = prompt)
+                        callLlm(
+                            baseUrl = url,
+                            token = token,
+                            model = model,
+                            style = style,
+                            prompt = prompt,
+                            timeoutSec = timeoutSec,
+                        )
                     }
                     if (text.isBlank()) {
                         replyErr("ai", "empty model reply")
@@ -650,6 +664,7 @@ class InvokeEngine(
         model: String,
         style: String,
         prompt: String,
+        timeoutSec: Int = 90,
     ): String {
         val root = baseUrl.trim().trimEnd('/')
         val useResponses = style == "responses" || style == "v2" || style == "response"
@@ -682,7 +697,15 @@ class InvokeEngine(
             .header("Content-Type", "application/json")
             .post(jsonBody.toRequestBody(media))
             .build()
-        httpClient.newCall(req).execute().use { resp ->
+        val sec = timeoutSec.coerceIn(15, 300)
+        val client = httpClient.newBuilder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(sec.toLong(), java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout((sec + 15).toLong(), java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        try {
+            client.newCall(req).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
                 val brief = body.take(180).replace('\n', ' ')
@@ -698,6 +721,11 @@ class InvokeEngine(
                     .getString("content")
                     .trim()
             }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")
+        } catch (e: java.io.InterruptedIOException) {
+            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")
         }
     }
 

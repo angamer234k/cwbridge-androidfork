@@ -648,6 +648,7 @@ class LocalHttpServer(
         val model = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini") ?: "gpt-4o-mini"
         val style = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_style", "chat") ?: "chat"
         val tok = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "") ?: ""
+        val timeoutSec = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_timeout_sec", "90") ?: "90"
         val masked = when {
             tok.isEmpty() -> ""
             tok.length <= 8 -> "••••"
@@ -660,6 +661,7 @@ class LocalHttpServer(
                 "style" to style,
                 "tokenSet" to tok.isNotEmpty(),
                 "tokenMasked" to masked,
+                "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),
             ),
         )
     }
@@ -670,6 +672,7 @@ class LocalHttpServer(
         val styleRaw = jsonString(body, "style").trim().lowercase()
         val token = jsonString(body, "token")
         val clearToken = bodyField(body, "clearToken")?.asBoolean == true
+        val timeoutRaw = jsonString(body, "timeoutSec").trim()
 
         if (url.isNotBlank()) {
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_url", url.trimEnd('/'))
@@ -683,6 +686,10 @@ class LocalHttpServer(
                 else -> "chat"
             }
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_style", style)
+        }
+        if (timeoutRaw.isNotBlank()) {
+            val sec = timeoutRaw.toIntOrNull()?.coerceIn(15, 300) ?: 90
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_timeout_sec", sec.toString())
         }
         if (clearToken) {
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_token", "")
