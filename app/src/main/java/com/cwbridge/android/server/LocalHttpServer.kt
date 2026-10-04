@@ -649,6 +649,8 @@ class LocalHttpServer(
         val style = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_style", "chat") ?: "chat"
         val tok = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "") ?: ""
         val timeoutSec = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_timeout_sec", "90") ?: "90"
+        val temperature = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_temperature", "0.7") ?: "0.7"
+        val maxTokens = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_max_tokens", "1024") ?: "1024"
         val masked = when {
             tok.isEmpty() -> ""
             tok.length <= 8 -> "••••"
@@ -662,6 +664,8 @@ class LocalHttpServer(
                 "tokenSet" to tok.isNotEmpty(),
                 "tokenMasked" to masked,
                 "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),
+                "temperature" to (temperature.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7),
+                "maxTokens" to (maxTokens.toIntOrNull()?.coerceIn(1, 16384) ?: 1024),
             ),
         )
     }
@@ -673,6 +677,8 @@ class LocalHttpServer(
         val token = jsonString(body, "token")
         val clearToken = bodyField(body, "clearToken")?.asBoolean == true
         val timeoutRaw = jsonString(body, "timeoutSec").trim()
+        val temperatureRaw = jsonString(body, "temperature").trim()
+        val maxTokensRaw = jsonString(body, "maxTokens").trim()
 
         if (url.isNotBlank()) {
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_url", url.trimEnd('/'))

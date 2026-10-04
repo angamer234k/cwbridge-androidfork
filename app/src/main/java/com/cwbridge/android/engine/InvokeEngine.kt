@@ -519,6 +519,10 @@ class InvokeEngine(
                 try {
                     val timeoutSec = UserFileStore.getSetting(context, "ai_timeout_sec", "90")
                         ?.trim()?.toIntOrNull()?.coerceIn(15, 300) ?: 90
+                    val temperature = UserFileStore.getSetting(context, "ai_temperature", "0.7")
+                        ?.trim()?.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7
+                    val maxTokens = UserFileStore.getSetting(context, "ai_max_tokens", "1024")
+                        ?.trim()?.toIntOrNull()?.coerceIn(1, 16384) ?: 1024
                     val text = withContext(Dispatchers.IO) {
                         callLlm(
                             baseUrl = url,
@@ -527,6 +531,8 @@ class InvokeEngine(
                             style = style,
                             prompt = prompt,
                             timeoutSec = timeoutSec,
+                            temperature = temperature,
+                            maxTokens = maxTokens,
                         )
                     }
                     if (text.isBlank()) {
@@ -665,6 +671,8 @@ class InvokeEngine(
         style: String,
         prompt: String,
         timeoutSec: Int = 90,
+        temperature: Double = 0.7,
+        maxTokens: Int = 1024,
     ): String {
         val root = baseUrl.trim().trimEnd('/')
         val useResponses = style == "responses" || style == "v2" || style == "response"
@@ -676,10 +684,14 @@ class InvokeEngine(
             root.endsWith("/v1") -> "$root/chat/completions"
             else -> "$root/v1/chat/completions"
         }
+        val temp = temperature.coerceIn(0.0, 2.0)
+        val maxTok = maxTokens.coerceIn(1, 16384)
         val jsonBody = if (useResponses) {
             JSONObject()
                 .put("model", model)
                 .put("input", prompt)
+                .put("temperature", temp)
+                .put("max_output_tokens", maxTok)
                 .toString()
         } else {
             val messages = JSONArray().put(
@@ -688,6 +700,8 @@ class InvokeEngine(
             JSONObject()
                 .put("model", model)
                 .put("messages", messages)
+                .put("temperature", temp)
+                .put("max_tokens", maxTok)
                 .toString()
         }
         val media = "application/json; charset=utf-8".toMediaType()
