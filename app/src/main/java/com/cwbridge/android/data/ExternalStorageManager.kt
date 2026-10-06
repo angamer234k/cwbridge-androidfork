@@ -146,14 +146,15 @@ class ExternalStorageManager(private val activity: AppCompatActivity) {
      * This allows the app to access the URI even after restart.
      */
     fun takePersistableUriPermission(uri: Uri): Boolean {
-        return try {
+        try {
             activity.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
+            return true
         } catch (e: SecurityException) {
             LogBuffer.e("ExternalStorage", "Failed to take persistable URI permission: ${e.message}")
-            false
+            return false
         }
     }
 
