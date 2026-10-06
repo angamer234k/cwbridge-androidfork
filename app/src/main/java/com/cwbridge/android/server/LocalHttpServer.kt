@@ -851,16 +851,13 @@ class LocalHttpServer(
     }
 
     private fun listStorageFilesJson(): String {
-        val files = runBlocking {
-            val ctx = context as android.app.Activity
-            val manager = ExternalStorageManager(ctx)
-            manager.listFilesInFolder()
-        }
+        // HTTP API cannot access SAF directly - this is for UI only
         return json(
             mapOf(
-                "ok" to true,
-                "files" to files,
-                "count" to files.size,
+                "ok" to false,
+                "error" to "Use app UI to select folder and list files",
+                "files" to emptyList<String>(),
+                "count" to 0,
             ),
         )
     }
