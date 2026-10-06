@@ -852,7 +852,8 @@ class LocalHttpServer(
 
     private fun listStorageFilesJson(): String {
         val files = runBlocking {
-            val manager = ExternalStorageManager(context as android.app.Activity)
+            val ctx = context as android.app.Activity
+            val manager = ExternalStorageManager(ctx)
             manager.listFilesInFolder()
         }
         return json(
