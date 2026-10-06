@@ -27,6 +27,7 @@ import java.net.URLDecoder
 import kotlin.text.Charsets
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlinx.coroutines.runBlocking
 
 /**
  * Built-in web server: serves a control panel at / plus a JSON API.
@@ -307,7 +308,13 @@ class LocalHttpServer(
             path == "/api/ai-config" && method == "GET" -> respond(out, 200, aiConfigJson())
             path == "/api/ai-config" && method == "POST" -> respond(out, 200, setAiConfigJson(body))
 
-
+            // External storage API endpoints
+            path == "/api/storage/status" && method == "GET" -> respond(out, 200, storageStatusJson())
+            path == "/api/storage/select" && method == "POST" -> respond(out, 200, selectStorageJson(body))
+            path == "/api/storage/clear" && method == "POST" -> respond(out, 200, clearStorageJson())
+            path == "/api/storage/export" && method == "POST" -> respond(out, 200, exportStorageJson())
+            path == "/api/storage/import" && method == "POST" -> respond(out, 200, importStorageJson())
+            path == "/api/storage/files" && method == "GET" -> respond(out, 200, listStorageFilesJson())
 
             path.startsWith("/api/services/") -> {
                 val rest = path.removePrefix("/api/services/")
@@ -778,6 +785,79 @@ class LocalHttpServer(
         return store.setLimit(domain, bytes).fold(
             onSuccess = { json(mapOf("message" to "$domain limited to ${Store.formatBytes(bytes)}")) },
             onFailure = { json(mapOf("error" to (it.message ?: "failed"))) },
+        )
+    }
+
+    // ---- storage API handlers ----------------------------------------------
+
+    private fun storageStatusJson(): String {
+        val hasExternal = DatabaseManager.hasExternalStorage()
+        val externalUri = DatabaseManager.getExternalStorageUri()
+        return json(
+            mapOf(
+                "hasExternalStorage" to hasExternal,
+                "externalStorageUri" to externalUri,
+                "usingRoomDatabase" to true,
+                "databaseName" to AppDatabase.DATABASE_NAME,
+            ),
+        )
+    }
+
+    private fun selectStorageJson(body: String): String {
+        return json(
+            mapOf(
+                "ok" to true,
+                "message" to "To select a folder, open the app's settings UI and use the folder selection dialog",
+                "actionRequired" to true,
+            ),
+        )
+    }
+
+    private fun clearStorageJson(): String {
+        DatabaseManager.clearExternalStorageUri()
+        return json(
+            mapOf(
+                "ok" to true,
+                "message" to "External storage cleared",
+            ),
+        )
+    }
+
+    private fun exportStorageJson(): String {
+        val result = runBlocking {
+            DatabaseManager.exportToExternalStorage(context)
+        }
+        return json(
+            mapOf(
+                "ok" to result,
+                "message" to if (result) "Data exported successfully" else "Export failed",
+            ),
+        )
+    }
+
+    private fun importStorageJson(): String {
+        val result = runBlocking {
+            DatabaseManager.importFromExternalStorage(context)
+        }
+        return json(
+            mapOf(
+                "ok" to result,
+                "message" to if (result) "Data imported successfully" else "Import failed",
+            ),
+        )
+    }
+
+    private fun listStorageFilesJson(): String {
+        val files = runBlocking {
+            val manager = ExternalStorageManager(activity)
+            manager.listFilesInFolder()
+        }
+        return json(
+            mapOf(
+                "ok" to true,
+                "files" to files,
+                "count" to files.size,
+            ),
         )
     }
 

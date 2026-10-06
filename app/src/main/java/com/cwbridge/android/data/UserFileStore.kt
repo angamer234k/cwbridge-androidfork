@@ -3,21 +3,24 @@ package com.cwbridge.android.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.cwbridge.android.bridge.LogBuffer
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Settings + domain data on *user storage* (app external files dir),
- * not internal SharedPreferences.
- *
- * Path: Android/data/<package>/files/cwbridge/
- *   settings.json  — server password, remote enabled, first-run flags
- *   store.json     — domain::key -> value
- *   limits.json    — domain -> byte limit
+ * Settings + domain data storage.
+ * 
+ * Primary storage: Room database (SQLite)
+ * Secondary storage: External folder via SAF (optional, for backups)
+ * 
+ * Path: Android/data/<package>/files/cwbridge/ (for legacy JSON files)
+ *   settings.json   server password, remote enabled, first-run flags
+ *   store.json      domain::key -> value
+ *   limits.json     domain -> byte limit
  *
  * Visible in a file manager under the app folder; survives clear-cache
- * (not clear-data). Migrates once from the old SharedPreferences files.
+ * (not clear-data). Migrates once from the old SharedPreferences files and JSON files.
  */
 object UserFileStore {
 
@@ -28,6 +31,9 @@ object UserFileStore {
 
     private val lock = Any()
     private var root: File? = null
+    private var useLegacyStorage = false
+
+    // Caches for backward compatibility
     private val settingsCache = ConcurrentHashMap<String, String>()
     private val storeCache = ConcurrentHashMap<String, String>()
     private val limitsCache = ConcurrentHashMap<String, Long>()
@@ -37,13 +43,40 @@ object UserFileStore {
         if (ready) return
         synchronized(lock) {
             if (ready) return
+            
+            // Initialize database manager
+            DatabaseManager.init(context)
+            
             val base = context.applicationContext.getExternalFilesDir(null)
                 ?: context.applicationContext.filesDir
             val dir = File(base, DIR).also { it.mkdirs() }
             root = dir
-            loadJson(File(dir, SETTINGS), settingsCache)
-            loadJson(File(dir, STORE), storeCache)
-            loadLimits(File(dir, LIMITS), limitsCache)
+            
+            // Check if we should use legacy storage (for migration purposes)
+            useLegacyStorage = !DatabaseManager.hasExternalStorage()
+            
+            // Load from Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking {
+                    db.settingDao().getAll().forEach { 
+                        settingsCache[it.key] = it.value 
+                    }
+                    db.storeDao().getAll().forEach { 
+                        storeCache[it.slot] = it.value 
+                    }
+                    db.limitDao().getAll().forEach { 
+                        limitsCache[it.domain] = it.bytes 
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Failed to load from Room: ${t.message}")
+                // Fallback to legacy JSON files
+                loadJson(File(dir, SETTINGS), settingsCache)
+                loadJson(File(dir, STORE), storeCache)
+                loadLimits(File(dir, LIMITS), limitsCache)
+            }
+            
             migrateFromPrefs(context.applicationContext)
             ready = true
             LogBuffer.i("Files", "data dir: ${dir.absolutePath}")
@@ -59,6 +92,20 @@ object UserFileStore {
 
     fun getSetting(context: Context, key: String, default: String? = null): String? {
         init(context)
+        
+        // Try Room database first
+        try {
+            val db = DatabaseManager.getDatabase(context)
+            val value = runBlocking { db.settingDao().getValueByKey(key) }
+            if (value != null) {
+                settingsCache[key] = value
+                return value
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("Files", "Room getSetting failed: ${t.message}")
+        }
+        
+        // Fallback to cache
         return settingsCache[key] ?: default
     }
 
@@ -71,7 +118,24 @@ object UserFileStore {
         init(context)
         synchronized(lock) {
             settingsCache[key] = value
-            flushSettings()
+            
+            // Save to Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking { 
+                    db.settingDao().insert(SettingEntity(key, value))
+                }
+                // Also save to external storage if configured
+                if (DatabaseManager.hasExternalStorage()) {
+                    runBlocking {
+                        DatabaseManager.saveToExternalStorage(context, "settings", key, value)
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Room putSetting failed: ${t.message}")
+                // Fallback to JSON file
+                flushSettings()
+            }
         }
     }
 
@@ -83,6 +147,20 @@ object UserFileStore {
 
     fun storeGet(context: Context, slot: String): String? {
         init(context)
+        
+        // Try Room database first
+        try {
+            val db = DatabaseManager.getDatabase(context)
+            val value = runBlocking { db.storeDao().getValueBySlot(slot) }
+            if (value != null) {
+                storeCache[slot] = value
+                return value
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("Files", "Room storeGet failed: ${t.message}")
+        }
+        
+        // Fallback to cache
         return storeCache[slot]
     }
 
@@ -90,7 +168,24 @@ object UserFileStore {
         init(context)
         synchronized(lock) {
             storeCache[slot] = value
-            flushStore()
+            
+            // Save to Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking { 
+                    db.storeDao().insert(StoreEntity(slot, value))
+                }
+                // Also save to external storage if configured
+                if (DatabaseManager.hasExternalStorage()) {
+                    runBlocking {
+                        DatabaseManager.saveToExternalStorage(context, "store", slot, value)
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Room storePut failed: ${t.message}")
+                // Fallback to JSON file
+                flushStore()
+            }
         }
     }
 
@@ -98,7 +193,18 @@ object UserFileStore {
         init(context)
         synchronized(lock) {
             storeCache.remove(slot)
-            flushStore()
+            
+            // Delete from Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking { 
+                    db.storeDao().deleteBySlot(slot)
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Room storeRemove failed: ${t.message}")
+                // Fallback to JSON file
+                flushStore()
+            }
         }
     }
 
@@ -107,7 +213,18 @@ object UserFileStore {
         synchronized(lock) {
             val keys = storeCache.keys.filter { it.startsWith(prefix) }
             keys.forEach { storeCache.remove(it) }
-            if (keys.isNotEmpty()) flushStore()
+            
+            // Delete from Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking { 
+                    db.storeDao().deleteAllWithPrefix(prefix)
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Room storeRemovePrefix failed: ${t.message}")
+                // Fallback to JSON file
+                if (keys.isNotEmpty()) flushStore()
+            }
             return keys.size
         }
     }
@@ -121,6 +238,20 @@ object UserFileStore {
 
     fun limitGet(context: Context, domain: String, default: Long): Long {
         init(context)
+        
+        // Try Room database first
+        try {
+            val db = DatabaseManager.getDatabase(context)
+            val bytes = runBlocking { db.limitDao().getBytesByDomain(domain) }
+            if (bytes != null) {
+                limitsCache[domain] = bytes
+                return bytes
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("Files", "Room limitGet failed: ${t.message}")
+        }
+        
+        // Fallback to cache
         return limitsCache[domain] ?: default
     }
 
@@ -128,7 +259,24 @@ object UserFileStore {
         init(context)
         synchronized(lock) {
             limitsCache[domain] = bytes
-            flushLimits()
+            
+            // Save to Room database
+            try {
+                val db = DatabaseManager.getDatabase(context)
+                runBlocking { 
+                    db.limitDao().insert(LimitEntity(domain, bytes))
+                }
+                // Also save to external storage if configured
+                if (DatabaseManager.hasExternalStorage()) {
+                    runBlocking {
+                        DatabaseManager.saveToExternalStorage(context, "limits", domain, bytes.toString())
+                    }
+                }
+            } catch (t: Throwable) {
+                LogBuffer.w("Files", "Room limitPut failed: ${t.message}")
+                // Fallback to JSON file
+                flushLimits()
+            }
         }
     }
 
@@ -137,7 +285,7 @@ object UserFileStore {
         return limitsCache.toMap()
     }
 
-    // ---- persistence ----
+    // ---- persistence (legacy fallback) ----
 
     private fun flushSettings() {
         val dir = root ?: return
@@ -241,9 +389,28 @@ object UserFileStore {
         }
 
         settingsCache[flag] = "true"
+        
+        // Save to Room database
+        try {
+            val db = DatabaseManager.getDatabase(ctx)
+            runBlocking {
+                settingsCache.forEach { (k, v) ->
+                    db.settingDao().insert(SettingEntity(k, v))
+                }
+                storeCache.forEach { (k, v) ->
+                    db.storeDao().insert(StoreEntity(k, v))
+                }
+                limitsCache.forEach { (k, v) ->
+                    db.limitDao().insert(LimitEntity(k, v))
+                }
+            }
+        } catch (t: Throwable) {
+            LogBuffer.w("Files", "Failed to save migration to Room: ${t.message}")
+        }
+        
         flushSettings()
         flushStore()
         flushLimits()
-        LogBuffer.i("Files", "migrated SharedPreferences → ${root?.absolutePath}")
+        LogBuffer.i("Files", "migrated SharedPreferences  ${root?.absolutePath}")
     }
 }
