@@ -1,0 +1,77 @@
+name: Patch Invoke QR Surgical
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 80
+      - name: Restore InvokeEngine + insert qr
+        run: |
+          set -e
+          GOOD=
+          for h in $(git log --all --pretty=format:%H -- app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt); do
+            sz=$(git cat-file -s "$h:app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt" 2>/dev/null || echo 0)
+            if [ "$sz" -gt 10000 ]; then GOOD=$h; break; fi
+          done
+          echo "GOOD=$GOOD size=$(git cat-file -s $GOOD:app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt)"
+          git show "$GOOD:app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt" > app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          python3 - << 'ENDPY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt")
+          src = p.read_text()
+          src = src.replace(
+              "cmds: save load storeinfo setlimit weather exists alive keys status tap paste help",
+              "cmds: save load storeinfo setlimit weather exists alive keys status tap paste qr help",
+              1,
+          )
+          src = src.replace(
+              '"status | tap.x.y | paste.text | enter | clip | focus | submit | wait | toast | echo | help",',
+              '"status | tap.x.y | paste.text | qr.text | enter | clip | focus | submit | wait | toast | echo | help",',
+              1,
+          )
+          qr_lines = [
+              '            "qr" -> {',
+              '                // qr.<text> — auto-size QR → paste "size(1-5).colormap" (0/1 modules, dark=1)',
+              '                val text = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")',
+              '                if (text.isEmpty()) {',
+              '                    replyErr("qr", "need qr.text")',
+              '                    return',
+              '                }',
+              '                try {',
+              '                    val encoded = withContext(Dispatchers.Default) { QrMap.encode(text) }',
+              '                    val payload = encoded.wire()',
+              '                    pasteIntoGame(payload)',
+              '                    replyOk(',
+              '                        "qr",',
+              '                        "size=${encoded.size} modules=${encoded.modules} bits=${encoded.colorMap.length}",',
+              '                    )',
+              '                } catch (t: Throwable) {',
+              '                    replyErr("qr", t.message ?: "encode failed")',
+              '                }',
+              '            }',
+              '',
+          ]
+          qr = "\n".join(qr_lines) + "\n"
+          marker = '            "help" -> {'
+          if '"qr" ->' not in src:
+              if marker not in src:
+                  raise SystemExit("help marker missing")
+              src = src.replace(marker, qr + marker, 1)
+          p.write_text(src)
+          print("patched", len(src))
+          assert '"qr" ->' in src
+          ENDPY
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          git status
+          git commit -m "feat(invoke): qr.<text> → size.colormap paste" || echo nochange
+          git push
