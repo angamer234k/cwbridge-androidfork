@@ -12,8 +12,8 @@ android {
         applicationId = "com.cwbridge.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "2.12.0-android"
+        versionCode = 13
+        versionName = "2.13.0-android"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -76,6 +76,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // QR encode for invoke|qr → size.colormap
+    implementation("com.google.zxing:core:3.5.3")
     // Shizuku — privileged shell for Ctrl+T / keyinjection
     val shizukuVersion = "13.1.5"
     implementation("dev.rikka.shizuku:api:$shizukuVersion")
