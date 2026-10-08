@@ -1,0 +1,25 @@
+name: Ship Invoke QR
+on:
+  workflow_dispatch:
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write InvokeEngine
+        run: |
+          python3 -c "import base64; open('app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt','wb').write(base64.b64decode(open('.github/workflows/invoke_engine_qr.b64').read().strip()))"
+          wc -c app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          grep -n '"qr"' app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt | head
+          test -f app/src/main/java/com/cwbridge/android/engine/QrMap.kt && echo QrMap_ok
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          git status
+          git commit -m "feat(invoke): qr.<text> handler (full InvokeEngine)" || echo nochange
+          git push
