@@ -11,7 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Write InvokeEngine
         run: |
-          python3 -c "import base64; open('app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt','wb').write(base64.b64decode(open('.github/workflows/invoke_engine_qr.b64').read().strip()))"
+          cat .github/workflows/invoke_engine_qr.b64.a .github/workflows/invoke_engine_qr.b64.b > /tmp/ie.b64
+          python3 -c "import base64; open('app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt','wb').write(base64.b64decode(open('/tmp/ie.b64').read().strip()))"
           wc -c app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
           grep -n '"qr"' app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt | head
           test -f app/src/main/java/com/cwbridge/android/engine/QrMap.kt && echo QrMap_ok
