@@ -443,8 +443,43 @@ class InvokeEngine(
                     }
                     pasteExisting(existing)
                 } else {
-                    pasteIntoGame(text)
+                    runPasteSequence(text)
                 }
+            }
+
+            "clip" -> {
+                when (data1.lowercase()) {
+                    "set" -> {
+                        if (data2.isEmpty()) {
+                            replyErr("clip", "need clip.set.text")
+                            return
+                        }
+                        setClipboard(data2)
+                        replyOk("clip", "set ${data2.length} chars")
+                    }
+                    "get" -> {
+                        val t = getClipboard()
+                        replyOk("clip", t ?: "")
+                    }
+                    else -> replyErr("clip", "clip.set.text or clip.get")
+                }
+            }
+
+            "wait" -> {
+                val ms = data1.toLongOrNull() ?: data2.toLongOrNull() ?: 1000L
+                delay(ms.coerceIn(0L, 30_000L))
+                replyOk("wait", "${ms}ms")
+            }
+
+            "toast" -> {
+                val msg = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                android.widget.Toast.makeText(context, msg.ifEmpty { "cwbridge" }, android.widget.Toast.LENGTH_SHORT).show()
+                replyOk("toast", msg.take(40))
+            }
+
+            "echo" -> {
+                val msg = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                replyOk("echo", msg)
             }
 
             "qr" -> {
@@ -467,54 +502,333 @@ class InvokeEngine(
                 }
             }
 
-            "totp" -> {
-                // totp.<base32secret>  → paste current 6-digit code
-                val secret = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
-                if (secret.isEmpty()) {
-                    replyErr("totp", "need totp.base32secret")
+                        "totp" -> {
+      // totp.<base32secret>  → paste current 6-digit code
+      val secret = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+      if (secret.isEmpty()) {
+          replyErr("totp", "need totp.base32secret")
+          return
+      }
+      try {
+          val code = withContext(Dispatchers.Default) { Totp.code(secret) }
+          pasteIntoGame(code)
+          replyOk("totp", code)
+      } catch (t: Throwable) {
+          replyErr("totp", t.message ?: "totp failed")
+      }
+  }
+
+  "totpcheck" -> {
+      // totpcheck.<base32secret>.<user_code>  → paste 1 or 0
+      val secret = data1
+      val code = data2
+      if (secret.isEmpty() || code.isEmpty()) {
+          replyErr("totpcheck", "need totpcheck.base32secret.code")
+          return
+      }
+      try {
+          val ok = withContext(Dispatchers.Default) { Totp.verify(secret, code) }
+          val payload = if (ok) "1" else "0"
+          pasteIntoGame(payload)
+          replyOk("totpcheck", payload)
+      } catch (t: Throwable) {
+          replyErr("totpcheck", t.message ?: "check failed")
+      }
+  }
+
+  "help" -> {
+      replyOk(
+          "help",
+          "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
+              "status | tap.x.y | paste.text | qr.text | totp.secret | totpcheck.secret.code | " +
+              "enter | clip | focus | submit | wait | toast | echo | help",
+      )
+  }
+
+            "ai" -> {
+                // ai.<prompt> — uses web AI settings; pastes model text; costs 2
+                val prompt = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                if (prompt.isEmpty()) {
+                    replyErr("ai", "need ai.prompt")
+                    return
+                }
+                val domain = Store.DEFAULT_DOMAIN
+                val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 2)
+                if (rl != null) {
+                    replyErr("ai", rl)
+                    return
+                }
+                val url = UserFileStore.getSetting(context, "ai_url", "")?.trim().orEmpty()
+                val token = UserFileStore.getSetting(context, "ai_token", "")?.trim().orEmpty()
+                val model = UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini")?.trim().orEmpty()
+                    .ifBlank { "gpt-4o-mini" }
+                val style = UserFileStore.getSetting(context, "ai_style", "chat")?.trim()?.lowercase().orEmpty()
+                if (url.isEmpty()) {
+                    replyErr("ai", "configure AI URL in web panel")
+                    return
+                }
+                if (token.isEmpty()) {
+                    replyErr("ai", "configure AI token in web panel")
                     return
                 }
                 try {
-                    val code = withContext(Dispatchers.Default) { Totp.code(secret) }
-                    pasteIntoGame(code)
-                    replyOk("totp", code)
+                    val timeoutSec = UserFileStore.getSetting(context, "ai_timeout_sec", "90")
+                        ?.trim()?.toIntOrNull()?.coerceIn(15, 300) ?: 90
+                    val temperature = UserFileStore.getSetting(context, "ai_temperature", "0.7")
+                        ?.trim()?.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7
+                    val maxTokens = UserFileStore.getSetting(context, "ai_max_tokens", "1024")
+                        ?.trim()?.toIntOrNull()?.coerceIn(1, 16384) ?: 1024
+                    val text = withContext(Dispatchers.IO) {
+                        callLlm(
+                            baseUrl = url,
+                            token = token,
+                            model = model,
+                            style = style,
+                            prompt = prompt,
+                            timeoutSec = timeoutSec,
+                            temperature = temperature,
+                            maxTokens = maxTokens,
+                        )
+                    }
+                    if (text.isBlank()) {
+                        replyErr("ai", "empty model reply")
+                        return
+                    }
+                    pasteIntoGame(text, pressEnter = true)
+                    replyOk("ai", text.take(500))
                 } catch (t: Throwable) {
-                    replyErr("totp", t.message ?: "totp failed")
+                    replyErr("ai", t.message ?: "llm failed")
                 }
             }
 
-            "totpcheck" -> {
-                // totpcheck.<base32secret>.<user_code>  → paste 1 or 0
-                val secret = data1
-                val code = data2
-                if (secret.isEmpty() || code.isEmpty()) {
-                    replyErr("totpcheck", "need totpcheck.base32secret.code")
-                    return
-                }
-                try {
-                    val ok = withContext(Dispatchers.Default) { Totp.verify(secret, code) }
-                    val payload = if (ok) "1" else "0"
-                    pasteIntoGame(payload)
-                    replyOk("totpcheck", payload)
-                } catch (t: Throwable) {
-                    replyErr("totpcheck", t.message ?: "check failed")
-                }
-            }
-
-            "help" -> {
-                replyOk(
-                    "help",
-                    "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
-                        "status | tap.x.y | paste.text | qr.text | totp.secret | totpcheck.secret.code | " +
-                        "enter | clip | focus | submit | wait | toast | echo | help",
-                )
-            }
-
-            else -> {
-                replyErr(request, "unknown cmd — try help")
-            }
+            else -> replyErr(request, "unknown request — invoke|help")
         }
     }
 
-    // ---- remaining helpers truncated for this restore; full file continues with pasteIntoGame, replyOk, etc. from previous good version ----
+
+    /** Focus → paste [text] into game. Does not emit replyOk (caller does). */
+    private suspend fun pasteIntoGame(text: String, pressEnter: Boolean = false) {
+        val svc = TapService.instance
+        setClipboard(text)
+        if (svc != null) {
+            svc.clickAtPercent(focusXPct, focusYPct)
+            delay(1000)
+            svc.pasteClipboard()
+            delay(400)
+            if (submitXPx > 0f || submitYPx > 0f) {
+                svc.clickAt(submitXPx, submitYPx)
+                delay(200)
+            }
+            if (pressEnter) {
+                val ok = svc.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
+            }
+        } else if (ShizukuShell.isReady()) {
+            ShizukuShell.exec("input keyevent KEYCODE_PASTE")
+            delay(400)
+            if (pressEnter) {
+                val ok = ShizukuShell.pressEnter()
+                LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
+            }
+        } else {
+            LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
+        }
+    }
+
+    private suspend fun runPasteSequence(text: String) {
+        val svc = TapService.instance
+        if (svc == null) {
+            replyErr("paste", "TapService offline")
+            return
+        }
+        setClipboard(text)
+        svc.clickAtPercent(focusXPct, focusYPct)
+        delay(1000)
+        svc.pasteClipboard()
+        delay(1000)
+        if (submitXPx > 0f || submitYPx > 0f) {
+            svc.clickAt(submitXPx, submitYPx)
+        }
+        replyOk("paste", "done ${text.length} chars focus=$focusXPct,$focusYPct submit=$submitXPx,$submitYPx")
+    }
+
+    /**
+     * `paste` with no text arg: the clipboard already holds the content, so only
+     * the focus-tap -> paste -> submit sequence runs. We deliberately do NOT
+     * rewrite the clipboard here.
+     */
+    private suspend fun pasteExisting(existing: String) {
+        val svc = TapService.instance
+        if (svc == null) {
+            replyErr("paste", "TapService offline")
+            return
+        }
+        svc.clickAtPercent(focusXPct, focusYPct)
+        delay(1000)
+        svc.pasteClipboard()
+        delay(1000)
+        if (submitXPx > 0f || submitYPx > 0f) {
+            svc.clickAt(submitXPx, submitYPx)
+        }
+        replyOk("paste", "pasted clipboard (${existing.length} chars) focus=$focusXPct,$focusYPct")
+    }
+
+    private fun setClipboard(text: String) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("cwbridge", text))
+    }
+
+    private fun getClipboard(): String? {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip ?: return null
+        if (clip.itemCount < 1) return null
+        return clip.getItemAt(0).coerceToText(context)?.toString()
+    }
+
+
+    private fun httpGet(url: String): String {
+        val req = Request.Builder().url(url).get().header("User-Agent", "CWBridge/1.0").build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) error("HTTP ${resp.code}")
+            return resp.body?.string() ?: error("empty body")
+        }
+    }
+
+    /** lat,lon from "48.8.2.3" / "48.8,2.3" or city name via Open-Meteo geocoding. */
+    private fun resolveWeatherPoint(q: String): Pair<Double, Double> {
+        val cleaned = q.trim().replace(",", ".")
+        val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(cleaned).map { it.value.toDouble() }.toList()
+        if (nums.size >= 2) {
+            return nums[0] to nums[1]
+        }
+        val geoUrl =
+            "https://geocoding-api.open-meteo.com/v1/search?name=" +
+                java.net.URLEncoder.encode(q, Charsets.UTF_8.name()) +
+                "&count=1&language=en&format=json"
+        val body = httpGet(geoUrl)
+        val results = JSONObject(body).optJSONArray("results")
+            ?: error("city not found: $q")
+        if (results.length() == 0) error("city not found: $q")
+        val first = results.getJSONObject(0)
+        return first.getDouble("latitude") to first.getDouble("longitude")
+    }
+
+
+    /**
+     * OpenAI-compatible call.
+     * style "chat" → POST {base}/v1/chat/completions
+     * style "responses" → POST {base}/v1/responses
+     */
+    private fun callLlm(
+        baseUrl: String,
+        token: String,
+        model: String,
+        style: String,
+        prompt: String,
+        timeoutSec: Int = 90,
+        temperature: Double = 0.7,
+        maxTokens: Int = 1024,
+    ): String {
+        val root = baseUrl.trim().trimEnd('/')
+        val useResponses = style == "responses" || style == "v2" || style == "response"
+        val endpoint = when {
+            useResponses && root.endsWith("/v1/responses") -> root
+            useResponses && root.endsWith("/v1") -> "$root/responses"
+            useResponses -> "$root/v1/responses"
+            root.endsWith("/v1/chat/completions") -> root
+            root.endsWith("/v1") -> "$root/chat/completions"
+            else -> "$root/v1/chat/completions"
+        }
+        val temp = temperature.coerceIn(0.0, 2.0)
+        val maxTok = maxTokens.coerceIn(1, 16384)
+        val jsonBody = if (useResponses) {
+            JSONObject()
+                .put("model", model)
+                .put("input", prompt)
+                .put("temperature", temp)
+                .put("max_output_tokens", maxTok)
+                .toString()
+        } else {
+            val messages = JSONArray().put(
+                JSONObject().put("role", "user").put("content", prompt),
+            )
+            JSONObject()
+                .put("model", model)
+                .put("messages", messages)
+                .put("temperature", temp)
+                .put("max_tokens", maxTok)
+                .toString()
+        }
+        val media = "application/json; charset=utf-8".toMediaType()
+        val req = Request.Builder()
+            .url(endpoint)
+            .header("Authorization", "Bearer $token")
+            .header("Content-Type", "application/json")
+            .post(jsonBody.toRequestBody(media))
+            .build()
+        val sec = timeoutSec.coerceIn(15, 300)
+        val client = httpClient.newBuilder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(sec.toLong(), java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout((sec + 15).toLong(), java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        try {
+            client.newCall(req).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                val brief = body.take(180).replace('\n', ' ')
+                error("HTTP ${resp.code}: $brief")
+            }
+            val obj = JSONObject(body)
+            return if (useResponses) {
+                extractResponsesText(obj)
+            } else {
+                obj.getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                    .trim()
+            }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")
+        } catch (e: java.io.InterruptedIOException) {
+            error("AI timeout after ${sec}s — raise ai_timeout_sec (15-300) in settings")
+        }
+    }
+
+    private fun extractResponsesText(obj: JSONObject): String {
+        if (obj.has("output_text")) {
+            val ot = obj.optString("output_text", "")
+            if (ot.isNotBlank()) return ot.trim()
+        }
+        val output = obj.optJSONArray("output") ?: return obj.toString().take(500)
+        val sb = StringBuilder()
+        for (i in 0 until output.length()) {
+            val item = output.optJSONObject(i) ?: continue
+            val content = item.optJSONArray("content") ?: continue
+            for (j in 0 until content.length()) {
+                val part = content.optJSONObject(j) ?: continue
+                val text = part.optString("text", "")
+                if (text.isNotBlank()) {
+                    if (sb.isNotEmpty()) sb.append('\n')
+                    sb.append(text)
+                }
+            }
+        }
+        val out = sb.toString().trim()
+        if (out.isNotEmpty()) return out
+        error("no text in responses payload")
+    }
+
+
+    private fun replyOk(request: String, payload: String) {
+        // Tagged so Roblox/MacroDroid can filter; also human-readable in the in-app log.
+        LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}")
+    }
+
+    private fun replyErr(request: String, payload: String) {
+        LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}")
+    }
 }
