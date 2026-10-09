@@ -1,0 +1,95 @@
+name: Restore Invoke + TOTP
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - name: Restore InvokeEngine from last good + inject totp
+        run: |
+          set -eux
+          GOOD=9f2cf0ebee1253d82c08aae1912ecd35e37fa25e
+          git show ${GOOD}:app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt > app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          wc -c app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt")
+          text = p.read_text()
+          old_cmds = '"cmds: save load storeinfo setlimit weather exists alive keys status tap paste qr help",'
+          new_cmds = '"cmds: save load storeinfo setlimit weather exists alive keys status tap paste qr totp totpcheck help",'
+          assert old_cmds in text, "cmds line missing"
+          text = text.replace(old_cmds, new_cmds)
+          qr_end = '''            "help" -> {
+                replyOk(
+                    "help",
+                    "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
+                        "status | tap.x.y | paste.text | qr.text | enter | clip | focus | submit | wait | toast | echo | help",
+                )
+            }'''
+          totp_block = '''            "totp" -> {
+                // totp.<base32secret>  → paste current 6-digit code
+                val secret = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
+                if (secret.isEmpty()) {
+                    replyErr("totp", "need totp.base32secret")
+                    return
+                }
+                try {
+                    val code = withContext(Dispatchers.Default) { Totp.code(secret) }
+                    pasteIntoGame(code)
+                    replyOk("totp", code)
+                } catch (t: Throwable) {
+                    replyErr("totp", t.message ?: "totp failed")
+                }
+            }
+
+            "totpcheck" -> {
+                // totpcheck.<base32secret>.<user_code>  → paste 1 or 0
+                val secret = data1
+                val code = data2
+                if (secret.isEmpty() || code.isEmpty()) {
+                    replyErr("totpcheck", "need totpcheck.base32secret.code")
+                    return
+                }
+                try {
+                    val ok = withContext(Dispatchers.Default) { Totp.verify(secret, code) }
+                    val payload = if (ok) "1" else "0"
+                    pasteIntoGame(payload)
+                    replyOk("totpcheck", payload)
+                } catch (t: Throwable) {
+                    replyErr("totpcheck", t.message ?: "check failed")
+                }
+            }
+
+            "help" -> {
+                replyOk(
+                    "help",
+                    "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
+                        "status | tap.x.y | paste.text | qr.text | totp.secret | totpcheck.secret.code | " +
+                        "enter | clip | focus | submit | wait | toast | echo | help",
+                )
+            }'''
+          if qr_end not in text:
+              raise SystemExit("help block not found")
+          text = text.replace(qr_end, totp_block)
+          p.write_text(text)
+          print("patched", p.stat().st_size)
+          PY
+          grep -n 'totp\|totpcheck' app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt | head -10
+      - name: Bump version
+        run: |
+          sed -i 's/versionCode = 13/versionCode = 14/' app/build.gradle.kts
+          sed -i 's/versionName = "2.13.0-android"/versionName = "2.14.0-android"/' app/build.gradle.kts
+          grep -n 'versionCode\|versionName' app/build.gradle.kts | head -5
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt app/build.gradle.kts
+          git status
+          git commit -m "feat: invoke|totp + totpcheck (RFC 6238) + bump 2.14.0" || echo nochange
+          git push
