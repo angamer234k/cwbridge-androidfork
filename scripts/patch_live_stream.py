@@ -124,6 +124,7 @@ def patch_webui():
         )
 
     if "function toggleStream" not in t:
+        # Use document.getElementById for dynamic streamImg (not static D() ids)
         js = r'''
 var streamOn = false;
 var streamTimer = null;
@@ -158,10 +159,10 @@ async function pollStream(){
       if(blob && blob.size > 100){
         var url = URL.createObjectURL(blob);
         var box = D("shotBox");
-        var img = D("streamImg");
+        var img = document.getElementById("streamImg");
         if(!img && box){
           box.innerHTML = "<img id=\"streamImg\" alt=\"live\">";
-          img = D("streamImg");
+          img = document.getElementById("streamImg");
           if(img) bindStreamTap(img);
         }
         if(img){
@@ -222,7 +223,7 @@ function bindStreamTap(img){
         "      '<span class=\"ms sm\">download</span> Download</a></div>';"
     )
     new_shot = old_shot + (
-        "\n    var si = D('shotImg');\n"
+        "\n    var si = document.getElementById('shotImg');\n"
         "    if(si) bindStreamTap(si);"
     )
     if old_shot in t and "if(si) bindStreamTap(si)" not in t:
