@@ -22,55 +22,29 @@ jobs:
           git show "$GOOD:app/src/main/java/com/cwbridge/android/server/WebUi.kt" > app/src/main/java/com/cwbridge/android/server/WebUi.kt
           git show "$GOOD:app/build.gradle.kts" > app/build.gradle.kts
           git show "$GOOD:TODO.MD" > TODO.MD
-          wc -c app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt \
-            app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt \
-            app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          wc -c app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt app/src/main/java/com/cwbridge/android/server/WebUi.kt
 
       - name: Apply live-stream patches
-        run: |
-          set -eux
-          python3 scripts/patch_live_stream.py
+        run: python3 scripts/patch_live_stream.py
 
-      - name: Bump version and TODO
+      - name: Bump version
         run: |
           set -eux
           sed -i 's/versionCode = 14/versionCode = 15/' app/build.gradle.kts
           sed -i 's/versionName = "2.14.0-android"/versionName = "2.15.0-android"/' app/build.gradle.kts
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("TODO.MD")
-          t = p.read_text()
-          old = '''### Web panel
-- LIVE STREAM / LIVE VIEW — "Start stream" is still a placeholder ("stream coming next build");
-  tap-image-to-tap and ~0.5s long-press are not wired yet
-'''
-          new = '''### Web panel
-+ LIVE STREAM / LIVE VIEW — Start stream toggles JPEG poll (~400ms); tap image to tap; hold ~0.5s long-press
-'''
-          if old in t:
-              p.write_text(t.replace(old, new))
-              print("TODO updated")
-          else:
-              print("TODO pattern skip")
-          PY
-          grep -n 'versionCode\|versionName' app/build.gradle.kts | head -5
+          grep -n versionCode app/build.gradle.kts | head -3
 
       - name: check-webui
         run: |
           if [ -f scripts/check-webui.js ]; then node scripts/check-webui.js; fi
-          grep -n 'toggleStream\|pngToJpeg\|wantJpeg' \
-            app/src/main/java/com/cwbridge/android/server/WebUi.kt \
-            app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt \
-            app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt | head -20
+          grep -n toggleStream app/src/main/java/com/cwbridge/android/server/WebUi.kt | head -5
+          grep -n pngToJpeg app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt | head -3
 
       - name: Commit
         run: |
           git config user.name cwbridge-bot
           git config user.email bot@cwbridge.local
-          git add app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt \
-                  app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt \
-                  app/src/main/java/com/cwbridge/android/server/WebUi.kt \
-                  app/build.gradle.kts TODO.MD
+          git add app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt app/src/main/java/com/cwbridge/android/server/WebUi.kt app/build.gradle.kts TODO.MD
           git status
           git commit -m "feat: live stream + tap/long-press on web panel (v2.15.0)" || echo nochange
           git push
