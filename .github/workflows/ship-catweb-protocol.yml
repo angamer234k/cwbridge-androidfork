@@ -1,0 +1,49 @@
+name: Ship CatWeb Protocol
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write files from payloads
+        run: |
+          set -eux
+          python3 << 'PY'
+          import base64
+          from pathlib import Path
+
+          mapping = {
+              "scripts/payloads/catweb_README_md.b64": "catweb/README.md",
+              "scripts/payloads/catweb_PROTOCOL_md.b64": "catweb/PROTOCOL.md",
+              "scripts/payloads/catweb_CLIENT_README_md.b64": "catweb/CLIENT/README.md",
+              "scripts/payloads/catweb_CLIENT_config_json.b64": "catweb/CLIENT/config.json",
+              "scripts/payloads/catweb_CLIENT_api_json.b64": "catweb/CLIENT/api.json",
+              "scripts/payloads/catweb_SERVER_README_md.b64": "catweb/SERVER/README.md",
+              "scripts/payloads/catweb_SERVER_server_json.b64": "catweb/SERVER/server.json",
+              "scripts/payloads/catweb_SERVER_page_json.b64": "catweb/SERVER/page.json",
+              "scripts/payloads/catweb_tools_encode_py.b64": "catweb/tools/encode.py",
+              "scripts/payloads/InvokeEngine_kt.b64": "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt",
+          }
+          for src, dest in mapping.items():
+              b64 = Path(src).read_text().strip()
+              data = base64.b64decode(b64)
+              out = Path(dest)
+              out.parent.mkdir(parents=True, exist_ok=True)
+              out.write_bytes(data)
+              print(dest, len(data))
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name cwbridge-bot
+          git config user.email bot@cwbridge.local
+          git add catweb app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
+          git status
+          git commit -m "feat: public CatWeb CLIENT/SERVER protocol + bridge ||reqId (0./1.)" || echo nochange
+          git push
