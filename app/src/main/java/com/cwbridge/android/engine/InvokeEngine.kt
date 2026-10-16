@@ -97,18 +97,22 @@ class InvokeEngine(
     private fun handleLine(raw: String) {
         val idx = raw.indexOf("invoke|")
         if (idx < 0) return
-        val payload = raw.substring(idx + "invoke|".length).trim()
-        if (payload.isEmpty()) return
+        val payloadRaw = raw.substring(idx + "invoke|".length).trim()
+        if (payloadRaw.isEmpty()) return
 
         // Avoid re-entrancy on our own reply lines
         if (raw.contains("cwbridge|")) return
 
+        val (payload, reqId) = stripReqId(payloadRaw)
+        currentReqId = reqId
+
         val now = System.currentTimeMillis()
-        if (payload == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
+        // Dedup the full line including ||id so queued calls are not collapsed.
+        if (payloadRaw == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
             LogBuffer.i("Invoke", "dedup skip (${now - lastInvokeAtMs}ms) ${payload.take(60)}")
             return
         }
-        lastInvokePayload = payload
+        lastInvokePayload = payloadRaw
         lastInvokeAtMs = now
 
         val parts = payload.split(".", limit = 3)
@@ -116,7 +120,11 @@ class InvokeEngine(
         val data1 = parts.getOrNull(1)?.trim().orEmpty()
         val data2 = parts.getOrNull(2)?.trim().orEmpty()
 
-        LogBuffer.i("Invoke", "→ $request data1=${data1.take(80)} data2=${data2.take(80)}")
+        LogBuffer.i(
+            "Invoke",
+            "→ $request data1=${data1.take(80)} data2=${data2.take(80)}" +
+                (if (reqId != null) " id=$reqId" else ""),
+        )
 
         job?.cancel()
         job = scope.launch(Dispatchers.Main) {
@@ -128,6 +136,18 @@ class InvokeEngine(
         }
     }
 
+
+    @Volatile private var currentReqId: String? = null
+
+    /** Peel trailing ||reqId used by the public CatWeb server queue. */
+    private fun stripReqId(payload: String): Pair<String, String?> {
+        val idx = payload.lastIndexOf("||")
+        if (idx <= 0) return payload to null
+        val id = payload.substring(idx + 2).trim()
+        if (id.isEmpty() || id.length > 64) return payload to null
+        if (!id.all { it.isLetterOrDigit() || it == '_' || it == '-' }) return payload to null
+        return payload.substring(0, idx).trimEnd() to id
+    }
 
     /** If raw ends with .name.rbx, peel; otherwise return */
     private fun splitOptionalDomain(raw: String): Pair<String, String> {
@@ -175,9 +195,12 @@ class InvokeEngine(
                 val result = store.load(domain, data1)
                 result.fold(
                     onSuccess = { value ->
-                        // Paste real content into focused field (not just clipboard)
-                        pasteIntoGame(value)
-                        replyOk("load", value.take(500))
+                        if (value.isEmpty()) {
+                            replyErr("load", "empty")
+                        } else {
+                            pasteIntoGame(value)
+                            replyOk("load", value.take(500))
+                        }
                     },
                     onFailure = { e ->
                         // Tell the game via log channel (CatWeb can read cwbridge|err|load|…)
@@ -607,9 +630,20 @@ class InvokeEngine(
 
 
     /** Focus → paste [text] into game. Does not emit replyOk (caller does). */
-    private suspend fun pasteIntoGame(text: String, pressEnter: Boolean = false) {
+    private suspend fun pasteIntoGame(
+        text: String,
+        pressEnter: Boolean = false,
+        protocol: Boolean = true,
+    ) {
+        val id = currentReqId
+        val out = if (protocol && id != null) {
+            val safe = text.replace("||", "|").replace("\n", " ").replace("\r", " ").take(900)
+            "0.$safe||$id"
+        } else {
+            text
+        }
         val svc = TapService.instance
-        setClipboard(text)
+        setClipboard(out)
         if (svc != null) {
             svc.clickAtPercent(focusXPct, focusYPct)
             delay(1000)
@@ -824,11 +858,23 @@ class InvokeEngine(
 
 
     private fun replyOk(request: String, payload: String) {
-        // Tagged so Roblox/MacroDroid can filter; also human-readable in the in-app log.
-        LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}")
+        val id = currentReqId
+        val tag = if (id != null) "|$id" else ""
+        LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}$tag")
     }
 
     private fun replyErr(request: String, payload: String) {
-        LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}")
+        val id = currentReqId
+        val tag = if (id != null) "|$id" else ""
+        LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}$tag")
+        if (id != null) {
+            val body = payload.replace("||", "|").replace("\n", " ").replace("\r", " ").take(200)
+            scope.launch(Dispatchers.Main) {
+                try {
+                    pasteIntoGame("1.$body||$id", protocol = false)
+                } catch (_: Throwable) {
+                }
+            }
+        }
     }
 }

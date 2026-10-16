@@ -94,7 +94,7 @@ Or convenience wrappers `load` / `save` once those scripts are imported.
 
 1. Empty / failed LOAD → SERVER sends `1.empty` or `1.not found` (encoded) to the client.
 2. Unknown / expired reqId → SERVER drops the paste (no client reply).
-3. Queue entries expire after ~30s; delete after match or timeout.
+3. Queue wait on the client is 30s (then `1.timeout`); delete after match or timeout.
 4. Never put raw user text in broadcasts without encoding.
 
 ## Queue (SERVER)

@@ -1,0 +1,161 @@
+{
+  "class": "script",
+  "globalid": "cfg",
+  "alias": "cw_client_config",
+  "enabled": "true",
+  "content": [
+    {
+      "id": "0",
+      "text": [
+        "When website loaded..."
+      ],
+      "globalid": "e09",
+      "actions": [
+        {
+          "id": "11",
+          "text": [
+            "Set (1)",
+            {
+              "value": "1",
+              "t": "string",
+              "l": "variable"
+            },
+            "to (yoursite.rbx/bridge)",
+            {
+              "value": "yoursite.rbx/bridge",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g01"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (2)",
+            {
+              "value": "2",
+              "t": "string",
+              "l": "variable"
+            },
+            "to (default.rbx)",
+            {
+              "value": "default.rbx",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g02"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (3)",
+            {
+              "value": "3",
+              "t": "string",
+              "l": "variable"
+            },
+            "to (1000)",
+            {
+              "value": "1000",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g03"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (4)",
+            {
+              "value": "4",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ()",
+            {
+              "value": "",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g04"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (5)",
+            {
+              "value": "5",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ()",
+            {
+              "value": "",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g05"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (30)",
+            {
+              "value": "30",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ()",
+            {
+              "value": "",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g06"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (31)",
+            {
+              "value": "31",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ()",
+            {
+              "value": "",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g07"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (32)",
+            {
+              "value": "32",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ()",
+            {
+              "value": "",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "g08"
+        }
+      ]
+    }
+  ]
+}
