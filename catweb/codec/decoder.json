@@ -1,0 +1,838 @@
+[
+  {
+    "class": "script",
+    "alias": "File.rbx Decoder",
+    "content": [
+      {
+        "y": "4660",
+        "x": "4692",
+        "actions": [
+          {
+            "id": "124",
+            "text": [
+              {
+                "value": "text encoder from ver veq4DA",
+                "l": "comment",
+                "t": "string"
+              }
+            ],
+            "globalid": "5{"
+          },
+          {
+            "id": "11",
+            "text": [
+              "Set",
+              {
+                "value": "o!67",
+                "t": "string",
+                "l": "variable"
+              },
+              "to",
+              {
+                "value": "! \" # $ !! ' ( ) + , - . / \\{ | \\} @ ~ → ’ — & : ; ? = A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ \\ ] ^ _ ` < > * a b c d e f g h i j k l m n o p q r s t u v w x y z ",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": ",i"
+          },
+          {
+            "id": "11",
+            "text": [
+              "Set",
+              {
+                "value": "o!67",
+                "t": "string",
+                "l": "variable"
+              },
+              "to",
+              {
+                "value": "{o!67}1 2 3 4 5 6 7 8 9 0 ",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "=6"
+          },
+          {
+            "id": "11",
+            "text": [
+              "Set",
+              {
+                "value": "o!67",
+                "t": "string",
+                "l": "variable"
+              },
+              "to",
+              {
+                "value": "{o!67}⌦ € ƒ „ … † ‡ ˆ ‰ Š ‹ Œ Ž ‘ !! “ ” • – !! ˜ ™ š › œ ž Ÿ ¡ ¢ £ ¤ ¥ ¦ § ¨ © ª « ¬ ® ¯ ° ± ² ³ ´ µ ¶ · ¸ ¹ º » ¼ ½ ¾ ¿ À Á Â Ã Ä Å Æ Ç È É Ê Ë Ì Í Î Ï Ð Ñ Ò Ó Ô Õ Ö × Ø Ù Ú Û Ü Ý Þ ß à á â ã ä å æ ç è é ê ë ì í î ï ð ñ ò ó ô õ ö ÷ ø ù ú û ü ý þ ÿ \n",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "/X"
+          },
+          {
+            "id": "57",
+            "text": [
+              "Split",
+              {
+                "value": "{o!67}",
+                "t": "string"
+              },
+              {
+                "value": " ",
+                "t": "string",
+                "l": "separator"
+              },
+              "→",
+              {
+                "value": "o!chars",
+                "t": "string",
+                "l": "table"
+              }
+            ],
+            "globalid": "8."
+          },
+          {
+            "id": "89",
+            "text": [
+              "Insert",
+              {
+                "value": " ",
+                "t": "string",
+                "l": "any"
+              },
+              "at position",
+              {
+                "value": "1",
+                "t": "number",
+                "l": "number?"
+              },
+              "of",
+              {
+                "value": "o!chars",
+                "t": "string",
+                "l": "array"
+              }
+            ],
+            "globalid": "@9"
+          },
+          {
+            "id": "55",
+            "text": [
+              "Set entry",
+              {
+                "value": "6",
+                "t": "string",
+                "l": "entry"
+              },
+              "of",
+              {
+                "value": "o!chars",
+                "t": "string",
+                "l": "table"
+              },
+              "to",
+              {
+                "value": "%%",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "u5"
+          },
+          {
+            "id": "57",
+            "text": [
+              "Split",
+              {
+                "value": "1 2 3 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 21 22 23 24 25 26 27 28 29 31 32 33 34 35 36 37 38 39 41 42 43 44 45 46 47 48 49 51 52 53 54 55 56 57 58 59 61 62 63 64 65 66 67 68 69 71 72 73 74 75 76 77 78 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99 111 112 113 114 115 116 117 118 119 121 122 123 124 125 126 127 128 129 131 132 133 134 135 136 137 138 139 141 142 143 144 145 146 147 148 149 151 152 153 154 155 156 157 158 159 161 162 163 164 165 166 167 168 169 171 172 173 174 175 176 177 178 179 181 182 183 184 185 186 187 188 189 191 192 193 194 195 196 197 198 199 211 212 213 214 215 216 217 218 219 221 222 223 224 225 226 227 228 229 231 232 233 234 235 236 237 238 239 241 242 243 244 245 246 247 248 249 251 252 253 254 255 256 257 258 259 261 262 263 264 265 266 267 268 269 271 272 273 274 275 276 277 278 279 281 282 283 284 285 286 287 288 289 291 292 293 294 295 296 297 298 299 311 312 313 314 315 316 317 318 319 321 322 323 324 325 326 327 328 329 331 332 333 334 335 336 337 338 339 341 342 343 344 345 346 347 348 349 351 352 353 354 355 356 357 358 359 361 362 363 364 365 366 367 368 369 371 372 373 374 375 376 377 378 379 381 382 383 384 385 386 387 388 389 391 392 393 394 395 396 397 398 399 411 412 413 414 415 416 417 418 419 421 422 423 424 425 426 427 428 429 431 432 433 434 435 436 437 438 439 441 442 443 444 445 446 447 448 449 451 452 453 454 455 456 457 458 459 461 462 463 464 465 466 467 468 469 471 472 473 474 475 476 477 478 479 481 482 483 484 485 486 487 488 489 491 492 493 494 495 496 497 498 499",
+                "t": "string"
+              },
+              {
+                "value": " ",
+                "t": "string",
+                "l": "separator"
+              },
+              "→",
+              {
+                "value": "{o!nums}",
+                "t": "string",
+                "l": "table"
+              }
+            ],
+            "globalid": "nZ"
+          },
+          {
+            "id": "57",
+            "text": [
+              "Split",
+              {
+                "value": "0123456789",
+                "t": "string"
+              },
+              {
+                "value": "",
+                "t": "string",
+                "l": "separator"
+              },
+              "→",
+              {
+                "value": "o!rnum",
+                "t": "string",
+                "l": "table"
+              }
+            ],
+            "globalid": "Vw"
+          }
+        ],
+        "id": "0",
+        "text": [
+          "When website loaded..."
+        ],
+        "globalid": "1D",
+        "width": "517"
+      },
+      {
+        "y": "4668",
+        "variable_overrides": [
+          {
+            "value": "data"
+          }
+        ],
+        "x": "5805",
+        "actions": [
+          {
+            "id": "93",
+            "text": [
+              "If",
+              {
+                "value": "{o!chars}",
+                "t": "string",
+                "l": "variable"
+              },
+              "doesn't exist"
+            ],
+            "globalid": "k:"
+          },
+          {
+            "id": "3",
+            "text": [
+              "Wait",
+              {
+                "value": "0.01",
+                "t": "number"
+              },
+              "seconds"
+            ],
+            "globalid": "a&"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "fk"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "0",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "\u000b\f",
+                "t": "string"
+              }
+            ],
+            "globalid": "yo"
+          },
+          {
+            "id": "113",
+            "text": [
+              "Iterate through",
+              {
+                "value": "{o!nums}",
+                "t": "string",
+                "l": "table"
+              },
+              "({l!index},{l!value})"
+            ],
+            "globalid": "&,"
+          },
+          {
+            "id": "56",
+            "text": [
+              "Get entry",
+              {
+                "value": "{l!index}",
+                "t": "string",
+                "l": "entry"
+              },
+              "of",
+              {
+                "value": "{o!chars}",
+                "t": "string",
+                "l": "table"
+              },
+              "→",
+              {
+                "value": "{l!ac}",
+                "t": "string",
+                "l": "variable"
+              }
+            ],
+            "globalid": "}J"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "\f{l!value}\u000b",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "{l!ac}",
+                "t": "string"
+              }
+            ],
+            "globalid": "v0"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "Mm"
+          },
+          {
+            "id": "42",
+            "text": [
+              "Sub",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              {
+                "value": "2",
+                "t": "number",
+                "l": "start"
+              },
+              "-",
+              {
+                "value": "-2",
+                "t": "number",
+                "l": "end"
+              }
+            ],
+            "globalid": "3A"
+          },
+          {
+            "id": "115",
+            "text": [
+              "Return",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "md"
+          }
+        ],
+        "id": "6",
+        "text": [
+          "Define function",
+          {
+            "value": "d",
+            "t": "string",
+            "l": "function"
+          }
+        ],
+        "globalid": "9(",
+        "width": "589"
+      },
+      {
+        "y": "4667",
+        "variable_overrides": [
+          {
+            "value": "data"
+          }
+        ],
+        "x": "5213",
+        "actions": [
+          {
+            "id": "93",
+            "text": [
+              "If",
+              {
+                "value": "{o!chars}",
+                "t": "string",
+                "l": "variable"
+              },
+              "doesn't exist"
+            ],
+            "globalid": "Fn"
+          },
+          {
+            "id": "3",
+            "text": [
+              "Wait",
+              {
+                "value": "0.01",
+                "t": "number"
+              },
+              "seconds"
+            ],
+            "globalid": "-P"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "^b"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "\f",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "",
+                "t": "string"
+              }
+            ],
+            "globalid": "W?"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "\u000b",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "",
+                "t": "string"
+              }
+            ],
+            "globalid": "sQ"
+          },
+          {
+            "id": "113",
+            "text": [
+              "Iterate through",
+              {
+                "value": "o!chars",
+                "t": "string",
+                "l": "table"
+              },
+              "({l!index},{l!value})"
+            ],
+            "globalid": ")q"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "{l!value}",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "{l!value}\f",
+                "t": "string"
+              }
+            ],
+            "globalid": "L#"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "1p"
+          },
+          {
+            "id": "113",
+            "text": [
+              "Iterate through",
+              {
+                "value": "o!chars",
+                "t": "string",
+                "l": "table"
+              },
+              "({l!index},{l!value})"
+            ],
+            "globalid": "_h"
+          },
+          {
+            "id": "56",
+            "text": [
+              "Get entry",
+              {
+                "value": "{l!index}",
+                "t": "string",
+                "l": "entry"
+              },
+              "of",
+              {
+                "value": "{o!nums}",
+                "t": "string",
+                "l": "table"
+              },
+              "→",
+              {
+                "value": "{l!an}",
+                "t": "string",
+                "l": "variable"
+              }
+            ],
+            "globalid": "V,"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "{l!value}\f",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "0{l!an}0",
+                "t": "string"
+              }
+            ],
+            "globalid": "Fu"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "(e"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "%",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "060",
+                "t": "string"
+              }
+            ],
+            "globalid": "<|"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "00",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "0",
+                "t": "string"
+              }
+            ],
+            "globalid": "\\T"
+          },
+          {
+            "id": "11",
+            "text": [
+              "Set",
+              {
+                "value": "{l!temp}",
+                "t": "string",
+                "l": "variable"
+              },
+              "to",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "NA"
+          },
+          {
+            "id": "113",
+            "text": [
+              "Iterate through",
+              {
+                "value": "o!rnum",
+                "t": "string",
+                "l": "table"
+              },
+              "({l!index},{l!value})"
+            ],
+            "globalid": "vN"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "{l!value}",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!temp}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "",
+                "t": "string"
+              }
+            ],
+            "globalid": "KN"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "[C"
+          },
+          {
+            "id": "19",
+            "text": [
+              "If",
+              {
+                "value": "{l!temp}",
+                "t": "string",
+                "l": "any"
+              },
+              "is not equal to",
+              {
+                "value": "",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": "Jq"
+          },
+          {
+            "id": "57",
+            "text": [
+              "Split",
+              {
+                "value": "{l!temp}",
+                "t": "string"
+              },
+              {
+                "value": "",
+                "t": "string",
+                "l": "separator"
+              },
+              "→",
+              {
+                "value": "{l!temp}",
+                "t": "string",
+                "l": "table"
+              }
+            ],
+            "globalid": "5d"
+          },
+          {
+            "id": "113",
+            "text": [
+              "Iterate through",
+              {
+                "value": "{l!temp}",
+                "t": "string",
+                "l": "table"
+              },
+              "({l!index},{l!value})"
+            ],
+            "globalid": "^s"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "{l!value}",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "",
+                "t": "string"
+              }
+            ],
+            "globalid": "gq"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "b{"
+          },
+          {
+            "id": "25",
+            "text": [
+              "end"
+            ],
+            "globalid": "SF"
+          },
+          {
+            "id": "43",
+            "text": [
+              "Replace",
+              {
+                "value": "00",
+                "t": "string"
+              },
+              "in",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "variable"
+              },
+              "by",
+              {
+                "value": "0",
+                "t": "string"
+              }
+            ],
+            "globalid": "'Y"
+          },
+          {
+            "id": "115",
+            "text": [
+              "Return",
+              {
+                "value": "{l!data}",
+                "t": "string",
+                "l": "any"
+              }
+            ],
+            "globalid": ":<"
+          }
+        ],
+        "id": "6",
+        "text": [
+          "Define function",
+          {
+            "value": "e",
+            "t": "string",
+            "l": "function"
+          }
+        ],
+        "globalid": "Z#",
+        "width": "589"
+      },
+      {
+        "y": "9871.9931640625",
+        "x": "-59.615386962890625",
+        "actions": [
+          {
+            "id": "0",
+            "text": [
+              "Log",
+              {
+                "value": "File.rbx: Decoder",
+                "t": "any"
+              }
+            ],
+            "globalid": "JY"
+          }
+        ],
+        "id": "2",
+        "text": [
+          "When",
+          {
+            "value": "F15",
+            "t": "key"
+          },
+          "pressed..."
+        ],
+        "globalid": "q=",
+        "width": "350"
+      }
+    ],
+    "globalid": "OR"
+  }
+]

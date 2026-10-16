@@ -1,18 +1,17 @@
 # CLIENT pack
 
-Drop these scripts on any CatWeb page. Also import the official Decode script (SiteGPT §9.2) so functions `d` and `e` exist.
+Drop `config.json`, `api.json`, and `../codec/decoder.json` on the page.
 
-## Config (`config.json`)
+## Config
 
 | global | default | meaning |
 |--------|---------|---------|
-| `{1}` | `yoursite.rbx/bridge` | SERVER page URL — change this |
-| `{2}` | `default.rbx` | optional default domain |
-| `{30}` | | command (`load`, `save`, `qr`, `totp`, `status`, …) |
+| `{1}` | `yoursite.rbx/bridge` | SERVER page URL |
+| `{30}` | | command |
 | `{31}` | | arg1 |
 | `{32}` | | arg2 |
 
-## Call (30s timeout)
+## Call (30s)
 
 ```
 Set (30) to (load)
@@ -21,8 +20,6 @@ Set (32) to (app.rbx)
 Run function (call) () → (result)
 ```
 
-`{result}` starts with `0.` or `1.` (`1.timeout` if the SERVER does not answer within 30 seconds).
+`result` starts with `0.` or `1.` (`1.timeout` after 30s).
 
-`load` / `save` wrappers set `{30}` then run `call`. Still set `{31}` / `{32}` first.
-
-The client sends its full page URL (`Get URL`) encoded so the SERVER can reply to `test.example.rbx/page`, not just `example.rbx`.
+`e` / `d` come from `catweb/codec/decoder.json`.
