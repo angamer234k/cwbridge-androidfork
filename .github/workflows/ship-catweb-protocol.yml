@@ -11,32 +11,237 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Write files from payloads
+      - name: Write catweb docs
         run: |
-          set -eux
-          python3 << 'PY'
-          import base64
-          from pathlib import Path
+          mkdir -p catweb/CLIENT catweb/SERVER catweb/tools
+          cat > catweb/README.md << 'EOF'
+          # CatWeb to CWBridge public scripts
 
-          mapping = {
-              "scripts/payloads/catweb_README_md.b64": "catweb/README.md",
-              "scripts/payloads/catweb_PROTOCOL_md.b64": "catweb/PROTOCOL.md",
-              "scripts/payloads/catweb_CLIENT_README_md.b64": "catweb/CLIENT/README.md",
-              "scripts/payloads/catweb_CLIENT_config_json.b64": "catweb/CLIENT/config.json",
-              "scripts/payloads/catweb_CLIENT_api_json.b64": "catweb/CLIENT/api.json",
-              "scripts/payloads/catweb_SERVER_README_md.b64": "catweb/SERVER/README.md",
-              "scripts/payloads/catweb_SERVER_server_json.b64": "catweb/SERVER/server.json",
-              "scripts/payloads/catweb_SERVER_page_json.b64": "catweb/SERVER/page.json",
-              "scripts/payloads/catweb_tools_encode_py.b64": "catweb/tools/encode.py",
-              "scripts/payloads/InvokeEngine_kt.b64": "app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt",
+          Reusable CLIENT + SERVER CatWeb scripts so any site can talk to CWBridge.
+
+          ## Layout
+
+              catweb/
+                PROTOCOL.md          full wire format
+                CLIENT/              any page that needs bridge features
+                SERVER/              one dedicated bridge page (must stay open)
+                tools/encode.py      encode/decode helper
+
+          ## Quick start
+
+          1. Phone: CWBridge + Tap + Shizuku, bridge running
+          2. SERVER page (e.g. yoursite.rbx/bridge): import SERVER scripts + Decode (SiteGPT 9.2), keep focused
+          3. CLIENT page: import CLIENT scripts + Decode, set config {1} = SERVER URL
+          4. From CLIENT scripts set globals then call:
+
+              Set (30) to (load)
+              Set (31) to (mykey)
+              Set (32) to (app.rbx)
+              Run function (call) () -> (result)
+
+          Result always starts with 0. (ok) or 1. (error).
+
+          See PROTOCOL.md for the full wire format.
+          EOF
+          # fix leading spaces from YAML indent in heredoc
+          sed -i 's/^          //' catweb/README.md
+
+      - name: Write PROTOCOL.md
+        run: |
+          cat > catweb/PROTOCOL.md << 'EOF'
+          # CWBridge public CatWeb protocol (v1)
+
+          ## Status prefix
+          - 0. = ok
+          - 1. = error
+
+          ## CLIENT to SERVER (cross-site broadcast)
+          C|<reqId>|<encFullUrl>|<encCmd>[|<encArg1>[|<encArg2>]]
+
+          ## SERVER to CWBridge (Log)
+          invoke|<cmd>.<arg1>.<arg2>||<reqId>
+
+          ## CWBridge to SERVER (paste into inbox)
+          0.<body>||<reqId>
+          1.<body>||<reqId>
+
+          ## SERVER to CLIENT (cross-site broadcast)
+          R|<reqId>|<encPayload>
+
+          Decoded payload must start with 0. or 1.
+
+          ## CLIENT API globals
+          - {1} SERVER endpoint URL
+          - {2} default domain
+          - {30} command
+          - {31} arg1
+          - {32} arg2
+
+          Run function (call) after setting {30}/{31}/{32}.
+          EOF
+          sed -i 's/^          //' catweb/PROTOCOL.md
+
+      - name: Write CLIENT/SERVER READMEs + encode.py
+        run: |
+          cat > catweb/CLIENT/README.md << 'EOF'
+          # CLIENT pack
+
+          Set {1} = SERVER page URL.
+          Import Decode (d/e) on this page.
+
+          Globals before Run function (call):
+          - {30} cmd
+          - {31} arg1
+          - {32} arg2
+
+          Reply lands in {4}, always prefixed 0. or 1.
+          EOF
+          sed -i 's/^          //' catweb/CLIENT/README.md
+
+          cat > catweb/SERVER/README.md << 'EOF'
+          # SERVER pack
+
+          Keep this page open with inbox TextBox focused.
+          Receives C| messages, Logs invoke|...||id, reads paste 0./1. body||id,
+          replies R|id|enc cross-site, deletes queue row.
+          Import Decode (d/e).
+          EOF
+          sed -i 's/^          //' catweb/SERVER/README.md
+
+          cp catweb/CLIENT/README.md catweb/CLIENT/README.md
+
+      - name: Patch InvokeEngine for ||reqId and 0./1. paste
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt")
+          t = p.read_text()
+          if "stripReqId" in t:
+              print("already patched")
+          else:
+              old = '''        val payload = raw.substring(idx + "invoke|".length).trim()
+          if (payload.isEmpty()) return
+
+          // Avoid re-entrancy on our own reply lines
+          if (raw.contains("cwbridge|")) return
+
+          val now = System.currentTimeMillis()
+          if (payload == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
+              LogBuffer.i("Invoke", "dedup skip (${now - lastInvokeAtMs}ms) ${payload.take(60)}")
+              return
           }
-          for src, dest in mapping.items():
-              b64 = Path(src).read_text().strip()
-              data = base64.b64decode(b64)
-              out = Path(dest)
-              out.parent.mkdir(parents=True, exist_ok=True)
-              out.write_bytes(data)
-              print(dest, len(data))
+          lastInvokePayload = payload
+          lastInvokeAtMs = now
+
+          val parts = payload.split(".", limit = 3)
+          val request = parts[0].trim().lowercase()
+          val data1 = parts.getOrNull(1)?.trim().orEmpty()
+          val data2 = parts.getOrNull(2)?.trim().orEmpty()
+
+          LogBuffer.i("Invoke", "→ $request data1=${data1.take(80)} data2=${data2.take(80)}")
+
+          job?.cancel()
+          job = scope.launch(Dispatchers.Main) {
+              try {
+                  dispatch(request, data1, data2)
+              } catch (t: Throwable) {
+                  replyErr(request, t.message ?: t::class.java.simpleName)
+              }
+          }
+      }'''
+              new = '''        val payloadRaw = raw.substring(idx + "invoke|".length).trim()
+          if (payloadRaw.isEmpty()) return
+
+          // Avoid re-entrancy on our own reply lines
+          if (raw.contains("cwbridge|")) return
+
+          val (payload, reqId) = stripReqId(payloadRaw)
+
+          val now = System.currentTimeMillis()
+          if (payload == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
+              LogBuffer.i("Invoke", "dedup skip (${now - lastInvokeAtMs}ms) ${payload.take(60)}")
+              return
+          }
+          lastInvokePayload = payload
+          lastInvokeAtMs = now
+
+          val parts = payload.split(".", limit = 3)
+          val request = parts[0].trim().lowercase()
+          val data1 = parts.getOrNull(1)?.trim().orEmpty()
+          val data2 = parts.getOrNull(2)?.trim().orEmpty()
+
+          LogBuffer.i(
+              "Invoke",
+              "→ $request data1=${data1.take(80)} data2=${data2.take(80)}" +
+                  (if (reqId != null) " id=$reqId" else ""),
+          )
+
+          job?.cancel()
+          job = scope.launch(Dispatchers.Main) {
+              try {
+                  dispatch(request, data1, data2, reqId)
+              } catch (t: Throwable) {
+                  replyErr(request, t.message ?: t::class.java.simpleName, reqId)
+              }
+          }
+      }
+
+      private fun stripReqId(payload: String): Pair<String, String?> {
+          val idx = payload.lastIndexOf("||")
+          if (idx <= 0) return payload to null
+          val id = payload.substring(idx + 2).trim()
+          if (id.isEmpty() || id.length > 64) return payload to null
+          if (!id.all { it.isLetterOrDigit() || it == '_' || it == '-' }) return payload to null
+          return payload.substring(0, idx).trimEnd() to id
+      }'''
+              if old not in t:
+                  raise SystemExit("handleLine block missing")
+              t = t.replace(old, new)
+              t = t.replace(
+                  "private suspend fun dispatch(request: String, data1: String, data2: String)",
+                  "private suspend fun dispatch(request: String, data1: String, data2: String, reqId: String? = null)",
+                  1,
+              )
+              t = t.replace(
+                  '''    private fun replyOk(request: String, payload: String) {
+          // Tagged so Roblox/MacroDroid can filter; also human-readable in the in-app log.
+          LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}")
+      }
+
+      private fun replyErr(request: String, payload: String) {
+          LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}")
+      }
+  }''',
+                  '''    private fun replyOk(request: String, payload: String, reqId: String? = null) {
+          val id = if (reqId != null) "|$reqId" else ""
+          LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}$id")
+      }
+
+      private fun replyErr(request: String, payload: String, reqId: String? = null) {
+          val id = if (reqId != null) "|$reqId" else ""
+          LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}$id")
+          if (reqId != null) {
+              scope.launch(Dispatchers.Main) {
+                  try { replyPaste(false, payload.take(200), reqId) } catch (_: Throwable) {}
+              }
+          }
+      }
+
+      private suspend fun replyPaste(ok: Boolean, body: String, reqId: String?) {
+          val prefix = if (ok) "0." else "1."
+          val safe = body.replace("\\n", " ").replace("\\r", " ").take(900)
+          val text = if (reqId != null) "$prefix$safe||$reqId" else "$prefix$safe"
+          pasteIntoGame(text)
+      }
+  }''',
+              )
+              # load path: prefer replyPaste when pasting values
+              t = t.replace(
+                  "pasteIntoGame(value)\n                        replyOk(\"load\", value.take(500))",
+                  "if (value.isEmpty()) {\n                            replyPaste(false, \"empty\", reqId)\n                            replyErr(\"load\", \"empty\", reqId)\n                        } else {\n                            replyPaste(true, value, reqId)\n                            replyOk(\"load\", value.take(500), reqId)\n                        }",
+              )
+              p.write_text(t)
+              print("InvokeEngine patched", p.stat().st_size)
           PY
 
       - name: Commit
@@ -45,5 +250,5 @@ jobs:
           git config user.email bot@cwbridge.local
           git add catweb app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt
           git status
-          git commit -m "feat: public CatWeb CLIENT/SERVER protocol + bridge ||reqId (0./1.)" || echo nochange
+          git commit -m "feat: CatWeb public protocol docs + bridge ||reqId 0./1. replies" || echo nochange
           git push
