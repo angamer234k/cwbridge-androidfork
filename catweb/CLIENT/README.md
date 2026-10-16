@@ -1,25 +1,19 @@
-# CLIENT pack
+# CLIENT
 
-Drop `config.json`, `api.json`, and `../codec/decoder.json` on the page.
+Import **into an existing page** (not as a whole-site JSON).
 
-## Config
+1. Copy raw [config.json](https://raw.githubusercontent.com/angamer234k/cwbridge-androidfork/main/catweb/CLIENT/config.json) — paste in editor (array of one script).
+2. Edit var `1` → your server page URL (`site.rbx/path`).
+3. Copy raw [api.json](https://raw.githubusercontent.com/angamer234k/cwbridge-androidfork/main/catweb/CLIENT/api.json) — paste.
+4. Keep encoder `e`/`d` on the same page.
 
-| global | default | meaning |
-|--------|---------|---------|
-| `{1}` | `yoursite.rbx/bridge` | SERVER page URL |
-| `{30}` | | command |
-| `{31}` | | arg1 |
-| `{32}` | | arg2 |
+Files are **clipboard arrays** `[ { "class":"script", ... } ]` (same shape as SiteGPT decoder).
 
-## Call (30s)
-
+Call:
 ```
-Set (30) to (load)
-Set (31) to (mykey)
-Set (32) to (app.rbx)
-Run function (call) () → (result)
+Set 30 → cmd   (load / save / …)
+Set 31 → arg1  (optional)
+Set 32 → arg2  (optional)
+Run function (load) or (save) or (call)
+→ {4} is 0.body or 1.err ; timeout → 1.timeout
 ```
-
-`result` starts with `0.` or `1.` (`1.timeout` after 30s).
-
-`e` / `d` come from `catweb/codec/decoder.json`.
