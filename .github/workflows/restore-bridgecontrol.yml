@@ -1,0 +1,27 @@
+name: Restore BridgeControl
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write BridgeControl.kt
+        run: |
+          python3 - <<'PY'
+          import base64, pathlib
+          b64 = """PLACEHOLDER_B64"""
+          data = base64.b64decode(b64)
+          p = pathlib.Path("app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt")
+          p.write_bytes(data)
+          print("wrote", p, len(data))
+          PY
+      - name: Commit
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "cwbridge-bot@users.noreply.github.com"
+          git add app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt
+          git commit -m "[skip ci] fix: restore BridgeControl.kt from PLACEHOLDER" || echo "no change"
+          git push
