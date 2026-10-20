@@ -8,20 +8,23 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Write BridgeControl.kt
+      - name: Assemble and write BridgeControl.kt
         run: |
           python3 - <<'PY'
           import base64, pathlib
-          b64 = """PLACEHOLDER_B64"""
+          parts = sorted(pathlib.Path(".patches/bridgecontrol").glob("part*.txt"))
+          b64 = "".join(p.read_text().strip() for p in parts)
           data = base64.b64decode(b64)
-          p = pathlib.Path("app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt")
-          p.write_bytes(data)
-          print("wrote", p, len(data))
+          dest = pathlib.Path("app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt")
+          dest.write_bytes(data)
+          print("parts", len(parts), "bytes", len(data))
+          assert data.startswith(b"package")
           PY
-      - name: Commit
+      - name: Commit restore
         run: |
           git config user.name "cwbridge-bot"
           git config user.email "cwbridge-bot@users.noreply.github.com"
           git add app/src/main/java/com/cwbridge/android/bridge/BridgeControl.kt
+          git status
           git commit -m "[skip ci] fix: restore BridgeControl.kt from PLACEHOLDER" || echo "no change"
           git push
