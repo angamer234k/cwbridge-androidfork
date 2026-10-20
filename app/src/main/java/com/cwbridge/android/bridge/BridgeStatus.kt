@@ -58,6 +58,7 @@ object BridgeStatus {
     }
 
     fun set(state: OverlayState, detail: String = "") {
+        val prev = this.state
         this.state = state
         this.detail = detail.ifBlank {
             when (state) {
@@ -66,6 +67,14 @@ object BridgeStatus {
                 OverlayState.ACTIVE -> "Listening"
                 OverlayState.ERROR -> "Error"
             }
+        }
+        if (prev != state) {
+            val d = this.detail
+            LogBuffer.i(
+                "BRIDGE",
+                if (d.isBlank()) "bridge status is now \"$state\""
+                else "bridge status is now \"$state\" — $d",
+            )
         }
         // One bad listener must not break status updates for the overlay.
         listeners.forEach {
