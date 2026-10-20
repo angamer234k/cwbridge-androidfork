@@ -1,0 +1,24 @@
+name: Restore WebUi tail
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append missing tail after copyConsole
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import base64
+          p = Path("app/src/main/java/com/cwbridge/android/server/WebUi.kt")
+          t = p.read_text(encoding="utf-8")
+          if "</script>" in t and "function refreshAll" in t:
+              print("already complete")
+          else:
+              tail_b64 = """PLACEHOLDER"""
+              # filled below via second approach
+              print("need tail")
+          PY
