@@ -1,0 +1,41 @@
+name: restore-webui-nav
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore WebUi from pre-placeholder + hide nav.sec
+        run: |
+          set -e
+          # last known good before placeholder: bab6f87
+          git show bab6f87c67780151701ed9e007fd483496dcfc89:app/src/main/java/com/cwbridge/android/server/WebUi.kt > /tmp/WebUi.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/WebUi.kt')
+          t = p.read_text()
+          old = '''nav.sec{\n  display:flex;gap:6px;overflow-x:auto;padding:8px 14px;border-bottom:1px solid var(--line);\n  background:rgba(12,14,18,.6);position:sticky;top:52px;z-index:15;-webkit-overflow-scrolling:touch;\n}\nnav.sec a{\n  flex:0 0 auto;text-decoration:none;color:var(--muted);font-size:12px;font-weight:650;\n  padding:8px 12px;border-radius:999px;background:var(--panel2);display:flex;align-items:center;gap:6px;\n}\nnav.sec a:hover{color:var(--text)}\n'''
+          new = '''/* Top chips were stage-2 section anchors; sidebar is the sole nav (no double-nav on phone). */\nnav.sec{display:none}\nnav.sec a{display:none}\n'''
+          if old not in t:
+              raise SystemExit('old nav.sec block not found')
+          t = t.replace(old, new, 1)
+          # also drop nav.sec from media query if present
+          t = t.replace('  .top-slim .menu{display:inline-flex}\n  nav.sec{display:none}\n', '  .top-slim .menu{display:inline-flex}\n')
+          out = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
+          out.write_text(t)
+          assert 'nav.sec{display:none}' in t
+          print('ok', out.stat().st_size)
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          git status
+          git commit -m "fix(web): hide top section chips — sidebar is sole nav"
+          git push
