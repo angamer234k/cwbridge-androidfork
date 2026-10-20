@@ -1363,3 +1363,103 @@ function copyConsole(){
   var t = (box && (box.innerText || box.textContent)) || "";
   if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast("console copied", "good"); });
 }
+function refreshAll(){
+  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
+  loadAutoDomain(); refreshDomainDatalist(); loadLimits();
+}
+var inv = D("inv");
+if(inv) inv.addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
+});
+document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
+setInterval(function(){
+  if(RELOADING) return;
+  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
+}, 3000);
+try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
+refreshAll();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
+
+    fun page(showScreenshot: Boolean): String = FULL.replace(
+        SCREENSHOT_MARKER,
+        if (showScreenshot) SCREENSHOT_BUTTON else "",
+    )
+
+    /**
+     * Login shell only — no dashboard markup, no control JS.
+     * Served for unauthenticated clients so inspect-element cannot "unlock" the panel.
+     * After /api/login sets the session cookie, client reloads `/` and gets [page].
+     */
+    fun loginPage(): String = LOGIN_SHELL
+
+    private val LOGIN_SHELL: String = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>CWBridge - Lock</title>
+<style>
+:root{--bg:#0b0e13;--panel:#11151c;--line:rgba(255,255,255,.08);--text:#eef1f7;--muted:#8b93a7;--accent:#6ea8fe;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:grid;place-items:center}
+main{width:min(360px,92rwl);padding:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+h1{margin:0 0 10px;font-size:1.25rem}
+.subh{color:var(--muted);font-size:13px;margin:0 0 14px}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0e12;color:var(--text);font:inherit;min-height:44px}
+button{width:100%;margin-top:10px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#0b1020;font:inherit;font-weight:650;cursor:pointer;min-height:44px}
+.msg{min-height:1.2em;margin-top:8px;color:#f76c6c;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>CWBridge</h1>
+    <div class="subh">Enter panel password to unlock.</div>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" />
+    <button type="button" id="btn">Unlock</button>
+    <div id="msg" class="msg"></div>
+  </div>
+</main>
+<script>
+(function(){
+  var pw = document.getElementById("pw");
+  var msg = document.getElementById("msg");
+  function unlock(){
+    msg.textContent = "";
+    fetch("/api/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({password: pw.value || ""})
+    }).then(function(r){
+      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+    }).then(function(x){
+      if(!x.ok){
+        msg.textContent = (x.j && x.j.error) || "wrong password";
+        return;
+      }
+      location.reload();
+    }).catch(function(e){
+      msg.textContent = String(e.message || e);
+    });
+  }
+  document.getElementById("btn").onclick = unlock;
+  pw.addEventListener("keydown", function(e){ if(e.key === "Enter") unlock(); });
+})();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
+    private const val SCREENSHOT_BUTTON =
+        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
+}
