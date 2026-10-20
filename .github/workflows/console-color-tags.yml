@@ -10,34 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Patch WebUi console colors + newlines
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-          p = Path("app/src/main/java/com/cwbridge/android/server/WebUi.kt")
-          t = p.read_text(encoding="utf-8")
-          old_css = """pre#console{
-            margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);
-            max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;
-          }"""
-          # Note: remote file has no leading indent on css body lines beyond 2 spaces after newline from pre#console
-          old_css = """pre#console{\n  margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);\n  max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;\n}"""
-          new_css = """#console{\n  margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);\n  max-height:280px;overflow:auto;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;\n}\n#console .log-line{display:block;padding:1px 0;word-break:break-word}\n#console .tag-BRIDGE{color:#ffffff;font-weight:650}\n#console .tag-APP{color:#f5d76e;font-weight:650}\n#console .tag-ROBOT{color:#9aa3b5;font-weight:650}\n#console .tag-SHIZUKU{color:#6ea8fe;font-weight:650}\n#console .tag-other{color:var(--muted);font-weight:650}\n#console .log-empty{color:var(--muted)}"""
-          if old_css not in t:
-              raise SystemExit("css not found")
-          t = t.replace(old_css, new_css, 1)
-          old_html = '    <pre id="console">-</pre>'
-          if old_html not in t:
-              raise SystemExit("html not found")
-          t = t.replace(old_html, '    <div id="console" class="console"><span class="log-empty">-</span></div>', 1)
-          new_js = """async function refreshConsole(){\n  try{\n    var s = await api(\"/api/logs\");\n    var box = D(\"console\");\n    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;\n    var lines = s.lines || [];\n    if(!lines.length){\n      box.innerHTML = '<span class=\"log-empty\">(no lines)</span>';\n    }else{\n      box.innerHTML = lines.map(function(line){\n        var raw = String(line == null ? \"\" : line);\n        var m = raw.match(/^\\[([A-Z0-9_]+)\\]:\\s*(.*)$/);\n        if(m){\n          var tag = m[1];\n          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};\n          var cls = known[tag] ? (\"tag-\" + tag) : \"tag-other\";\n          return '<div class=\"log-line\"><span class=\"' + cls + '\">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';\n        }\n        return '<div class=\"log-line\">' + esc(raw) + '</div>';\n      }).join(\"\");\n    }\n    if(atBottom) box.scrollTop = box.scrollHeight;\n  }catch(e){}\n}\nfunction copyConsole(){\n  var box = D(\"console\");\n  var t = (box && (box.innerText || box.textContent)) || \"\";\n  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast(\"console copied\", \"good\"); });\n}"""
-          pat = re.compile(r"async function refreshConsole\\(\\)\\{.*?\\nfunction copyConsole\\(\\)\\{.*?\\n\\}", re.S)
-          m = pat.search(t)
-          if not m:
-              raise SystemExit("js not found")
-          t = t[:m.start()] + new_js + t[m.end():]
-          p.write_text(t, encoding="utf-8")
-          print("patched", p.stat().st_size)
-          PY
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCByZQpwID0gUGF0aCgiYXBwL3NyYy9tYWluL2phdmEvY29tL2N3YnJpZGdlL2FuZHJvaWQvc2VydmVyL1dlYlVpLmt0IikKdCA9IHAucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCm9sZF9jc3MgPSAiIiJwcmUjY29uc29sZXsKICBtYXJnaW46MDtwYWRkaW5nOjEwcHg7Ym9yZGVyLXJhZGl1czoxMHB4O2JhY2tncm91bmQ6IzBhMGMxMDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWxpbmUpOwogIG1heC1oZWlnaHQ6MjgwcHg7b3ZlcmZsb3c6YXV0bztmb250OjEycHgvMS40IHVpLW1vbm9zcGFjZSxDb25zb2xhcyxtb25vc3BhY2U7d2hpdGUtc3BhY2U6cHJlLXdyYXA7Cn0iIiIKbmV3X2NzcyA9ICIiIiNjb25zb2xlewogIG1hcmdpbjowO3BhZGRpbmc6MTBweDtib3JkZXItcmFkaXVzOjEwcHg7YmFja2dyb3VuZDojMGEwYzEwO2JvcmRlcjoxcHggc29saWQgdmFyKC0tbGluZSk7CiAgbWF4LWhlaWdodDoyODBweDtvdmVyZmxvdzphdXRvO2ZvbnQ6MTJweC8xLjQ1IHVpLW1vbm9zcGFjZSxDb25zb2xhcyxtb25vc3BhY2U7d2hpdGUtc3BhY2U6cHJlLXdyYXA7Cn0KI2NvbnNvbGUgLmxvZy1saW5le2Rpc3BsYXk6YmxvY2s7cGFkZGluZzoxcHggMDt3b3JkLWJyZWFrOmJyZWFrLXdvcmR9CiNjb25zb2xlIC50YWctQlJJREdFe2NvbG9yOiNmZmZmZmY7Zm9udC13ZWlnaHQ6NjUwfQojY29uc29sZSAudGFnLUFQUHtjb2xvcjojZjVkNzZlO2ZvbnQtd2VpZ2h0OjY1MH0KI2NvbnNvbGUgLnRhZy1ST0JPVHtjb2xvcjojOWFhM2I1O2ZvbnQtd2VpZ2h0OjY1MH0KI2NvbnNvbGUgLnRhZy1TSElaVUtVe2NvbG9yOiM2ZWE4ZmU7Zm9udC13ZWlnaHQ6NjUwfQojY29uc29sZSAudGFnLW90aGVye2NvbG9yOnZhcigtLW11dGVkKTtmb250LXdlaWdodDo2NTB9CiNjb25zb2xlIC5sb2ctZW1wdHl7Y29sb3I6dmFyKC0tbXV0ZWQpfSIiIgppZiBvbGRfY3NzIG5vdCBpbiB0OgogICAgcmFpc2UgU3lzdGVtRXhpdCgiY3NzIG5vdCBmb3VuZCIpCnQgPSB0LnJlcGxhY2Uob2xkX2NzcywgbmV3X2NzcywgMSkKb2xkX2h0bWwgPSAnICAgIDxwcmUgaWQ9ImNvbnNvbGUiPi08L3ByZT4nCmlmIG9sZF9odG1sIG5vdCBpbiB0OgogICAgcmFpc2UgU3lzdGVtRXhpdCgiaHRtbCBub3QgZm91bmQiKQp0ID0gdC5yZXBsYWNlKG9sZF9odG1sLCAnICAgIDxkaXYgaWQ9ImNvbnNvbGUiIGNsYXNzPSJjb25zb2xlIj48c3BhbiBjbGFzcz0ibG9nLWVtcHR5Ij4tPC9zcGFuPjwvZGl2PicsIDEpCm5ld19qcyA9ICIiImFzeW5jIGZ1bmN0aW9uIHJlZnJlc2hDb25zb2xlKCl7CiAgdHJ5ewogICAgdmFyIHMgPSBhd2FpdCBhcGkoIi9hcGkvbG9ncyIpOwogICAgdmFyIGJveCA9IEQoImNvbnNvbGUiKTsKICAgIHZhciBhdEJvdHRvbSA9IGJveC5zY3JvbGxIZWlnaHQgLSBib3guc2Nyb2xsVG9wIC0gYm94LmNsaWVudEhlaWdodCA8IDQwOwogICAgdmFyIGxpbmVzID0gcy5saW5lcyB8fCBbXTsKICAgIGlmKCFsaW5lcy5sZW5ndGgpewogICAgICBib3guaW5uZXJIVE1MID0gJzxzcGFuIGNsYXNzPSJsb2ctZW1wdHkiPihubyBsaW5lcyk8L3NwYW4+JzsKICAgIH1lbHNlewogICAgICBib3guaW5uZXJIVE1MID0gbGluZXMubWFwKGZ1bmN0aW9uKGxpbmUpewogICAgICAgIHZhciByYXcgPSBTdHJpbmcobGluZSA9PSBudWxsID8gIiIgOiBsaW5lKTsKICAgICAgICB2YXIgbSA9IHJhdy5tYXRjaCgvXlxbKFtBLVowLTlfXSspXF06XHMqKC4qKSQvKTsKICAgICAgICBpZihtKXsKICAgICAgICAgIHZhciB0YWcgPSBtWzFdOwogICAgICAgICAgdmFyIGtub3duID0ge0JSSURHRToxLCBBUFA6MSwgUk9CT1Q6MSwgU0hJWlVLVToxfTsKICAgICAgICAgIHZhciBjbHMgPSBrbm93blt0YWddID8gKCJ0YWctIiArIHRhZykgOiAidGFnLW90aGVyIjsKICAgICAgICAgIHJldHVybiAnPGRpdiBjbGFzcz0ibG9nLWxpbmUiPjxzcGFuIGNsYXNzPSInICsgY2xzICsgJyI+WycgKyBlc2ModGFnKSArICddOjwvc3Bhbj4gJyArIGVzYyhtWzJdKSArICc8L2Rpdj4nOwogICAgICAgIH0KICAgICAgICByZXR1cm4gJzxkaXYgY2xhc3M9ImxvZy1saW5lIj4nICsgZXNjKHJhdykgKyAnPC9kaXY+JzsKICAgICAgfSkuam9pbigiIik7CiAgICB9CiAgICBpZihhdEJvdHRvbSkgYm94LnNjcm9sbFRvcCA9IGJveC5zY3JvbGxIZWlnaHQ7CiAgfWNhdGNoKGUpe30KfQpmdW5jdGlvbiBjb3B5Q29uc29sZSgpewogIHZhciBib3ggPSBEKCJjb25zb2xlIik7CiAgdmFyIHQgPSAoYm94ICYmIChib3guaW5uZXJUZXh0IHx8IGJveC50ZXh0Q29udGVudCkpIHx8ICIiOwogIGlmKG5hdmlnYXRvci5jbGlwYm9hcmQpIG5hdmlnYXRvci5jbGlwYm9hcmQud3JpdGVUZXh0KHQpLnRoZW4oZnVuY3Rpb24oKXsgdG9hc3QoImNvbnNvbGUgY29waWVkIiwgImdvb2QiKTsgfSk7Cn0iIiIKcGF0ID0gcmUuY29tcGlsZShyImFzeW5jIGZ1bmN0aW9uIHJlZnJlc2hDb25zb2xlXChcKVx7Lio/XG5mdW5jdGlvbiBjb3B5Q29uc29sZVwoXClcey4qP1xuXH0iLCByZS5TKQptID0gcGF0LnNlYXJjaCh0KQppZiBub3QgbToKICAgIHJhaXNlIFN5c3RlbUV4aXQoImpzIG5vdCBmb3VuZCIpCnQgPSB0WzptLnN0YXJ0KCldICsgbmV3X2pzICsgdFttLmVuZCgpXQpwLndyaXRlX3RleHQodCwgZW5jb2Rpbmc9InV0Zi04IikKcHJpbnQoInBhdGNoZWQiLCBwLnN0YXQoKS5zdF9zaXplKQo=' | base64 -d > /tmp/patch_console.py
+          python3 /tmp/patch_console.py
       - name: Commit
         run: |
           git config user.name "cwbridge-bot"
