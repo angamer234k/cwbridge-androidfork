@@ -23,16 +23,30 @@ class Store(context: Context) {
         if (key.isBlank()) return Result.failure(IllegalArgumentException("empty key"))
         val slot = slot(d, key)
         val existing = UserFileStore.storeGet(app, slot) ?: ""
-        val projected = usageOf(d) - existing.toByteArray(Charsets.UTF_8).size +
-            data.toByteArray(Charsets.UTF_8).size
+        val existingBytes = existing.toByteArray(Charsets.UTF_8).size.toLong()
+        val newBytes = data.toByteArray(Charsets.UTF_8).size.toLong()
+        val projectedDomain = usageOf(d) - existingBytes + newBytes
         val cap = limitOf(d)
-        if (projected > cap) {
+        if (cap > 0L && projectedDomain > cap) {
             return Result.failure(
                 IllegalStateException(
-                    "domain $d would store ${formatBytes(projected)} but the limit is " +
+                    "domain $d would store ${formatBytes(projectedDomain)} but the limit is " +
                         "${formatBytes(cap)} — raise the limit or clear keys first",
                 ),
             )
+        }
+        // Device-wide (server) cap — applies across every domain.
+        val serverCap = serverLimitBytes()
+        if (serverCap > 0L) {
+            val projectedServer = totalUsageBytes() - existingBytes + newBytes
+            if (projectedServer > serverCap) {
+                return Result.failure(
+                    IllegalStateException(
+                        "server storage would be ${formatBytes(projectedServer)} but the " +
+                            "device limit is ${formatBytes(serverCap)} — free space or raise the server limit",
+                    ),
+                )
+            }
         }
         UserFileStore.storePut(app, slot, data)
         return Result.success(Unit)
@@ -100,9 +114,29 @@ class Store(context: Context) {
 
     fun setDefaultLimitBytes(bytes: Long): Result<Unit> {
         if (bytes < 0) return Result.failure(IllegalArgumentException("limit cannot be negative"))
-        val v = if (bytes == 0L) "0" else formatBytes(bytes).replace(" ", "")
         UserFileStore.putSetting(app, "store_default_limit_bytes", if (bytes == 0L) "0" else bytes.toString())
         LogBuffer.i("Store", "default limit = ${formatBytes(bytes)}")
+        return Result.success(Unit)
+    }
+
+    /** Sum of stored value bytes across every domain on this device. */
+    fun totalUsageBytes(): Long =
+        UserFileStore.storeAll(app).values.sumOf { it.toByteArray(Charsets.UTF_8).size.toLong() }
+
+    /**
+     * Device-wide storage ceiling (all domains combined). 0 = unlimited.
+     * Default: 2 GiB.
+     */
+    fun serverLimitBytes(): Long {
+        val raw = UserFileStore.getSetting(app, "store_server_limit_bytes", null)
+        val parsed = raw?.let { parseSize(it) ?: it.toLongOrNull() }
+        return parsed?.coerceAtLeast(0L) ?: DEFAULT_SERVER_LIMIT_BYTES
+    }
+
+    fun setServerLimitBytes(bytes: Long): Result<Unit> {
+        if (bytes < 0) return Result.failure(IllegalArgumentException("limit cannot be negative"))
+        UserFileStore.putSetting(app, "store_server_limit_bytes", if (bytes == 0L) "0" else bytes.toString())
+        LogBuffer.i("Store", "server limit = ${if (bytes == 0L) "unlimited" else formatBytes(bytes)}")
         return Result.success(Unit)
     }
 
@@ -146,7 +180,8 @@ class Store(context: Context) {
 
     companion object {
         const val DEFAULT_DOMAIN = "local.rbx"
-        const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024 * 1024 // 1 GiB
+        const val DEFAULT_LIMIT_BYTES = 1L * 1024 * 1024 * 1024 // 1 GiB per domain default
+        const val DEFAULT_SERVER_LIMIT_BYTES = 2L * 1024 * 1024 * 1024 // 2 GiB device-wide
 
         fun normalizeDomain(raw: String): String? {
             val s = raw.trim().lowercase()
