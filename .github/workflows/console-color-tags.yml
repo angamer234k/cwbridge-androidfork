@@ -1,0 +1,48 @@
+name: Console color tags
+on:
+  workflow_dispatch:
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch WebUi console colors + newlines
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("app/src/main/java/com/cwbridge/android/server/WebUi.kt")
+          t = p.read_text(encoding="utf-8")
+          old_css = """pre#console{
+            margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);
+            max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;
+          }"""
+          # Note: remote file has no leading indent on css body lines beyond 2 spaces after newline from pre#console
+          old_css = """pre#console{\n  margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);\n  max-height:280px;overflow:auto;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;\n}"""
+          new_css = """#console{\n  margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);\n  max-height:280px;overflow:auto;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;\n}\n#console .log-line{display:block;padding:1px 0;word-break:break-word}\n#console .tag-BRIDGE{color:#ffffff;font-weight:650}\n#console .tag-APP{color:#f5d76e;font-weight:650}\n#console .tag-ROBOT{color:#9aa3b5;font-weight:650}\n#console .tag-SHIZUKU{color:#6ea8fe;font-weight:650}\n#console .tag-other{color:var(--muted);font-weight:650}\n#console .log-empty{color:var(--muted)}"""
+          if old_css not in t:
+              raise SystemExit("css not found")
+          t = t.replace(old_css, new_css, 1)
+          old_html = '    <pre id="console">-</pre>'
+          if old_html not in t:
+              raise SystemExit("html not found")
+          t = t.replace(old_html, '    <div id="console" class="console"><span class="log-empty">-</span></div>', 1)
+          new_js = """async function refreshConsole(){\n  try{\n    var s = await api(\"/api/logs\");\n    var box = D(\"console\");\n    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;\n    var lines = s.lines || [];\n    if(!lines.length){\n      box.innerHTML = '<span class=\"log-empty\">(no lines)</span>';\n    }else{\n      box.innerHTML = lines.map(function(line){\n        var raw = String(line == null ? \"\" : line);\n        var m = raw.match(/^\\[([A-Z0-9_]+)\\]:\\s*(.*)$/);\n        if(m){\n          var tag = m[1];\n          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};\n          var cls = known[tag] ? (\"tag-\" + tag) : \"tag-other\";\n          return '<div class=\"log-line\"><span class=\"' + cls + '\">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';\n        }\n        return '<div class=\"log-line\">' + esc(raw) + '</div>';\n      }).join(\"\");\n    }\n    if(atBottom) box.scrollTop = box.scrollHeight;\n  }catch(e){}\n}\nfunction copyConsole(){\n  var box = D(\"console\");\n  var t = (box && (box.innerText || box.textContent)) || \"\";\n  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast(\"console copied\", \"good\"); });\n}"""
+          pat = re.compile(r"async function refreshConsole\\(\\)\\{.*?\\nfunction copyConsole\\(\\)\\{.*?\\n\\}", re.S)
+          m = pat.search(t)
+          if not m:
+              raise SystemExit("js not found")
+          t = t[:m.start()] + new_js + t[m.end():]
+          p.write_text(t, encoding="utf-8")
+          print("patched", p.stat().st_size)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "cwbridge-bot@users.noreply.github.com"
+          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          git diff --cached --stat
+          git commit -m "feat(console): color tags and one entry per line" || echo "no change"
+          git push
