@@ -120,10 +120,21 @@ class InvokeEngine(
         val data1 = parts.getOrNull(1)?.trim().orEmpty()
         val data2 = parts.getOrNull(2)?.trim().orEmpty()
 
+        // Prefer domain from the request payload itself (e.g. load.key.domain.rbx).
+        val domainGuess = listOf(data1, data2)
+            .flatMap { it.split(".") }
+            .map { it.trim().lowercase() }
+            .firstOrNull { it.endsWith(".rbx") || it.matches(Regex("^[a-z0-9_-]+\\.rbx$")) }
+            ?: listOf(data1, data2).firstOrNull {
+                it.contains(".rbx")
+            }?.let { blob ->
+                Regex("[a-z0-9_-]+\\.rbx").find(blob.lowercase())?.value
+            }
         LogBuffer.i(
-            "Invoke",
-            "→ $request data1=${data1.take(80)} data2=${data2.take(80)}" +
-                (if (reqId != null) " id=$reqId" else ""),
+            "BRIDGE",
+            "incoming ($request) from ${domainGuess ?: "local"}" +
+                (if (reqId != null) " id=$reqId" else "") +
+                " ${data1.take(40)}${if (data2.isNotEmpty()) ".${data2.take(40)}" else ""}",
         )
 
         job?.cancel()

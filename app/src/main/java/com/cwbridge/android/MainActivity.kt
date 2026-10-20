@@ -680,12 +680,14 @@ class MainActivity : AppCompatActivity() {
             invokeEngine.stop()
             executionEngine.stop()
             AntiDisconnect.stop()
-            LogBuffer.i("CWBridge", "bridge stopped")
+            LogBuffer.i("APP", "stop bridge")
+            LogBuffer.i("BRIDGE", "bridge status is now \"IDLE\"")
         } else {
+            LogBuffer.i("APP", "start bridge")
             if (!TapService.isConnected()) {
                 val listed = isAccessibilityEnabled()
                 LogBuffer.e(
-                    "CWBridge",
+                    "APP",
                     if (listed) "a11y listed ON but TapService not bound (MIUI often kills it)"
                     else "Accessibility service is off",
                 )
@@ -699,7 +701,7 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             if (!logcatReader.hasPermission()) {
-                LogBuffer.e("CWBridge", "refusing start: READ_LOGS not granted")
+                LogBuffer.e("APP", "refusing start: READ_LOGS not granted")
                 Toast.makeText(this, "Grant READ_LOGS via Helper first", Toast.LENGTH_LONG).show()
                 showAdbGrantHint()
                 refreshUi()
@@ -712,10 +714,11 @@ class MainActivity : AppCompatActivity() {
                     try {
                         // Small settle delay after "finished"
                         Thread.sleep(800)
+                        LogBuffer.i("APP", "reported readiness, roblox started.")
                         val msg = BridgeControl.openDomainsOnCwLoad(applicationContext)
-                        LogBuffer.i("CWBridge", "domains on CW load: $msg")
+                        LogBuffer.i("ROBOT", "domains on CW load: $msg")
                     } catch (t: Throwable) {
-                        LogBuffer.e("CWBridge", "domains on CW load: ${t.message}")
+                        LogBuffer.e("ROBOT", "domains on CW load: ${t.message}")
                     }
                 }.start()
             }
@@ -731,7 +734,7 @@ class MainActivity : AppCompatActivity() {
             invokeEngine.submitXPx = 730f
             invokeEngine.submitYPx = 1028f
             executionEngine.start()
-            LogBuffer.i("CWBridge", "bridge running — logcat stays on while you use Roblox")
+            LogBuffer.i("APP", "bridge running — logcat stays on while you use Roblox")
         }
         refreshUi()
     }
@@ -983,8 +986,8 @@ class MainActivity : AppCompatActivity() {
         BridgeControl.setHooks(object : BridgeControl.Hooks {
             override fun restartBridge() {
                 runOnUiThread {
+                    LogBuffer.i("APP", "restart bridge requested from web UI")
                     toggleBridge()
-                    LogBuffer.i("Control", "bridge restarted from web UI")
                 }
             }
             override fun stopBridgeWithError(message: String) {

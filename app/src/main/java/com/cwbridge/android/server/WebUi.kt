@@ -82,7 +82,43 @@ main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:12px}
   text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:720px){.grid3{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+.stat-card{
+  background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:6px;min-height:88px
+}
+.stat-card .stat-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat-card .stat-value{font-size:1.55rem;font-weight:750;letter-spacing:-.02em;line-height:1.15}
+.stat-card .stat-sub{font-size:12px;color:var(--muted)}
+.stat-card.ok .stat-value{color:var(--ok)}
+.stat-card.warn .stat-value{color:var(--warn)}
+.stat-card.danger .stat-value{color:var(--danger)}
+.stat-card.accent .stat-value{color:var(--accent)}
+.storage-wrap{margin-top:4px}
+.storage-meta{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.storage-meta .big{font-size:1.35rem;font-weight:750}
+.storage-meta .cap{font-size:13px;color:var(--muted)}
+.bar{
+  height:12px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden;
+  border:1px solid var(--line)
+}
+.bar > i{
+  display:block;height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,#3dd68c,#6ea8fe);
+  transition:width .45s ease, background .45s ease
+}
+.bar.mid > i{background:linear-gradient(90deg,#f5a524,#f5a524)}
+.bar.hot > i{background:linear-gradient(90deg,#f76c6c,#f5a524)}
+.bar.full > i{background:linear-gradient(90deg,#f76c6c,#c0392b)}
+.about-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.about-list li{
+  display:flex;justify-content:space-between;gap:12px;padding:10px 12px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:12px
+}
+.about-list .k{color:var(--muted);font-size:12px;font-weight:650}
+.about-list .v{font-weight:650;text-align:right;word-break:break-all}
 button,.btn{
   appearance:none;border:0;border-radius:12px;padding:11px 14px;min-height:44px;
   font:inherit;font-weight:650;cursor:pointer;color:#0b1020;background:var(--accent);
@@ -204,6 +240,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
     <button type="button" class="nav-item" data-page="services" onclick="showPage('services')"><span class="ms sm">extension</span> Services</button>
     <button type="button" class="nav-item" data-page="store" onclick="showPage('store')"><span class="ms sm">database</span> Store</button>
     <button type="button" class="nav-item" data-page="console" onclick="showPage('console')"><span class="ms sm">terminal</span> Console</button>
+    <button type="button" class="nav-item" data-page="about" onclick="showPage('about')"><span class="ms sm">info</span> About</button>
   </nav>
   <button type="button" class="ghost" style="width:100%;margin-top:8px" onclick="logout()"><span class="ms sm">lock</span> Lock</button>
 </aside>
@@ -235,6 +272,22 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 </nav>
 <main>
 <div class="page active" data-page="overview">
+  <div class="card" id="sec-storage">
+    <h2><span class="ms sm">hard_drive</span> Server storage</h2>
+    <div class="storage-wrap">
+      <div class="storage-meta">
+        <span class="big" id="storUsed">—</span>
+        <span class="cap">of <span id="storCap">—</span></span>
+      </div>
+      <div class="bar" id="storBar" title="Device-wide store usage"><i id="storFill"></i></div>
+      <p class="hint" style="margin-top:8px">Total across every domain on this device. Raise the server limit under Domains → Limits (or set 0 for unlimited).</p>
+    </div>
+  </div>
+  <div class="grid3" id="overviewStats" style="margin:4px 0 12px">
+    <div class="stat-card accent"><div class="stat-label">Bridge</div><div class="stat-value" id="statState">—</div><div class="stat-sub" id="statDetail">—</div></div>
+    <div class="stat-card"><div class="stat-label">CatWeb</div><div class="stat-value" id="statCat">—</div><div class="stat-sub">ready signal</div></div>
+    <div class="stat-card"><div class="stat-label">Shizuku</div><div class="stat-value" id="statShizuku">—</div><div class="stat-sub">keys / force-stop</div></div>
+  </div>
   <div class="card" id="sec-status">
     <h2><span class="ms sm">monitor_heart</span> Status</h2>
     <div class="row">
@@ -422,9 +475,11 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 
   <div class="card" id="sec-limits">
     <h2><span class="ms sm">speed</span> Limits</h2>
-    <p class="hint">Storage default applies to domains without a custom limit. Request budget per domain (default 250/day; weather costs 2). Editable here or admin setlimit type 0. 0 = unlimited.</p>
+    <p class="hint">Server limit is device-wide (all domains). Domain default applies when a domain has no custom limit. Request budgets are separate. 0 = unlimited.</p>
     <div class="row">
-      <div class="field"><label class="hint">Global data default</label>
+      <div class="field"><label class="hint">Server storage max</label>
+        <input id="limServer" placeholder="2GB"></div>
+      <div class="field"><label class="hint">Domain data default</label>
         <input id="limDefault" placeholder="1GB"></div>
       <div class="field"><label class="hint">Reqs / day (global)</label>
         <input id="limGlobalReq" type="number" min="0" placeholder="500"></div>
@@ -481,6 +536,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 <div class="page" data-page="console">
 <div class="card" id="sec-console">
     <h2><span class="ms sm">terminal</span> Console</h2>
+    <p class="hint">Structured app logs ([APP] [BRIDGE] [SHIZUKU] [ROBOT] …). System noise is filtered.</p>
     <pre id="console">-</pre>
     <div class="row" style="margin-top:10px">
       <button type="button" class="ghost" onclick="refreshConsole()"><span class="ms sm">refresh</span> Refresh</button>
@@ -489,6 +545,21 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
         <input type="checkbox" id="auto" checked style="width:auto;min-height:0"> auto
       </label>
     </div>
+  </div>
+</div>
+<div class="page" data-page="about">
+  <div class="card" id="sec-about">
+    <h2><span class="ms sm">info</span> About</h2>
+    <ul class="about-list">
+      <li><span class="k">App</span><span class="v">CWBridge Android</span></li>
+      <li><span class="k">Version</span><span class="v" id="aboutVersion">—</span></li>
+      <li><span class="k">Package</span><span class="v" id="aboutPkg">—</span></li>
+      <li><span class="k">Server storage</span><span class="v" id="aboutStorage">—</span></li>
+      <li><span class="k">Credits</span><span class="v">made by lemon</span></li>
+      <li><span class="k">Companion</span><span class="v">cwbridge (npm) · CatWeb</span></li>
+      <li><span class="k">Source</span><span class="v">github.com/angamer234k/cwbridge-androidfork</span></li>
+    </ul>
+    <p class="hint" style="margin-top:12px">Native Android companion for CatWeb / cwbridge. Reads invoke| commands from Roblox logcat and runs taps, storage, services, and more on-device.</p>
   </div>
 </div>
 </main>
@@ -516,7 +587,7 @@ function D(id){ return document.getElementById(id); }
 function showPage(name){
   document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-page')===name); });
   document.querySelectorAll('.nav-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-page')===name); });
-  var pt=D('pageTitle'); if(pt){ var m={overview:'Overview',control:'Control',domains:'Domains',services:'Services',store:'Store',console:'Console'}; pt.textContent=m[name]||name; }
+  var pt=D('pageTitle'); if(pt){ var m={overview:'Overview',control:'Control',domains:'Domains',services:'Services',store:'Store',console:'Console',about:'About'}; pt.textContent=m[name]||name; }
   try{ localStorage.setItem('cw_page', name); }catch(e){}
   if(window.innerWidth<820){ var sb=D('sidebar'); if(sb) sb.classList.remove('open'); }
 }
@@ -611,6 +682,31 @@ function renderReady(s){
     row(!!s.shizuku, "Shizuku", s.shizuku ? "ready" : "not ready") +
     row(!!s.catwebReady, "CatWeb ready", s.catwebReady ? "finished signal" : "waiting");
 }
+function paintStorage(s){
+  var used = s.totalUsed || "—";
+  var cap = s.serverUnlimited ? "unlimited" : (s.serverLimit || "—");
+  var pct = typeof s.serverPct === "number" ? s.serverPct : 0;
+  var elUsed = D("storUsed");
+  var elCap = D("storCap");
+  var bar = D("storBar");
+  var fill = D("storFill");
+  if(elUsed) elUsed.textContent = used;
+  if(elCap) elCap.textContent = cap;
+  if(fill){
+    var w = s.serverUnlimited ? 0 : Math.max(0, Math.min(100, pct));
+    fill.style.width = w + "%";
+  }
+  if(bar){
+    bar.classList.remove("mid","hot","full");
+    if(!s.serverUnlimited){
+      if(pct >= 95) bar.classList.add("full");
+      else if(pct >= 80) bar.classList.add("hot");
+      else if(pct >= 55) bar.classList.add("mid");
+    }
+  }
+  var aboutS = D("aboutStorage");
+  if(aboutS) aboutS.textContent = used + " / " + cap;
+}
 async function refreshStatus(){
   try{
     var s = await api("/api/status");
@@ -620,8 +716,17 @@ async function refreshStatus(){
     p.className = "chip " + st;
     var g = D("gooeyBlob");
     if(g) g.className = "gooey-blob " + st;
+    var gs = D("gooeyBlobSide");
+    if(gs) gs.className = "gooey-blob " + st;
     D("detail").textContent = s.detail || "";
     renderReady(s);
+    paintStorage(s);
+    var ss = D("statState"); if(ss) ss.textContent = st;
+    var sd = D("statDetail"); if(sd) sd.textContent = s.detail || "";
+    var sc = D("statCat"); if(sc) sc.textContent = s.catwebReady ? "YES" : "no";
+    var sh = D("statShizuku"); if(sh) sh.textContent = s.shizuku ? "OK" : "off";
+    var av = D("aboutVersion"); if(av) av.textContent = (s.versionName || "?") + " (" + (s.versionCode != null ? s.versionCode : "?") + ")";
+    var ap = D("aboutPkg"); if(ap) ap.textContent = s.packageName || "—";
   }catch(e){
     if(String(e.message) === "locked") return;
   }
@@ -867,26 +972,32 @@ async function loadLimits(){
   try{
     const j=await api('/api/rate-limits');
     const def=document.getElementById('limDefault');
+    const srv=document.getElementById('limServer');
     const g=document.getElementById('limGlobalReq');
     const d=document.getElementById('limDomainReq');
     if(def) def.value=j.defaultLimit||'';
+    if(srv) srv.value=j.serverLimit||'';
     if(g) g.value=(j.globalLimit!=null?j.globalLimit:'');
     if(d) d.value=(j.domainLimit!=null?j.domainLimit:'');
     const meta=document.getElementById('limitsMeta');
     if(meta){
       let s='Today: global '+ (j.globalUsed||0) +'/'+ (j.globalLimit||0);
       if(j.domainUsed!=null) s+=' · domain '+j.domainUsed+'/'+(j.domainLimit||0);
-      s+=' · default storage '+ (j.defaultLimit||'?');
+      s+=' · server '+ (j.totalUsed||'?') +' / '+ (j.serverLimit||'?');
+      s+=' · domain default '+ (j.defaultLimit||'?');
       meta.textContent=s;
     }
+    paintStorage(j);
   }catch(e){ toast(e.message||String(e),false); }
 }
 async function saveLimits(){
   const body={};
   const def=document.getElementById('limDefault');
+  const srv=document.getElementById('limServer');
   const g=document.getElementById('limGlobalReq');
   const d=document.getElementById('limDomainReq');
   if(def && def.value.trim()) body.defaultLimit=def.value.trim();
+  if(srv && srv.value.trim()) body.serverLimit=srv.value.trim();
   if(g && g.value!=='') body.globalPerDay=parseInt(g.value,10);
   if(d && d.value!=='') body.domainPerDay=parseInt(d.value,10);
   const msg=document.getElementById('limitsMsg');
@@ -896,6 +1007,7 @@ async function saveLimits(){
     if(msg) msg.innerHTML='<span class="ok">Saved</span>';
     toast('Limits saved',true);
     loadLimits();
+    refreshStatus();
   }catch(e){ if(msg) msg.innerHTML='<span class="bad">'+(e.message||e)+'</span>'; toast(e.message||String(e),false); }
 }
 
@@ -1179,6 +1291,7 @@ async function refreshStore(){
         esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
         "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
     }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
+    paintStorage(s);
   }catch(e){}
 }
 async function setLimit(){

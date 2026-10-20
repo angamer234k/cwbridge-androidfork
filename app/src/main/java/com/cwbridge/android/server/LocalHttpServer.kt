@@ -425,20 +425,86 @@ class LocalHttpServer(
         return json(mapOf("message" to BridgeControl.openDomains(domains, x, y)))
     }
 
-    private fun statusJson(): String = json(
-        mapOf(
-            "state" to BridgeStatus.state.name,
-            "detail" to BridgeStatus.detail,
-            "catwebReady" to CatWebTracker.ready,
-            "accessibility" to TapService.isConnected(),
-            "shizuku" to ShizukuShell.isReady(),
-        ),
-    )
+    private fun statusJson(): String {
+        val pm = context.packageManager
+        val pi = try {
+            pm.getPackageInfo(context.packageName, 0)
+        } catch (_: Throwable) {
+            null
+        }
+        val verName = pi?.versionName ?: "?"
+        val verCode = try {
+            if (android.os.Build.VERSION.SDK_INT >= 28) pi?.longVersionCode ?: -1L
+            else @Suppress("DEPRECATION") pi?.versionCode?.toLong() ?: -1L
+        } catch (_: Throwable) {
+            -1L
+        }
+        val total = store.totalUsageBytes()
+        val serverCap = store.serverLimitBytes()
+        return json(
+            mapOf(
+                "state" to BridgeStatus.state.name,
+                "detail" to BridgeStatus.detail,
+                "catwebReady" to CatWebTracker.ready,
+                "accessibility" to TapService.isConnected(),
+                "shizuku" to ShizukuShell.isReady(),
+                "versionName" to verName,
+                "versionCode" to verCode,
+                "packageName" to context.packageName,
+                "totalUsedBytes" to total,
+                "totalUsed" to Store.formatBytes(total),
+                "serverLimitBytes" to serverCap,
+                "serverLimit" to if (serverCap <= 0L) "unlimited" else Store.formatBytes(serverCap),
+                "serverUnlimited" to (serverCap <= 0L),
+                "serverPct" to if (serverCap > 0L) {
+                    ((total.toDouble() / serverCap.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+                } else {
+                    0.0
+                },
+            ),
+        )
+    }
 
-    private fun logsJson(): String =
-        json(mapOf("lines" to RobloxLogBuffer.last(40).map { it.text }))
+    private fun logsJson(): String {
+        // Prefer structured app logs ([TAG]: msg). Drop noisy Android system spam.
+        val noise = listOf(
+            "DEBUG_NAV", "InsetsAnimation", "setInsetsAndAlpha", "ImeInsets",
+            "InputMethodManager", "ViewRootImpl", "Choreographer", "BufferQueue",
+            "OpenGLRenderer", "BLASTBufferQueue", "SurfaceControl", "WindowManager",
+            "ActivityThread", "Parcelable", "StrictMode",
+        )
+        val appLines = LogBuffer.snapshot()
+            .asReversed()
+            .asSequence()
+            .filter { line ->
+                val hay = line.tag + " " + line.msg
+                noise.none { n -> hay.contains(n, ignoreCase = true) }
+            }
+            .take(80)
+            .toList()
+            .asReversed()
+            .map { line ->
+                val tag = when (line.tag.uppercase()) {
+                    "CONTROL", "MAIN", "APP" -> "APP"
+                    "BRIDGE", "BRIDGESTATUS" -> "BRIDGE"
+                    "SHIZUKU", "SHIZUKUSHELL" -> "SHIZUKU"
+                    "ROBLOX", "CATWEB", "CATWEBTRACKER" -> "ROBOT"
+                    "LOGCAT" -> "LOGCAT"
+                    "SERVER" -> "SERVER"
+                    "STORE", "FILES" -> "STORE"
+                    "INVOKE", "INVOKEENGINE" -> "BRIDGE"
+                    else -> line.tag.uppercase().take(12)
+                }
+                "[$tag]: ${line.msg}"
+            }
+        val cat = RobloxLogBuffer.last(12).map { it.text }.filter { t ->
+            noise.none { n -> t.contains(n, ignoreCase = true) }
+        }
+        val merged = (appLines + cat).takeLast(100)
+        return json(mapOf("lines" to merged))
+    }
 
-        private fun tapJson(body: String): String {
+    private fun tapJson(body: String): String {
         val svc = TapService.instance
             ?: return json(mapOf("error" to "CWBridge Tap (accessibility) not connected"))
         val holdMs = (jsonDouble(body, "holdMs") ?: 0.0).toLong().coerceIn(0L, 5000L)
@@ -630,7 +696,23 @@ class LocalHttpServer(
                 "unlimited" to d.unlimited,
             )
         }
-        return json(mapOf("domains" to domains))
+        val total = store.totalUsageBytes()
+        val serverCap = store.serverLimitBytes()
+        return json(
+            mapOf(
+                "domains" to domains,
+                "totalUsedBytes" to total,
+                "totalUsed" to Store.formatBytes(total),
+                "serverLimitBytes" to serverCap,
+                "serverLimit" to if (serverCap <= 0L) "unlimited" else Store.formatBytes(serverCap),
+                "serverUnlimited" to (serverCap <= 0L),
+                "serverPct" to if (serverCap > 0L) {
+                    ((total.toDouble() / serverCap.toDouble()) * 100.0).coerceIn(0.0, 100.0)
+                } else {
+                    0.0
+                },
+            ),
+        )
     }
 
     private fun saveKey(body: String): String {
@@ -748,6 +830,12 @@ class LocalHttpServer(
         val snap = DatastoreRateLimit.snapshot(context, domain).toMutableMap()
         snap["defaultLimitBytes"] = store.defaultLimitBytes()
         snap["defaultLimit"] = Store.formatBytes(store.defaultLimitBytes())
+        val serverCap = store.serverLimitBytes()
+        val total = store.totalUsageBytes()
+        snap["serverLimitBytes"] = serverCap
+        snap["serverLimit"] = if (serverCap <= 0L) "unlimited" else Store.formatBytes(serverCap)
+        snap["totalUsedBytes"] = total
+        snap["totalUsed"] = Store.formatBytes(total)
         return json(snap)
     }
 
@@ -755,6 +843,7 @@ class LocalHttpServer(
         val g = jsonString(body, "globalPerDay").toIntOrNull()
         val d = jsonString(body, "domainPerDay").toIntOrNull()
         val defRaw = jsonString(body, "defaultLimit")
+        val serverRaw = jsonString(body, "serverLimit")
         var touched = false
         if (g != null || d != null) {
             DatastoreRateLimit.setLimits(context, g, d)
@@ -769,9 +858,23 @@ class LocalHttpServer(
             }
             touched = true
         }
-        if (!touched) {
-            return json(mapOf("error" to "globalPerDay, domainPerDay, and/or defaultLimit required"))
+        if (serverRaw.isNotBlank()) {
+            val bytes = if (serverRaw.equals("unlimited", true) || serverRaw == "0") 0L
+            else Store.parseSize(serverRaw)
+                ?: return json(mapOf("error" to "bad serverLimit '$serverRaw' — try 2GB, 500MB"))
+            store.setServerLimitBytes(bytes).getOrElse {
+                return json(mapOf("error" to (it.message ?: "failed")))
+            }
+            touched = true
         }
+        if (!touched) {
+            return json(
+                mapOf(
+                    "error" to "globalPerDay, domainPerDay, defaultLimit, and/or serverLimit required",
+                ),
+            )
+        }
+        val serverCap = store.serverLimitBytes()
         return json(
             mapOf(
                 "ok" to true,
@@ -779,6 +882,10 @@ class LocalHttpServer(
                 "domainPerDay" to DatastoreRateLimit.domainLimit(context),
                 "defaultLimitBytes" to store.defaultLimitBytes(),
                 "defaultLimit" to Store.formatBytes(store.defaultLimitBytes()),
+                "serverLimitBytes" to serverCap,
+                "serverLimit" to if (serverCap <= 0L) "unlimited" else Store.formatBytes(serverCap),
+                "totalUsedBytes" to store.totalUsageBytes(),
+                "totalUsed" to Store.formatBytes(store.totalUsageBytes()),
             ),
         )
     }
