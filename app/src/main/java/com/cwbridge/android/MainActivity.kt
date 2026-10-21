@@ -1,7 +1,9 @@
 package com.cwbridge.android
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -10,6 +12,7 @@ import android.text.TextUtils
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -55,6 +58,13 @@ class MainActivity : AppCompatActivity() {
     private val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var serviceAdapter: ServiceAdapter
     private var localServer: LocalHttpServer? = null
+
+    private val nearbyWifiPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) localServer?.advertise()
+        else Toast.makeText(this, "Nearby permission denied — panel stays on its IP only", Toast.LENGTH_LONG).show()
+    }
 
     private val logListener: (LogBuffer.Line) -> Unit = { line ->
         runOnUiThread {
@@ -952,7 +962,7 @@ class MainActivity : AppCompatActivity() {
         val port = localServer?.port() ?: 8080
         binding.btnServerToggle.text = if (running) "Stop server" else "Start server"
         binding.serverState.text = if (running) {
-            "Listening on port $port — open http://<this-device-ip>:$port"
+            "Listening on port $port — http://<this-device-ip>:$port\nAlso advertised on the local network as “CWBridge”."
         } else {
             "Server off"
         }
@@ -995,6 +1005,12 @@ class MainActivity : AppCompatActivity() {
             }
         })
         server.start()
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            nearbyWifiPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
         Thread {
             repeat(20) {
                 Thread.sleep(50)

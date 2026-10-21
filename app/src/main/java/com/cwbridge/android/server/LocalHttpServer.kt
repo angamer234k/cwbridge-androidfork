@@ -50,6 +50,7 @@ class LocalHttpServer(
     @Volatile private var boundPort: Int = 0
     private val gson = Gson()
     private val store by lazy { Store(context) }
+    private val nsd = NsdAdvertiser(context)
     // Must match Room's parsing or sealed Trigger/Action lists come back empty.
     private val serviceGson by lazy { ServiceConverters().gson }
 
@@ -69,6 +70,7 @@ class LocalHttpServer(
                     server = ss
                     boundPort = tryPort
                     LogBuffer.i("Server", "listening on port $tryPort (tried ${candidates.joinToString()})")
+                    nsd.start(tryPort)
                     started = true
                     try {
                         while (running.get()) {
@@ -99,12 +101,20 @@ class LocalHttpServer(
                 running.set(false)
             }
             server = null
+            nsd.stop()
             boundPort = 0
         }
     }
 
+    /** Re-advertise after the nearby-devices permission is granted. */
+    fun advertise() {
+        val p = boundPort
+        if (running.get() && p > 0) nsd.start(p)
+    }
+
     fun stop() {
         if (!running.compareAndSet(true, false)) return
+        nsd.stop()
         try { server?.close() } catch (_: Exception) {}
         server = null
         LogBuffer.i("Server", "stopped")

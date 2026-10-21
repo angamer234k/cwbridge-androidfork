@@ -37,15 +37,19 @@
 + CATWEB AUTO-OPEN — /api/auto-domain; when CatWeb logs "finished", the saved domain opens in-tab
 + SHIZUKU KEY SHORTCUTS — Ctrl+T / Enter via Shizuku; server port fallback 8080-8765-80
 + EXTRAS — public CatWeb client for s.eof.rbx (chunk-aware REQ|/RES| protocol) in extras/
++ LIVE STREAM / LIVE VIEW — Start/Stop stream polls /api/screenshot?fmt=jpeg&q=50 ~400ms;
+  tap image → /api/tap percent; hold ≥450ms → long-press (holdMs); Shizuku screencap preferred
++ CONSOLE COLOR TAGS — BRIDGE white, APP yellow, ROBOT grey, SHIZUKU blue; one entry per line
++ SERVER STORAGE GAUGE + ABOUT PAGE — structured logs, storage limit hooks in status/logs
++ CATWEB PACK — public CLIENT/SERVER JSON + PROTOCOL.md + codec under catweb/ (v2 action shapes)
++ NSD DISCOVERY — main app advertises `_cwbridge._tcp` while the web server is up;
+  helper scans and opens the panel. Not a custom `cwbridge.local` hostname (Android won't allow it).
 
 ## STILL TO DO
 
-### Web panel
-- LIVE STREAM / LIVE VIEW — "Start stream" is still a placeholder ("stream coming next build");
-  tap-image-to-tap and ~0.5s long-press are not wired yet
-
 ### Remote relay
-= REMOTE CLIPBOARD — relay "clipboard" command returns a stub ("use local web clipboard"), not a real read
+= REMOTE CLIPBOARD — relay "clipboard" command still returns stub ("use local web clipboard"),
+  not a real device clipboard read (local web panel /api path already works)
 
 ### Windows helper
 - REAL-DEVICE TEST — GUI not yet run by a human against a plugged-in phone (self-test only)
@@ -55,3 +59,4 @@
 - Debug keystore: decode keystore/cwbridge-debug.p12.b64 before local build
 - Helper needs AdbLib vendored at build time (see build-debug-apk.yml)
 - Same-LAN clients still skip the password by design
+- Current versionName: 2.16.0-android

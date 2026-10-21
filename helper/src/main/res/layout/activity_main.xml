@@ -44,6 +44,38 @@
                 android:textSize="12sp" />
 
             <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="NEARBY CWBRIDGE"
+                android:textAllCaps="true"
+                android:textColor="#8B909A"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/bridgeScanState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Scanning the local network…"
+                android:textColor="#C4A574"
+                android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/bridgeList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRescan"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Scan again" />
+
+            <TextView
                 android:id="@+id/usbState"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

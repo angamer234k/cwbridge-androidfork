@@ -1,11 +1,13 @@
 package com.cwbridge.helper
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
@@ -13,12 +15,15 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.cwbridge.helper.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,6 +37,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var pusher: OtgAdbPusher
     private var selected: UsbDevice? = null
+    private var discovery: BridgeDiscovery? = null
+
+    private val nearbyPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) startDiscovery() else showScanDenied()
+    }
 
     /**
      * Pusher/downloader chatter (per-second countdowns, `$ cmd` echoes, progress
@@ -83,6 +95,7 @@ class MainActivity : AppCompatActivity() {
             binding.logView.text = ""
             details.clear()
         }
+        binding.btnRescan.setOnClickListener { ensureDiscovery() }
 
         val filter = IntentFilter().apply {
             addAction(OtgAdbPusher.ACTION_USB_PERMISSION)
@@ -93,11 +106,64 @@ class MainActivity : AppCompatActivity() {
 
         refreshUsb()
         log("Helper 1.1.2")
+        ensureDiscovery()
     }
 
     override fun onDestroy() {
+        discovery?.stop()
         try { unregisterReceiver(usbReceiver) } catch (_: Exception) {}
         super.onDestroy()
+    }
+
+    private fun ensureDiscovery() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            binding.bridgeScanState.text = "Allow nearby devices to find CWBridge on Wi-Fi"
+            nearbyPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+            return
+        }
+        startDiscovery()
+    }
+
+    private fun startDiscovery() {
+        binding.bridgeScanState.text = "Scanning the local network…"
+        val browser = discovery ?: BridgeDiscovery(this) { bridges ->
+            renderBridges(bridges)
+        }.also { discovery = it }
+        browser.start()
+    }
+
+    private fun showScanDenied() {
+        binding.bridgeScanState.text = "Nearby permission denied — can’t scan for CWBridge"
+    }
+
+    private fun renderBridges(bridges: List<BridgeDiscovery.FoundBridge>) {
+        binding.bridgeScanState.text = if (bridges.isEmpty()) {
+            "No CWBridge on this Wi-Fi yet. Start the web server on the other phone."
+        } else {
+            "Found ${bridges.size}. Tap to open the panel."
+        }
+        val list = binding.bridgeList
+        list.removeAllViews()
+        val pad = (8 * resources.displayMetrics.density).toInt()
+        for (bridge in bridges) {
+            val button = MaterialButton(this).apply {
+                text = bridge.label
+                isAllCaps = false
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = pad }
+                setOnClickListener {
+                    startActivity(Intent(this@MainActivity, ControlActivity::class.java).apply {
+                        putExtra(ControlActivity.EXTRA_URL, bridge.url)
+                    })
+                }
+            }
+            list.addView(button)
+        }
     }
 
     private fun requireTarget(): UsbDevice? {
