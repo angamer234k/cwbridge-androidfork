@@ -472,6 +472,10 @@ class LocalHttpServer(
             "InputMethodManager", "ViewRootImpl", "Choreographer", "BufferQueue",
             "OpenGLRenderer", "BLASTBufferQueue", "SurfaceControl", "WindowManager",
             "ActivityThread", "Parcelable", "StrictMode",
+            "nativeGetFFlag", "nativeRegisterFFlag", "JNIRobloxSettings",
+            "FlagCache", "DataModelPatch", "StunPopProbe", "ProfileInstaller",
+            "rbx.glview", "AssetsManifestManager", "TombstoneCache",
+            "finished ignored",
         )
         val appLines = LogBuffer.snapshot()
             .asReversed()
