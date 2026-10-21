@@ -1,1 +1,36 @@
-PLACEHOLDER
+name: restore-log-quiet
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble LogcatReader
+        run: |
+          python3 - <<'PY'
+          import base64, pathlib
+          a = pathlib.Path(".ci/lr_a.b64").read_text().strip()
+          b = pathlib.Path(".ci/lr_b.b64").read_text().strip()
+          data = base64.b64decode(a+b)
+          pathlib.Path("app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt").write_bytes(data)
+          assert b"if (isFlog || isCat)" in data
+          p = pathlib.Path("app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt")
+          t = p.read_text()
+          needle = '"StrictMode",\n        )'
+          insert = '"StrictMode",\n            "nativeGetFFlag", "nativeRegisterFFlag", "JNIRobloxSettings",\n            "FlagCache", "DataModelPatch", "StunPopProbe", "ProfileInstaller",\n            "rbx.glview", "AssetsManifestManager", "TombstoneCache",\n            "finished ignored",\n        )'
+          if "FlagCache" not in t:
+              if needle not in t:
+                  raise SystemExit("noise needle missing")
+              p.write_text(t.replace(needle, insert, 1))
+          print("ok", len(data))
+          PY
+      - name: Commit
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt
+          git commit -m "fix(console): restore LogcatReader + filter rbx engine noise"
+          git push
