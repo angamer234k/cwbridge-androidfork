@@ -1,0 +1,67 @@
+name: fix-mobile-layout
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch WebUi mobile layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
+          t = p.read_text()
+          # 1) bump main gap 12 -> 16
+          t2 = t.replace(
+            'main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:12px}',
+            'main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:16px}',
+            1,
+          )
+          if t2 == t:
+              print('warn: main gap already patched or missing')
+          t = t2
+          # 2) hide footer css
+          t2 = t.replace(
+            '.footer{text-align:center;color:var(--muted);font-size:11px;padding:8px 14px 24px}',
+            '.footer{display:none}',
+            1,
+          )
+          if t2 == t:
+              print('warn: footer css already patched or missing')
+          t = t2
+          # 3) mobile media query extras
+          old_mq = '''@media(max-width:819px){\n  .sidebar{transform:translateX(-105%);transition:transform .2s ease}\n  .sidebar.open{transform:translateX(0);box-shadow:8px 0 32px rgba(0,0,0,.4)}\n  .main-wrap{margin-left:0}\n  .top-slim .menu{display:inline-flex}\n}'''
+          new_mq = '''@media(max-width:819px){\n  .sidebar{transform:translateX(-105%);transition:transform .2s ease}\n  .sidebar.open{transform:translateX(0);box-shadow:8px 0 32px rgba(0,0,0,.4)}\n  .main-wrap{margin-left:0}\n  .top-slim .menu{display:inline-flex}\n  main{padding:12px;gap:14px;max-width:none}\n  .card{padding:12px}\n  .stat-card{min-height:0;padding:12px 14px}\n}'''
+          if old_mq in t:
+              t = t.replace(old_mq, new_mq, 1)
+              print('media query patched')
+          else:
+              print('warn: media query block not exact match')
+          # 4) remove footer HTML (was a flex sibling of main-wrap — caused right-side squeeze)
+          old_footer = '''</main>\n</div>\n<div class="footer">CWBridge web panel</div>\n</div>'''
+          new_footer = '''</main>\n</div>\n</div>'''
+          if old_footer in t:
+              t = t.replace(old_footer, new_footer, 1)
+              print('footer html removed')
+          else:
+              # try already-hidden or slight variant
+              if 'CWBridge web panel' in t:
+                  t = t.replace('<div class="footer">CWBridge web panel</div>\n', '', 1)
+                  print('footer html stripped (alt)')
+              else:
+                  print('warn: footer html already gone')
+          p.write_text(t)
+          assert 'CWBridge web panel' not in t or 'display:none' in t
+          print('ok', p.stat().st_size)
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          git diff --cached --stat
+          git commit -m "fix(web): drop footer flex-column, full-width mobile cards + spacing" || echo nochange
+          git push
