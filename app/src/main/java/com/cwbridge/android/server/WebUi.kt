@@ -1325,9 +1325,34 @@ async function refreshVars(){
     }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
   }catch(e){}
 }
+function copyText(t, okMsg){
+  t = t || "";
+  function ok(){ toast(okMsg || "copied", "good"); }
+  function fail(){ toast("copy failed — select text manually", "err"); }
+  function fallback(){
+    try{
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var done = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if(done) ok(); else fail();
+    }catch(e){ fail(); }
+  }
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });
+  } else {
+    fallback();
+  }
+}
 function copyVars(){
-  var rows = D("varRows").innerText || "";
-  if(navigator.clipboard) navigator.clipboard.writeText(rows).then(function(){ toast("vars copied", "good"); });
+  var rows = (D("varRows") && D("varRows").innerText) || "";
+  copyText(rows, "vars copied");
 }
 async function refreshConsole(){
   try{
@@ -1355,8 +1380,8 @@ async function refreshConsole(){
 }
 function copyConsole(){
   var box = D("console");
-  var t = (box && (box.innerText || box.textContent)) || "";
-  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast("console copied", "good"); });
+  var txt = (box && (box.innerText || box.textContent)) || "";
+  copyText(txt, "console copied");
 }
 function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
