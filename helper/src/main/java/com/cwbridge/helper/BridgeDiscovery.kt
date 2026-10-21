@@ -14,7 +14,8 @@ import java.util.ArrayDeque
 
 /**
  * Browses `_cwbridge._tcp` and resolves each hit to host + port.
- * Only one resolve runs at a time — NsdManager requires that.
+ * NsdManager allows one discovery and one resolve at a time. Starting a
+ * second one, especially from inside a resolve callback, crashes the process.
  */
 class BridgeDiscovery(
     context: Context,
@@ -36,38 +37,86 @@ class BridgeDiscovery(
     private val queue = ArrayDeque<NsdServiceInfo>()
     private var discovery: NsdManager.DiscoveryListener? = null
     private var resolving = false
+    private var session = 0
+    private var restartAfterStop = false
     private var lock: WifiManager.MulticastLock? = null
 
     fun start() {
-        stop()
-        found.clear()
-        emit()
         if (!canDiscover()) return
+        if (discovery != null) {
+            restartAfterStop = true
+            if (!haltDiscovery()) {
+                restartAfterStop = false
+                begin(session)
+            }
+            return
+        }
+        begin(session)
+    }
+
+    fun stop() {
+        session++
+        restartAfterStop = false
+        haltDiscovery()
+        resolving = false
+        queue.clear()
+        releaseLock()
+    }
+
+    fun permissionGranted(): Boolean = canDiscover()
+
+    private fun begin(epoch: Int) {
+        if (epoch != session || discovery != null) return
         acquireLock()
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {}
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                if (epoch != session) return
                 if (serviceInfo.serviceType?.contains("_cwbridge._tcp") != true) return
                 main.post {
-                    if (discovery != null) enqueue(serviceInfo)
+                    if (epoch == session) enqueue(serviceInfo)
                 }
             }
 
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
                 main.post {
-                    found.remove(serviceInfo.serviceName)
+                    if (epoch != session) return@post
+                    found.remove(keyOf(serviceInfo))
                     emit()
                 }
             }
 
-            override fun onDiscoveryStopped(serviceType: String) {}
-
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                main.post { stop() }
+            override fun onDiscoveryStopped(serviceType: String) {
+                main.post {
+                    if (discovery === this) discovery = null
+                    if (restartAfterStop && epoch == session) {
+                        restartAfterStop = false
+                        found.clear()
+                        queue.clear()
+                        resolving = false
+                        emit()
+                        begin(session)
+                    }
+                }
             }
 
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                main.post {
+                    if (discovery === this) discovery = null
+                    restartAfterStop = false
+                }
+            }
+
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+                main.post {
+                    if (discovery === this) discovery = null
+                    if (restartAfterStop) {
+                        restartAfterStop = false
+                        begin(session)
+                    }
+                }
+            }
         }
         discovery = listener
         try {
@@ -78,21 +127,16 @@ class BridgeDiscovery(
         }
     }
 
-    fun stop() {
-        val listener = discovery
-        discovery = null
-        if (listener != null) {
-            try {
-                nsd?.stopServiceDiscovery(listener)
-            } catch (_: Exception) {
-            }
+    private fun haltDiscovery(): Boolean {
+        val listener = discovery ?: return false
+        return try {
+            nsd?.stopServiceDiscovery(listener)
+            true
+        } catch (_: Exception) {
+            discovery = null
+            false
         }
-        resolving = false
-        queue.clear()
-        releaseLock()
     }
-
-    fun permissionGranted(): Boolean = canDiscover()
 
     private fun canDiscover(): Boolean {
         if (Build.VERSION.SDK_INT < 33) return true
@@ -102,7 +146,7 @@ class BridgeDiscovery(
 
     private fun enqueue(info: NsdServiceInfo) {
         queue.add(info)
-        pump()
+        main.post { pump() }
     }
 
     @Suppress("DEPRECATION")
@@ -110,39 +154,66 @@ class BridgeDiscovery(
         if (resolving) return
         val next = queue.poll() ?: return
         val manager = nsd ?: return
+        val epoch = session
         resolving = true
         try {
             manager.resolveService(next, object : NsdManager.ResolveListener {
                 override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    resolving = false
-                    pump()
+                    main.post {
+                        if (epoch != session) return@post
+                        resolving = false
+                        pump()
+                    }
                 }
 
                 override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                    val ip = serviceInfo.host?.hostAddress
-                    if (!ip.isNullOrBlank() && serviceInfo.port > 0) {
-                        found[serviceInfo.serviceName] = FoundBridge(
-                            name = serviceInfo.serviceName ?: "CWBridge",
-                            host = ip,
-                            port = serviceInfo.port,
-                        )
-                        emit()
+                    main.post {
+                        if (epoch != session) return@post
+                        try {
+                            val ip = hostAddress(serviceInfo)
+                            val port = serviceInfo.port
+                            if (!ip.isNullOrBlank() && port > 0) {
+                                val name = serviceInfo.serviceName?.takeIf { it.isNotBlank() } ?: "CWBridge"
+                                found[keyOf(serviceInfo)] = FoundBridge(name, ip, port)
+                                emit()
+                            }
+                        } catch (_: Throwable) {
+                        }
+                        resolving = false
+                        pump()
                     }
-                    resolving = false
-                    pump()
                 }
             })
         } catch (_: Throwable) {
             resolving = false
+            main.postDelayed({ if (epoch == session) pump() }, 400)
         }
     }
 
+    private fun hostAddress(info: NsdServiceInfo): String? {
+        if (Build.VERSION.SDK_INT >= 34) {
+            val addresses = info.hostAddresses
+            val v4 = addresses.firstOrNull { it.address.size == 4 } ?: addresses.firstOrNull()
+            if (v4 != null) return v4.hostAddress
+        }
+        @Suppress("DEPRECATION")
+        return info.host?.hostAddress
+    }
+
+    private fun keyOf(info: NsdServiceInfo): String {
+        val name = info.serviceName?.takeIf { it.isNotBlank() } ?: "CWBridge"
+        return name
+    }
+
     private fun emit() {
-        onUpdate(found.values.toList())
+        try {
+            onUpdate(found.values.toList())
+        } catch (_: Throwable) {
+        }
     }
 
     private fun acquireLock() {
-        if (lock != null) return
+        if (lock?.isHeld == true) return
         val wifi = app.getSystemService(WifiManager::class.java) ?: return
         lock = wifi.createMulticastLock("cwbridge-discover").apply {
             setReferenceCounted(false)
