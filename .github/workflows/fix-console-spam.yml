@@ -1,0 +1,113 @@
+name: fix-console-spam
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Quiet ROBOT spam + finished-ignored flood
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # --- LogcatReader: only surface CatWeb / creator output / invoke, not all rbx noise ---
+          p = Path('app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt')
+          t = p.read_text()
+          old = '''                            val lower = line.lowercase()
+                            val isFlog = lower.contains("flog::creatoroutput") ||
+                                lower.contains("flog::output") ||
+                                lower.contains("[from ")
+                            val isInvoke = line.contains("invoke|")
+                            val isCat = lower.contains("catweb") || lower.contains("waiting for server")
+                            if (isFlog || isInvoke || isCat || looksLikeRobloxLine(line)) {
+                                if (isInvoke) {
+                                    try {
+                                        invokeSink?.invoke(line)
+                                    } catch (t: Throwable) {
+                                        LogBuffer.e("Logcat", "invokeSink: ${t.message}")
+                                    }
+                                }
+                                LogBuffer.i("Roblox", line.take(300))
+                            }'''
+          new = '''                            val lower = line.lowercase()
+                            val isFlog = lower.contains("flog::creatoroutput") ||
+                                lower.contains("flog::output") ||
+                                lower.contains("[from ")
+                            val isInvoke = line.contains("invoke|")
+                            // CatWeb status lines only — not every rbx.* / FFlag / FlagCache dump
+                            val isCat = lower.contains("catweb") ||
+                                lower.contains("waiting for server") ||
+                                ((lower.contains("finished") || lower.contains("loading")) &&
+                                    (line.contains('\u2022') || line.contains('\u00B7') || lower.contains("catweb")))
+                            if (isInvoke) {
+                                try {
+                                    invokeSink?.invoke(line)
+                                } catch (t: Throwable) {
+                                    LogBuffer.e("Logcat", "invokeSink: ${t.message}")
+                                }
+                            }
+                            // Structured console: CatWeb + creator print only (no raw threadtime spam)
+                            if (isFlog || isCat) {
+                                LogBuffer.i("Roblox", line.take(300))
+                            }'''
+          if old not in t:
+              raise SystemExit('LogcatReader block not found')
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+          print('LogcatReader ok')
+
+          # --- CatWebTracker: stop flooding "finished ignored" ---
+          p = Path('app/src/main/java/com/cwbridge/android/bridge/CatWebTracker.kt')
+          t = p.read_text()
+          old = '''            } else {
+                LogBuffer.i("CatWeb", "finished ignored (already fired — need armForNextReady after reconnect)")
+            }'''
+          new = '''            } else {
+                // already handled this session — stay quiet (was flooding the console)
+            }'''
+          if old not in t:
+              raise SystemExit('CatWebTracker finished-ignored block not found')
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+          print('CatWebTracker ok')
+
+          # --- LocalHttpServer: stronger noise filter safety net ---
+          p = Path('app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt')
+          t = p.read_text()
+          old = '''        val noise = listOf(
+            "DEBUG_NAV", "InsetsAnimation", "setInsetsAndAlpha", "ImeInsets",
+            "InputMethodManager", "ViewRootImpl", "Choreographer", "BufferQueue",
+            "OpenGLRenderer", "BLASTBufferQueue", "SurfaceControl", "WindowManager",
+            "ActivityThread", "Parcelable", "StrictMode",
+        )'''
+          new = '''        val noise = listOf(
+            "DEBUG_NAV", "InsetsAnimation", "setInsetsAndAlpha", "ImeInsets",
+            "InputMethodManager", "ViewRootImpl", "Choreographer", "BufferQueue",
+            "OpenGLRenderer", "BLASTBufferQueue", "SurfaceControl", "WindowManager",
+            "ActivityThread", "Parcelable", "StrictMode",
+            // Roblox engine spam that used to flood [ROBOT]
+            "nativeGetFFlag", "nativeRegisterFFlag", "JNIRobloxSettings",
+            "FlagCache", "DataModelPatch", "StunPopProbe", "ProfileInstaller",
+            "rbx.glview", "AssetsManifestManager", "TombstoneCache",
+            "finished ignored",
+        )'''
+          if old not in t:
+              raise SystemExit('LocalHttpServer noise list not found')
+          t = t.replace(old, new, 1)
+          p.write_text(t)
+          print('LocalHttpServer ok')
+          print('all patches applied')
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt \
+                  app/src/main/java/com/cwbridge/android/bridge/CatWebTracker.kt \
+                  app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt
+          git diff --cached --stat
+          git commit -m "fix(console): stop ROBOT spam — only CatWeb/creator lines + no finished-ignored flood"
+          git push
