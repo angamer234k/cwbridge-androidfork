@@ -1,0 +1,39 @@
+name: fix-clipboard
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch clipboard copy for HTTP/LAN
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/server/WebUi.kt')
+          t = p.read_text()
+          old = '''function copyVars(){\n  var rows = D("varRows").innerText || "";\n  if(navigator.clipboard) navigator.clipboard.writeText(rows).then(function(){ toast("vars copied", "good"); });\n}\nasync function refreshConsole(){'''
+          new = '''function copyText(t, okMsg){\n  t = t || "";\n  function ok(){ toast(okMsg || "copied", "good"); }\n  function fail(){ toast("copy failed — select text manually", "err"); }\n  function fallback(){\n    try{\n      var ta = document.createElement("textarea");\n      ta.value = t;\n      ta.setAttribute("readonly", "");\n      ta.style.cssText = "position:fixed;left:-9999px;top:0";\n      document.body.appendChild(ta);\n      ta.focus();\n      ta.select();\n      ta.setSelectionRange(0, ta.value.length);\n      var done = document.execCommand("copy");\n      document.body.removeChild(ta);\n      if(done) ok(); else fail();\n    }catch(e){ fail(); }\n  }\n  if(navigator.clipboard && window.isSecureContext){\n    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });\n  } else {\n    fallback();\n  }\n}\nfunction copyVars(){\n  var rows = (D("varRows") && D("varRows").innerText) || "";\n  copyText(rows, "vars copied");\n}\nasync function refreshConsole(){'''
+          if old not in t:
+              raise SystemExit('copyVars block not found')
+          t = t.replace(old, new, 1)
+          old2 = '''function copyConsole(){\n  var box = D("console");\n  var t = (box && (box.innerText || box.textContent)) || "";\n  if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast("console copied", "good"); });\n}'''
+          new2 = '''function copyConsole(){\n  var box = D("console");\n  var txt = (box && (box.innerText || box.textContent)) || "";\n  copyText(txt, "console copied");\n}'''
+          if old2 not in t:
+              raise SystemExit('copyConsole block not found')
+          t = t.replace(old2, new2, 1)
+          p.write_text(t)
+          assert 'function copyText' in t
+          assert 'execCommand("copy")' in t or "execCommand('copy')" in t or 'execCommand(\"copy\")' in t
+          print('ok', p.stat().st_size)
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/server/WebUi.kt
+          git diff --cached --stat
+          git commit -m "fix(web): console/vars copy works on HTTP LAN (execCommand fallback)"
+          git push
