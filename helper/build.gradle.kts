@@ -11,8 +11,8 @@ android {
         applicationId = "com.cwbridge.helper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "1.1.2"
+        versionCode = 10
+        versionName = "1.2.0"
     }
 
     val debugStoreFile = rootProject.file("keystore/cwbridge-debug.p12")
