@@ -82,7 +82,7 @@ object CatWebTracker {
                     LogBuffer.e("CatWeb", "onReady: ${t.message}")
                 }
             } else {
-                LogBuffer.i("CatWeb", "finished ignored (already fired — need armForNextReady after reconnect)")
+                // already handled this session — stay quiet (was flooding the console)
             }
         } else if (
             ready && (
