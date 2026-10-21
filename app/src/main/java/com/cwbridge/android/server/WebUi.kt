@@ -66,7 +66,7 @@ header{
 /* Top chips were stage-2 section anchors; sidebar is the sole nav (no double-nav on phone). */
 nav.sec{display:none}
 nav.sec a{display:none}
-main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:12px}
+main{max-width:920px;margin:0 auto;padding:14px;display:grid;gap:16px}
 .card{
   background:linear-gradient(180deg,var(--panel),var(--panel2));
   border:1px solid var(--line);border-radius:var(--radius);padding:14px 14px 12px;
@@ -166,7 +166,7 @@ th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;le
   border:1px dashed var(--line);border-radius:12px;display:flex;flex-direction:column;
   align-items:center;gap:8px;
 }
-.footer{text-align:center;color:var(--muted);font-size:11px;padding:8px 14px 24px}
+.footer{display:none}
 #toastHost{
   position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;
   display:flex;flex-direction:column;gap:8px;width:min(420px,92vw);pointer-events:none;
@@ -214,6 +214,9 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
   .sidebar.open{transform:translateX(0);box-shadow:8px 0 32px rgba(0,0,0,.4)}
   .main-wrap{margin-left:0}
   .top-slim .menu{display:inline-flex}
+  main{padding:12px;gap:14px;max-width:none}
+  .card{padding:12px}
+  .stat-card{min-height:0;padding:12px 14px}
 }
 
 </style>
@@ -564,7 +567,6 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 </div>
 </main>
 </div>
-<div class="footer">CWBridge web panel</div>
 </div>
 <div id="toastHost" aria-live="polite" aria-relevant="additions"></div>
 <div id="modalBack" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
