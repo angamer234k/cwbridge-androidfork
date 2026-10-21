@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v2.10.0)"
+        description: "Release tag (e.g. v2.16.0)"
         required: true
-        default: "v2.10.0"
+        default: "v2.16.0"
   push:
     tags:
       - "v*"
@@ -63,7 +63,7 @@ jobs:
       - name: Build debug APKs
         run: gradle :app:assembleDebug :helper:assembleDebug --no-daemon --stacktrace
 
-      - name: Collect artifacts
+      - name: Collect artifacts + notes
         id: collect
         run: |
           mkdir -p dist
@@ -72,11 +72,34 @@ jobs:
           cp "$APP" dist/cwbridge-android-debug.apk
           cp "$HELPER" dist/cwbridge-helper-debug.apk
           ls -lh dist/
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.tag }}"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
           fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          APP_VER=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          HELPER_VER=$(grep -E 'versionName\s*=' helper/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "app_ver=${APP_VER}" >> "$GITHUB_OUTPUT"
+          echo "helper_ver=${HELPER_VER}" >> "$GITHUB_OUTPUT"
+
+          cat > dist/RELEASE_BODY.md << EOF
+          ## CWBridge ${TAG}
+
+          Built from \`main\` at this tag.
+
+          | APK | versionName |
+          |-----|-------------|
+          | \`cwbridge-android-debug.apk\` | ${APP_VER} |
+          | \`cwbridge-helper-debug.apk\` | ${HELPER_VER} |
+
+          Auto-generated commit notes are attached below. Edit this release on GitHub if you want a longer changelog.
+          EOF
+          # strip the leading spaces from the heredoc indent
+          sed -i 's/^          //' dist/RELEASE_BODY.md
+          cat dist/RELEASE_BODY.md
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -89,28 +112,7 @@ jobs:
         with:
           tag_name: ${{ steps.collect.outputs.tag }}
           name: CWBridge ${{ steps.collect.outputs.tag }}
-          body: |
-            ## CWBridge Android ${{ steps.collect.outputs.tag }}
-
-            ### Web server & remote control
-            - Built-in web server (port 8765) with a browser control panel
-            - Local-network clients (192.168.x.x, 10.x, 172.16-31.x) need no password;
-              anything else uses the generated password shown in the app
-            - Remote control: take screenshot, restart bridge, restart Roblox, Ctrl+T,
-              Enter, read clipboard, toggle bridge
-            - Services creator: list, create, edit, enable/disable, delete, run
-            - Per-domain storage quotas (bits/bytes/KB/MB/GB)
-
-            ### Fixes
-            - "Check for updates" now actually works (version suffix handling fixed)
-            - `paste` with no argument pastes the current clipboard
-            - A failing tool/service no longer takes down the bridge
-            - First run shows a one-time notice about device-specific limitations
-
-            | File | What it is |
-            |------|------------|
-            | `cwbridge-android-debug.apk` | Main app |
-            | `cwbridge-helper-debug.apk` | USB/OTG installer helper |
+          body_path: dist/RELEASE_BODY.md
           files: |
             dist/cwbridge-android-debug.apk
             dist/cwbridge-helper-debug.apk
