@@ -1,43 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0A0B0D"
     android:orientation="vertical">
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="8dp">
-
-        <TextView
-            android:id="@+id/btnClosePanel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="Close"
-            android:textColor="#9BB8E8"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/controlUrl"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="middle"
-            android:singleLine="true"
-            android:textColor="#8B909A"
-            android:textSize="12sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:orientation="horizontal"
+        android:paddingStart="8dp" android:paddingTop="8dp" android:paddingEnd="12dp" android:paddingBottom="8dp">
+        <TextView android:id="@+id/btnClosePanel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:padding="8dp" android:text="Close" android:textColor="#9BB8E8" android:textSize="14sp" />
+        <TextView android:id="@+id/controlUrl" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:ellipsize="middle" android:singleLine="true"
+            android:textColor="#8B909A" android:textSize="12sp" />
+        <TextView android:id="@+id/btnFullPanel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:padding="8dp" android:text="Full panel" android:textColor="#9BB8E8" android:textSize="14sp" />
     </LinearLayout>
-
-    <WebView
-        android:id="@+id/panel"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingBottom="24dp">
+            <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Connecting…" android:textColor="@android:color/white" android:textSize="14sp" />
+            <TextView android:id="@+id/toastLine" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="4dp" android:textColor="#C4A574" android:textSize="12sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="12dp" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnToggleBridge"
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginEnd="6dp"
+                    android:layout_weight="1" android:text="Toggle bridge" app:backgroundTint="#9BB8E8" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnRestartRoblox"
+                    style="@style/Widget.Material3.Button.TonalButton" android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:layout_weight="1" android:text="Restart Roblox" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="6dp" android:orientation="horizontal">
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnEnter"
+                    style="@style/Widget.Material3.Button.TonalButton" android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:layout_marginEnd="6dp" android:layout_weight="1" android:text="Enter" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnScreenshot"
+                    style="@style/Widget.Material3.Button.TonalButton" android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:layout_weight="1" android:text="Screenshot" />
+            </LinearLayout>
+            <ImageView android:id="@+id/shotView" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:adjustViewBounds="true" android:contentDescription="Screenshot"
+                android:maxHeight="220dp" android:scaleType="fitCenter" android:visibility="gone" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:text="INVOKE" android:textAllCaps="true" android:textColor="#8B909A" android:textSize="11sp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="4dp" android:gravity="center_vertical" android:orientation="horizontal">
+                <com.google.android.material.textfield.TextInputLayout android:layout_width="0dp"
+                    android:layout_height="wrap_content" android:layout_weight="1" android:hint="tap.50.50 or enter"
+                    app:boxBackgroundMode="outline">
+                    <com.google.android.material.textfield.TextInputEditText android:id="@+id/invokeInput"
+                        android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:imeOptions="actionSend" android:inputType="text" android:maxLines="1"
+                        android:textColor="@android:color/white" android:textSize="14sp" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnInvoke"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp" android:text="Send" app:backgroundTint="#9BB8E8" />
+            </LinearLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:text="SERVICES" android:textAllCaps="true" android:textColor="#8B909A" android:textSize="11sp" />
+            <LinearLayout android:id="@+id/servicesList" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="vertical" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:text="CONSOLE" android:textAllCaps="true" android:textColor="#8B909A" android:textSize="11sp" />
+            <TextView android:id="@+id/consoleView" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="4dp" android:background="#14161B" android:fontFamily="monospace"
+                android:padding="10dp" android:text="…" android:textColor="#9BB8E8" android:textIsSelectable="true" android:textSize="11sp" />
+        </LinearLayout>
+    </ScrollView>
 </LinearLayout>
