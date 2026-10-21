@@ -1,0 +1,88 @@
+name: quiet-robot
+on:
+  workflow_dispatch:
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore LogcatReader then quiet it
+        run: |
+          set -e
+          # last good LogcatReader before SEE_FILE placeholder
+          git show a19f43ed0739b1b1ea4d65b4603e6e042903b589:app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt > app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt')
+          t = p.read_text()
+          old = '''                            val lower = line.lowercase()
+                            val isFlog = lower.contains("flog::creatoroutput") ||
+                                lower.contains("flog::output") ||
+                                lower.contains("[from ")
+                            val isInvoke = line.contains("invoke|")
+                            val isCat = lower.contains("catweb") || lower.contains("waiting for server")
+                            if (isFlog || isInvoke || isCat || looksLikeRobloxLine(line)) {
+                                if (isInvoke) {
+                                    try {
+                                        invokeSink?.invoke(line)
+                                    } catch (t: Throwable) {
+                                        LogBuffer.e("Logcat", "invokeSink: ${t.message}")
+                                    }
+                                }
+                                LogBuffer.i("Roblox", line.take(300))
+                            }'''
+          new = '''                            val lower = line.lowercase()
+                            val isFlog = lower.contains("flog::creatoroutput") ||
+                                lower.contains("flog::output") ||
+                                lower.contains("[from ")
+                            val isInvoke = line.contains("invoke|")
+                            // CatWeb status only — not every rbx.* / FFlag / FlagCache dump
+                            val isCat = lower.contains("catweb") ||
+                                lower.contains("waiting for server") ||
+                                ((lower.contains("finished") || lower.contains("loading")) and
+                                    ("\\u2022" in line or "\\u00b7" in line or lower.contains("catweb")))
+                            if (isInvoke) {
+                                try {
+                                    invokeSink?.invoke(line)
+                                } catch (t: Throwable) {
+                                    LogBuffer.e("Logcat", "invokeSink: ${t.message}")
+                                }
+                            }
+                            // Structured console: CatWeb + creator print only (no raw threadtime spam)
+                            if (isFlog || isCat) {
+                                LogBuffer.i("Roblox", line.take(300))
+                            }'''
+          # fix the isCat line to proper Kotlin
+          new = new.replace(
+              '((lower.contains("finished") || lower.contains("loading")) and\n                                    ("\\u2022" in line or "\\u00b7" in line or lower.contains("catweb")))',
+              "((lower.contains(\"finished\") || lower.contains(\"loading\")) &&\n                                    (line.contains('\\u2022') || line.contains('\\u00B7') || lower.contains(\"catweb\")))".replace('\\u2022', '\u2022').replace('\\u00B7', '\u00B7')
+          )
+          if old not in t:
+              raise SystemExit('LogcatReader block not found in restored file')
+          p.write_text(t.replace(old, new, 1))
+          # noise filter
+          p2 = Path('app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt')
+          t2 = p2.read_text()
+          needle = '"StrictMode",\n        )'
+          insert = '"StrictMode",\n            "nativeGetFFlag", "nativeRegisterFFlag", "JNIRobloxSettings",\n            "FlagCache", "DataModelPatch", "StunPopProbe", "ProfileInstaller",\n            "rbx.glview", "AssetsManifestManager", "TombstoneCache",\n            "finished ignored",\n        )'
+          if 'FlagCache' not in t2:
+              if needle not in t2:
+                  raise SystemExit('noise needle missing')
+              p2.write_text(t2.replace(needle, insert, 1))
+          # verify
+          assert 'if (isFlog || isCat)' in p.read_text()
+          print('ok')
+          PY
+      - name: Commit
+        run: |
+          git config user.name "cwbridge-bot"
+          git config user.email "bot@cwbridge.local"
+          git add app/src/main/java/com/cwbridge/android/bridge/LogcatReader.kt \
+                  app/src/main/java/com/cwbridge/android/server/LocalHttpServer.kt
+          git diff --cached --stat
+          git commit -m "fix(console): only CatWeb/creator as ROBOT; drop finished-ignored + engine noise"
+          git push
