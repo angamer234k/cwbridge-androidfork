@@ -1,0 +1,169 @@
+{
+  "favicon": "0",
+  "title": "CWBridge Server",
+  "background": "#08090a",
+  "webcontent": [
+    {
+      "class": "Frame",
+      "globalid": "rt",
+      "alias": "root",
+      "size": "{1,0},{1,0}",
+      "background_color": "#0b0e13",
+      "children": [
+        {
+          "class": "TextLabel",
+          "globalid": "tt",
+          "alias": "title",
+          "position": "{0,16},{0,16}",
+          "size": "{1,-32},{0,28}",
+          "text": "CWBridge Server",
+          "font": "BuilderSansBold",
+          "font_size": "18",
+          "font_color": "#eef1f7",
+          "background_transparency": "1",
+          "align_x": "Left"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "st",
+          "alias": "status",
+          "position": "{0,16},{0,52}",
+          "size": "{1,-32},{0,50}",
+          "text": "Keep this tab open + focused on the inbox.\nQueue auto-cleans stale reqs after ~45s.",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#8b93a7",
+          "background_transparency": "1",
+          "align_x": "Left",
+          "wrap": "true"
+        },
+        {
+          "class": "TextBox",
+          "globalid": "ib",
+          "alias": "inbox",
+          "position": "{0,16},{0,110}",
+          "size": "{1,-32},{0,140}",
+          "text": "",
+          "placeholder": "Bridge pastes 0.body||reqId or 1.err||reqId here",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#eef1f7",
+          "background_color": "#11151c",
+          "multiline": "true"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "ql",
+          "alias": "queueLabel",
+          "position": "{0,16},{0,260}",
+          "size": "{1,-32},{0,24}",
+          "text": "Status: ready",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#a8b0c4",
+          "background_transparency": "1",
+          "align_x": "Left"
+        },
+        {
+          "class": "script",
+          "globalid": "srv",
+          "alias": "cw_server",
+          "enabled": "true",
+          "content": [
+            {
+              "id": "0",
+              "text": ["When website loaded..."],
+              "globalid": "aa",
+              "actions": [
+                {"id": "54", "text": ["Create table", {"value": "40", "t": "string", "l": "table"}], "globalid": "ab"},
+                {"id": "11", "text": ["Set", {"value": "42", "t": "string", "l": "variable"}, "to", {"value": "ready", "t": "string", "l": "any"}], "globalid": "ac"},
+                {"id": "11", "text": ["Set", {"value": "43", "t": "string", "l": "variable"}, "to", {"value": "0", "t": "string", "l": "any"}], "globalid": "ad"}
+              ]
+            },
+            {
+              "id": "14",
+              "text": ["When cross-site message received..."],
+              "globalid": "aL",
+              "actions": [
+                {"id": "57", "text": ["Split", {"value": "{messageContent}", "t": "string"}, {"value": "|", "t": "string", "l": "separator"}, "→", {"value": "50", "t": "string", "l": "table"}], "globalid": "ae"},
+                {"id": "56", "text": ["Get entry", {"value": "1", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "51", "t": "string", "l": "variable"}], "globalid": "af"},
+                {"id": "18", "text": ["If", {"value": "{51}", "t": "string", "l": "any"}, "is equal to", {"value": "C", "t": "string", "l": "any"}], "globalid": "ag"},
+                {"id": "56", "text": ["Get entry", {"value": "2", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "52", "t": "string", "l": "variable"}], "globalid": "ah"},
+                {"id": "56", "text": ["Get entry", {"value": "3", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "53", "t": "string", "l": "variable"}], "globalid": "ai"},
+                {"id": "87", "text": ["Run function", {"value": "d", "t": "string", "l": "function"}, {"value": [{"value": "{53}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "54", "t": "string", "l": "variable?"}], "globalid": "aj"},
+                {"id": "56", "text": ["Get entry", {"value": "4", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "55", "t": "string", "l": "variable"}], "globalid": "ak"},
+                {"id": "87", "text": ["Run function", {"value": "d", "t": "string", "l": "function"}, {"value": [{"value": "{55}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "56", "t": "string", "l": "variable?"}], "globalid": "al"},
+                {"id": "11", "text": ["Set", {"value": "57", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "am"},
+                {"id": "11", "text": ["Set", {"value": "58", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "an"},
+                {"id": "59", "text": ["Get length of", {"value": "50", "t": "string", "l": "array"}, "→", {"value": "59", "t": "string", "l": "variable"}], "globalid": "ao"},
+                {"id": "20", "text": ["If", {"value": "{59}", "t": "string", "l": "any"}, "is greater than", {"value": "4", "t": "string", "l": "any"}], "globalid": "ap"},
+                {"id": "56", "text": ["Get entry", {"value": "5", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "60", "t": "string", "l": "variable"}], "globalid": "aq"},
+                {"id": "87", "text": ["Run function", {"value": "d", "t": "string", "l": "function"}, {"value": [{"value": "{60}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "57", "t": "string", "l": "variable?"}], "globalid": "ar"},
+                {"id": "25", "text": ["end"], "globalid": "as"},
+                {"id": "20", "text": ["If", {"value": "{59}", "t": "string", "l": "any"}, "is greater than", {"value": "5", "t": "string", "l": "any"}], "globalid": "at"},
+                {"id": "56", "text": ["Get entry", {"value": "6", "t": "string", "l": "entry"}, "of", {"value": "50", "t": "string", "l": "table"}, "→", {"value": "61", "t": "string", "l": "variable"}], "globalid": "au"},
+                {"id": "87", "text": ["Run function", {"value": "d", "t": "string", "l": "function"}, {"value": [{"value": "{61}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "58", "t": "string", "l": "variable?"}], "globalid": "av"},
+                {"id": "25", "text": ["end"], "globalid": "aw"},
+                {"id": "55", "text": ["Set entry", {"value": "{52}", "t": "string", "l": "entry"}, "of", {"value": "40", "t": "string", "l": "table"}, "to", {"value": "{54}", "t": "string", "l": "any"}], "globalid": "ax"},
+                {"id": "109", "text": ["Concatenate", {"value": "invoke|", "t": "string"}, "with", {"value": "{56}", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "ay"},
+                {"id": "19", "text": ["If", {"value": "{57}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "az"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": ".", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aA"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": "{57}", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aB"},
+                {"id": "25", "text": ["end"], "globalid": "aC"},
+                {"id": "19", "text": ["If", {"value": "{58}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "aD"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": ".", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aE"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": "{58}", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aF"},
+                {"id": "25", "text": ["end"], "globalid": "aG"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": "||", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aH"},
+                {"id": "109", "text": ["Concatenate", {"value": "{62}", "t": "string"}, "with", {"value": "{52}", "t": "string"}, "→", {"value": "62", "t": "string", "l": "variable"}], "globalid": "aI"},
+                {"id": "0", "text": ["Log", {"value": "{62}", "t": "any"}], "globalid": "aJ"},
+                {"id": "11", "text": ["Set", {"value": "42", "t": "string", "l": "variable"}, "to", {"value": "{62}", "t": "string", "l": "any"}], "globalid": "aK"},
+                {"id": "10", "text": ["Set", {"value": "ql", "t": "object"}, "text to", {"value": "queued {52}", "t": "string"}], "globalid": "aL2"},
+                {"id": "25", "text": ["end"], "globalid": "aM"}
+              ]
+            },
+            {
+              "id": "6",
+              "text": ["Define function", {"value": "onBox", "t": "string", "l": "function"}],
+              "globalid": "a3",
+              "actions": [
+                {"id": "57", "text": ["Split", {"value": "{70}", "t": "string"}, {"value": "||", "t": "string", "l": "separator"}, "→", {"value": "71", "t": "string", "l": "table"}], "globalid": "aN"},
+                {"id": "59", "text": ["Get length of", {"value": "71", "t": "string", "l": "array"}, "→", {"value": "72", "t": "string", "l": "variable"}], "globalid": "aO"},
+                {"id": "18", "text": ["If", {"value": "{72}", "t": "string", "l": "any"}, "is equal to", {"value": "2", "t": "string", "l": "any"}], "globalid": "aP"},
+                {"id": "56", "text": ["Get entry", {"value": "1", "t": "string", "l": "entry"}, "of", {"value": "71", "t": "string", "l": "table"}, "→", {"value": "73", "t": "string", "l": "variable"}], "globalid": "aQ"},
+                {"id": "56", "text": ["Get entry", {"value": "2", "t": "string", "l": "entry"}, "of", {"value": "71", "t": "string", "l": "table"}, "→", {"value": "74", "t": "string", "l": "variable"}], "globalid": "aR"},
+                {"id": "56", "text": ["Get entry", {"value": "{74}", "t": "string", "l": "entry"}, "of", {"value": "40", "t": "string", "l": "table"}, "→", {"value": "75", "t": "string", "l": "variable"}], "globalid": "aS"},
+                {"id": "19", "text": ["If", {"value": "{75}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "aT"},
+                {"id": "87", "text": ["Run function", {"value": "e", "t": "string", "l": "function"}, {"value": [{"value": "{73}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "76", "t": "string", "l": "variable?"}], "globalid": "aU"},
+                {"id": "109", "text": ["Concatenate", {"value": "R|", "t": "string"}, "with", {"value": "{74}", "t": "string"}, "→", {"value": "77", "t": "string", "l": "variable"}], "globalid": "aV"},
+                {"id": "109", "text": ["Concatenate", {"value": "{77}", "t": "string"}, "with", {"value": "|", "t": "string"}, "→", {"value": "77", "t": "string", "l": "variable"}], "globalid": "aW"},
+                {"id": "109", "text": ["Concatenate", {"value": "{77}", "t": "string"}, "with", {"value": "{76}", "t": "string"}, "→", {"value": "77", "t": "string", "l": "variable"}], "globalid": "aX"},
+                {"id": "130", "text": ["Broadcast", {"value": "{77}", "t": "string", "l": "message"}, "cross-site to", {"value": "{75}", "t": "string", "l": "page", "href": true}], "globalid": "aY"},
+                {"id": "90", "text": ["Delete entry", {"value": "{74}", "t": "string", "l": "entry"}, "of", {"value": "40", "t": "string", "l": "table"}], "globalid": "aZ"},
+                {"id": "11", "text": ["Set", {"value": "42", "t": "string", "l": "variable"}, "to", {"value": "replied", "t": "string", "l": "any"}], "globalid": "a0"},
+                {"id": "10", "text": ["Set", {"value": "ql", "t": "object"}, "text to", {"value": "replied {74}", "t": "string"}], "globalid": "a1"},
+                {"id": "10", "text": ["Set", {"value": "ib", "t": "object"}, "text to", {"value": "", "t": "string"}], "globalid": "a2"},
+                {"id": "25", "text": ["end"], "globalid": "a4"},
+                {"id": "25", "text": ["end"], "globalid": "a5"}
+              ]
+            },
+            {
+              "id": "0",
+              "text": ["When website loaded..."],
+              "globalid": "a6",
+              "actions": [
+                {"id": "23", "text": ["Repeat forever"], "globalid": "a7"},
+                {"id": "3", "text": ["Wait", {"value": "0.4", "t": "number"}, "seconds"], "globalid": "a8"},
+                {"id": "30", "text": ["Get text from", {"value": "ib", "t": "object", "l": "input"}, "→", {"value": "70", "t": "string", "l": "variable"}], "globalid": "a9"},
+                {"id": "19", "text": ["If", {"value": "{70}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "ba"},
+                {"id": "87", "text": ["Run function", {"value": "onBox", "t": "string", "l": "function"}, {"value": [], "t": "tuple"}, "→", {"value": "78", "t": "string", "l": "variable?"}], "globalid": "bb"},
+                {"id": "25", "text": ["end"], "globalid": "bc"},
+                {"id": "25", "text": ["end"], "globalid": "bd"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

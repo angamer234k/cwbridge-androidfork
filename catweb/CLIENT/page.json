@@ -1,0 +1,188 @@
+{
+  "favicon": "0",
+  "title": "CWBridge Client",
+  "background": "#08090a",
+  "webcontent": [
+    {
+      "class": "Frame",
+      "globalid": "rt",
+      "alias": "root",
+      "size": "{1,0},{1,0}",
+      "background_color": "#0b0e13",
+      "children": [
+        {
+          "class": "TextLabel",
+          "globalid": "tt",
+          "alias": "title",
+          "position": "{0,16},{0,16}",
+          "size": "{1,-32},{0,28}",
+          "text": "CWBridge Client",
+          "font": "BuilderSansBold",
+          "font_size": "18",
+          "font_color": "#eef1f7",
+          "background_transparency": "1",
+          "align_x": "Left"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "st",
+          "alias": "hint",
+          "position": "{0,16},{0,52}",
+          "size": "{1,-32},{0,90}",
+          "text": "1) Import decoder (e/d) on this page.\n2) Set var 1 = your SERVER page URL (site.rbx/bridge).\n3) Use the functions below.\n\nResult always lands in var 4 → 0.body or 1.err",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#8b93a7",
+          "background_transparency": "1",
+          "align_x": "Left",
+          "wrap": "true"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "ex",
+          "alias": "example",
+          "position": "{0,16},{0,150}",
+          "size": "{1,-32},{0,110}",
+          "text": "Example usage:\nSet 30 = load\nSet 31 = mykey\nSet 32 = app.rbx\nRun function (call)  →  result in {4}\n\nor just Run function (load) after setting 31 + 32",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#a8b0c4",
+          "background_transparency": "1",
+          "align_x": "Left",
+          "wrap": "true"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "rs",
+          "alias": "resultLabel",
+          "position": "{0,16},{0,270}",
+          "size": "{1,-32},{0,24}",
+          "text": "Last result:",
+          "font": "BuilderSans",
+          "font_size": "13",
+          "font_color": "#8b93a7",
+          "background_transparency": "1",
+          "align_x": "Left"
+        },
+        {
+          "class": "TextLabel",
+          "globalid": "rv",
+          "alias": "resultValue",
+          "position": "{0,16},{0,296}",
+          "size": "{1,-32},{0,60}",
+          "text": "(none yet)",
+          "font": "BuilderSans",
+          "font_size": "14",
+          "font_color": "#eef1f7",
+          "background_color": "#11151c",
+          "align_x": "Left",
+          "wrap": "true"
+        },
+        {
+          "class": "script",
+          "globalid": "cl",
+          "alias": "cw_client",
+          "enabled": "true",
+          "content": [
+            {
+              "id": "0",
+              "text": ["When website loaded..."],
+              "globalid": "aa",
+              "actions": [
+                {"id": "11", "text": ["Set", {"value": "1", "t": "string", "l": "variable"}, "to", {"value": "yoursite.rbx/bridge", "t": "string", "l": "any"}], "globalid": "ab"},
+                {"id": "11", "text": ["Set", {"value": "3", "t": "string", "l": "variable"}, "to", {"value": "1000", "t": "string", "l": "any"}], "globalid": "ac"},
+                {"id": "11", "text": ["Set", {"value": "4", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ad"},
+                {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ae"},
+                {"id": "11", "text": ["Set", {"value": "30", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "af"},
+                {"id": "11", "text": ["Set", {"value": "31", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ag"},
+                {"id": "11", "text": ["Set", {"value": "32", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ah"},
+                {"id": "11", "text": ["Set", {"value": "26", "t": "string", "l": "variable"}, "to", {"value": "0", "t": "string", "l": "any"}], "globalid": "ai"},
+                {"id": "0", "text": ["Log", {"value": "client ready", "t": "any"}], "globalid": "aj"}
+              ]
+            },
+            {
+              "id": "14",
+              "text": ["When cross-site message received..."],
+              "globalid": "ak",
+              "actions": [
+                {"id": "57", "text": ["Split", {"value": "{messageContent}", "t": "string"}, {"value": "|", "t": "string", "l": "separator"}, "→", {"value": "10", "t": "string", "l": "table"}], "globalid": "al"},
+                {"id": "56", "text": ["Get entry", {"value": "1", "t": "string", "l": "entry"}, "of", {"value": "10", "t": "string", "l": "table"}, "→", {"value": "11", "t": "string", "l": "variable"}], "globalid": "am"},
+                {"id": "18", "text": ["If", {"value": "{11}", "t": "string", "l": "any"}, "is equal to", {"value": "R", "t": "string", "l": "any"}], "globalid": "an"},
+                {"id": "56", "text": ["Get entry", {"value": "2", "t": "string", "l": "entry"}, "of", {"value": "10", "t": "string", "l": "table"}, "→", {"value": "12", "t": "string", "l": "variable"}], "globalid": "ao"},
+                {"id": "18", "text": ["If", {"value": "{12}", "t": "string", "l": "any"}, "is equal to", {"value": "{5}", "t": "string", "l": "any"}], "globalid": "ap"},
+                {"id": "56", "text": ["Get entry", {"value": "3", "t": "string", "l": "entry"}, "of", {"value": "10", "t": "string", "l": "table"}, "→", {"value": "13", "t": "string", "l": "variable"}], "globalid": "aq"},
+                {"id": "87", "text": ["Run function", {"value": "d", "t": "string", "l": "function"}, {"value": [{"value": "{13}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "4", "t": "string", "l": "variable"}], "globalid": "ar"},
+                {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "as"},
+                {"id": "11", "text": ["Set", {"value": "26", "t": "string", "l": "variable"}, "to", {"value": "1", "t": "string", "l": "any"}], "globalid": "at"},
+                {"id": "10", "text": ["Set", {"value": "rv", "t": "object"}, "text to", {"value": "{4}", "t": "string"}], "globalid": "au2"},
+                {"id": "25", "text": ["end"], "globalid": "au"},
+                {"id": "25", "text": ["end"], "globalid": "av"}
+              ]
+            },
+            {
+              "id": "6",
+              "text": ["Define function", {"value": "call", "t": "string", "l": "function"}],
+              "globalid": "aw",
+              "actions": [
+                {"id": "12", "text": ["Increase", {"value": "3", "t": "string", "l": "variable"}, "by", {"value": "1", "t": "number"}], "globalid": "ax"},
+                {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "{3}", "t": "string", "l": "any"}], "globalid": "ay"},
+                {"id": "11", "text": ["Set", {"value": "4", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "az"},
+                {"id": "11", "text": ["Set", {"value": "26", "t": "string", "l": "variable"}, "to", {"value": "0", "t": "string", "l": "any"}], "globalid": "aA"},
+                {"id": "117", "text": ["Get URL →", {"value": "20", "t": "string", "l": "variable"}], "globalid": "aB"},
+                {"id": "87", "text": ["Run function", {"value": "e", "t": "string", "l": "function"}, {"value": [{"value": "{20}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "21", "t": "string", "l": "variable"}], "globalid": "aC"},
+                {"id": "87", "text": ["Run function", {"value": "e", "t": "string", "l": "function"}, {"value": [{"value": "{30}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "22", "t": "string", "l": "variable"}], "globalid": "aD"},
+                {"id": "109", "text": ["Concatenate", {"value": "C|", "t": "string"}, "with", {"value": "{5}", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aE"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "|", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aF"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "{21}", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aG"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "|", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aH"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "{22}", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aI"},
+                {"id": "19", "text": ["If", {"value": "{31}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "aJ"},
+                {"id": "87", "text": ["Run function", {"value": "e", "t": "string", "l": "function"}, {"value": [{"value": "{31}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "24", "t": "string", "l": "variable"}], "globalid": "aK"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "|", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aL"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "{24}", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aM"},
+                {"id": "25", "text": ["end"], "globalid": "aN"},
+                {"id": "19", "text": ["If", {"value": "{32}", "t": "string", "l": "any"}, "is not equal to", {"value": "", "t": "string", "l": "any"}], "globalid": "aO"},
+                {"id": "87", "text": ["Run function", {"value": "e", "t": "string", "l": "function"}, {"value": [{"value": "{32}", "t": "string", "l": "any"}], "t": "tuple"}, "→", {"value": "25", "t": "string", "l": "variable"}], "globalid": "aP"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "|", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aQ"},
+                {"id": "109", "text": ["Concatenate", {"value": "{23}", "t": "string"}, "with", {"value": "{25}", "t": "string"}, "→", {"value": "23", "t": "string", "l": "variable"}], "globalid": "aR"},
+                {"id": "25", "text": ["end"], "globalid": "aS"},
+                {"id": "130", "text": ["Broadcast", {"value": "{23}", "t": "string", "l": "message"}, "cross-site to", {"value": "{1}", "t": "string", "l": "page", "href": true}], "globalid": "aT"},
+                {"id": "22", "text": ["Repeat", {"value": "60", "t": "number"}, "times"], "globalid": "aU"},
+                {"id": "3", "text": ["Wait", {"value": "0.5", "t": "number"}, "seconds"], "globalid": "aV"},
+                {"id": "18", "text": ["If", {"value": "{26}", "t": "string", "l": "any"}, "is equal to", {"value": "1", "t": "string", "l": "any"}], "globalid": "aW"},
+                {"id": "10", "text": ["Set", {"value": "rv", "t": "object"}, "text to", {"value": "{4}", "t": "string"}], "globalid": "aX2"},
+                {"id": "115", "text": ["Return", {"value": "{4}", "t": "string", "l": "any"}], "globalid": "aX"},
+                {"id": "25", "text": ["end"], "globalid": "aY"},
+                {"id": "25", "text": ["end"], "globalid": "aZ"},
+                {"id": "11", "text": ["Set", {"value": "4", "t": "string", "l": "variable"}, "to", {"value": "1.timeout", "t": "string", "l": "any"}], "globalid": "ba"},
+                {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "bb"},
+                {"id": "10", "text": ["Set", {"value": "rv", "t": "object"}, "text to", {"value": "1.timeout", "t": "string"}], "globalid": "bc2"},
+                {"id": "115", "text": ["Return", {"value": "{4}", "t": "string", "l": "any"}], "globalid": "bc"}
+              ]
+            },
+            {
+              "id": "6",
+              "text": ["Define function", {"value": "load", "t": "string", "l": "function"}],
+              "globalid": "bd",
+              "actions": [
+                {"id": "11", "text": ["Set", {"value": "30", "t": "string", "l": "variable"}, "to", {"value": "load", "t": "string", "l": "any"}], "globalid": "be"},
+                {"id": "87", "text": ["Run function", {"value": "call", "t": "string", "l": "function"}, {"value": [], "t": "tuple"}, "→", {"value": "4", "t": "string", "l": "variable"}], "globalid": "bf"},
+                {"id": "115", "text": ["Return", {"value": "{4}", "t": "string", "l": "any"}], "globalid": "bg"}
+              ]
+            },
+            {
+              "id": "6",
+              "text": ["Define function", {"value": "save", "t": "string", "l": "function"}],
+              "globalid": "bh",
+              "actions": [
+                {"id": "11", "text": ["Set", {"value": "30", "t": "string", "l": "variable"}, "to", {"value": "save", "t": "string", "l": "any"}], "globalid": "bi"},
+                {"id": "87", "text": ["Run function", {"value": "call", "t": "string", "l": "function"}, {"value": [], "t": "tuple"}, "→", {"value": "4", "t": "string", "l": "variable"}], "globalid": "bj"},
+                {"id": "115", "text": ["Return", {"value": "{4}", "t": "string", "l": "any"}], "globalid": "bk"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
