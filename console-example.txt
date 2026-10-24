@@ -1,0 +1,10 @@
+CatWeb v2.19.0.3
+• Loading main module
+• Loading themes module
+• Loading settings module
+• Loading tabs module
+• Loading console module
+• Loading translator module
+• Waiting for server
+• Fetching settings
+• Finished
