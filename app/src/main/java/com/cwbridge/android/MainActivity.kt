@@ -3,6 +3,8 @@ package com.cwbridge.android
 import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -46,6 +48,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 class MainActivity : AppCompatActivity() {
 
@@ -58,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private val bridgeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var serviceAdapter: ServiceAdapter
     private var localServer: LocalHttpServer? = null
+    private var lastQrUrl: String? = null
 
     private val nearbyWifiPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -102,6 +109,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnAddService.setOnClickListener { showAddServiceDialog() }
         binding.btnCheckUpdate.setOnClickListener { checkForUpdates() }
         setupServerUi()
+        // Start the local dashboard as part of the normal app startup.
+        toggleLocalServer()
         maybeShowCompatibilityNotice()
         setupServicesRecyclerView()
         LogBuffer.addListener(logListener)
@@ -953,6 +962,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnRegenPassword.setOnClickListener { regenerateServerPassword() }
         binding.btnServerQuota.setOnClickListener { setDefaultDomainQuota() }
         binding.btnRemoteToggle.setOnClickListener { toggleRemotePair() }
+        binding.btnCopyDashboard.setOnClickListener {
+            val url = dashboardUrl()
+            if (url != null) {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CWBridge dashboard", url))
+                Toast.makeText(this, "Dashboard address copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.btnOpenDashboard.setOnClickListener {
+            dashboardUrl()?.let { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) }
+        }
         refreshRemoteUi()
         refreshServerUi()
     }
@@ -961,10 +981,72 @@ class MainActivity : AppCompatActivity() {
         val running = localServer?.isRunning() == true
         val port = localServer?.port() ?: 8080
         binding.btnServerToggle.text = if (running) "Stop server" else "Start server"
+        val ip = if (running) getLanIpv4Address() else null
+        val url = ip?.let { "http://$it:$port/" }
         binding.serverState.text = if (running) {
-            "Listening on port $port — http://<this-device-ip>:$port\nAlso advertised on the local network as “CWBridge”."
+            "Dashboard server listening on port $port."
         } else {
-            "Server off"
+            "Server stopped — it starts automatically when CWBridge opens."
+        }
+        binding.serverAddress.text = url ?: if (running) {
+            "Waiting for a Wi-Fi / LAN address…"
+        } else {
+            "Dashboard address unavailable while server is stopped."
+        }
+        binding.btnCopyDashboard.isEnabled = url != null
+        binding.btnOpenDashboard.isEnabled = url != null
+        binding.serverQr.visibility = if (url != null) View.VISIBLE else View.GONE
+        if (url != null && url != lastQrUrl) {
+            try {
+                val matrix = QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, 512, 512)
+                val bitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.RGB_565)
+                for (y in 0 until 512) for (x in 0 until 512) {
+                    bitmap.setPixel(x, y, if (matrix[x, y]) Color.BLACK else Color.WHITE)
+                }
+                binding.serverQr.setImageBitmap(bitmap)
+                lastQrUrl = url
+            } catch (t: Throwable) {
+                binding.serverQr.setImageDrawable(null)
+                LogBuffer.w("Server", "QR generation failed: \${t.message}")
+            }
+        } else if (url == null) {
+            lastQrUrl = null
+            binding.serverQr.setImageDrawable(null)
+        }
+    }
+
+    private fun dashboardUrl(): String? {
+        val server = localServer ?: return null
+        if (!server.isRunning()) return null
+        val ip = getLanIpv4Address() ?: return null
+        return "http://$ip:\${server.port()}/"
+    }
+
+    private fun getLanIpv4Address(): String? {
+        return try {
+            val candidates = mutableListOf<String>()
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            while (interfaces.hasMoreElements()) {
+                val network = interfaces.nextElement()
+                if (!network.isUp || network.isLoopback) continue
+                val addresses = network.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (address is Inet4Address && !address.isLoopbackAddress &&
+                        !address.isLinkLocalAddress && address.isSiteLocalAddress
+                    ) candidates += address.hostAddress ?: continue
+                }
+            }
+            candidates.sortedBy {
+                when {
+                    it.startsWith("192.168.") -> 0
+                    it.startsWith("10.") -> 1
+                    it.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\..*")) -> 2
+                    else -> 3
+                }
+            }.firstOrNull()
+        } catch (_: Throwable) {
+            null
         }
     }
 
