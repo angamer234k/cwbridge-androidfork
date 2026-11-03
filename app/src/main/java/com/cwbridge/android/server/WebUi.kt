@@ -705,7 +705,7 @@ function showPage(name){
   try{ localStorage.setItem('cw_page', name); }catch(e){}
   if(window.innerWidth<820){ var sb=D('sidebar'); if(sb) sb.classList.remove('open'); }
 }
-function esc(s){function esc(s){
+function esc(s){
   return String(s == null ? "" : s)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
@@ -1457,7 +1457,7 @@ function renderEditorLists(){
   }).join("");
 }
 function moveAction(index,delta){var next=index+delta;if(next<0||next>=ED.actions.length)return;var item=ED.actions.splice(index,1)[0];ED.actions.splice(next,0,item);renderEditorLists();}
-function addTrigger(kind){function addTrigger(kind){
+function addTrigger(kind){
   if(kind==="TIME"){
     ED.triggers.push({_kind:"TIME",id:uid(),name:"Interval",intervalMs:5000,repeat:true,type:"TIME"});
   } else {
