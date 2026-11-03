@@ -1503,7 +1503,7 @@ function renderEditorLists(){
     if(kind==="DELAY") fields = "<div><label>Duration (ms)</label><input type=\"number\" min=\"0\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=Math.max(0,parseInt(this.value,10)||0)\"></div>";
     else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") fields = "<div style=\"grid-column:1/-1\"><label>Text / variable template</label><textarea onchange=\"ED.actions["+i+"].text=this.value\">"+esc(a.text||"")+"</textarea></div>";
     else if(kind==="SET_VAR") fields = "<div><label>Variable key</label><input value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"></div><div><label>Value</label><input value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\"></div>";
-    else if(kind==="TEXT_MAN") fields = "<div><label>Source</label><input value=\""+esc(a.source||"$lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"></div><div><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","regex","replace"].map(function(v){return "<option "+((a.mode||"full")===v?"selected":"")+" value=\""+v+"\">"+v+"</option>";}).join("")+"</select></div><div><label>Pattern</label><input value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"></div><div><label>Capture group</label><input type=\"number\" value=\""+esc(String(a.group||1))+"\" onchange=\"ED.actions["+i+"].group=parseInt(this.value,10)||1\"></div><div><label>Replace with</label><input value=\""+esc(a.replaceWith||"")+"\" onchange=\"ED.actions["+i+"].replaceWith=this.value\"></div><div><label>Save result to</label><input value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\"></div>";
+    else if(kind==="TEXT_MAN") fields = "<div><label>Source</label><input value=\""+esc(a.source||"${'")+"\" onchange=\"ED.actions["+i+"].source=this.value\"></div><div><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","regex","replace"].map(function(v){return "<option "+((a.mode||"full")===v?"selected":"")+" value=\""+v+"\">"+v+"</option>";}).join("")+"</select></div><div><label>Pattern</label><input value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"></div><div><label>Capture group</label><input type=\"number\" value=\""+esc(String(a.group||1))+"\" onchange=\"ED.actions["+i+"].group=parseInt(this.value,10)||1\"></div><div><label>Replace with</label><input value=\""+esc(a.replaceWith||"")+"\" onchange=\"ED.actions["+i+"].replaceWith=this.value\"></div><div><label>Save result to</label><input value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\"></div>";
     else if(kind==="TAP") fields = "<div><label>X percent</label><input type=\"number\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>Y percent</label><input type=\"number\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>X pixels</label><input type=\"number\" value=\""+esc(a.xPx==null?"":String(a.xPx))+"\" onchange=\"ED.actions["+i+"].xPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Y pixels</label><input type=\"number\" value=\""+esc(a.yPx==null?"":String(a.yPx))+"\" onchange=\"ED.actions["+i+"].yPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Accessibility text (optional)</label><input value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\"></div>";
     else if(kind==="GET_INFO") fields = "<div><label>Information type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">"+["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select></div><div><label>Store in variable</label><input value=\""+esc(a.storeInVariable||"")+"\" onchange=\"ED.actions["+i+"].storeInVariable=this.value\"></div>";
     else if(kind==="HTTP_REQUEST") fields = "<div style=\"grid-column:1/-1\"><label>Request URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div><div style=\"grid-column:1/-1\"><label>Request body</label><textarea onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea></div><details class=\"advanced-settings\" style=\"grid-column:1/-1\"><summary>Advanced · request headers (JSON)</summary><textarea onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON');return}this.setCustomValidity('')\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
@@ -1537,6 +1537,495 @@ function addAction(){
   if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
   if(kind==="SET_VAR"){ a.key=""; a.value=""; }
   if(kind==="TEXT_MAN"){ a.source="$lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
+  if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
+  if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
+  if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
+  if(kind==="AI"){ a.prompt=""; a.model="default"; a.storeResponseIn=""; }
+  if(kind==="RUN_SERVICE") a.serviceId="";
+  ED.actions.push(a);
+  renderEditorLists();
+}
+async function saveEditor(){
+  if(!ED.id){ msg("svcMsg","nothing open","err"); return; }
+  ED.name = (D("edName").value||"").trim() || ED.name;
+  ED.description = D("edDesc").value||"";
+  ED.isEnabled = !!D("edEnabled").checked;
+  ED.triggers.forEach(function(tr){ if(!tr._kind) tr._kind = (tr.type||"LOG"); });
+  ED.actions.forEach(function(a){ if(!a._kind) a._kind = (a.type||"DELAY"); });
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(ED.id), {json: JSON.stringify(ED)});
+    if(r.error){ msg("svcMsg", r.error, "err"); toast(r.error,false); return; }
+    msg("svcMsg", r.message || "saved", "good"); toast("Macro saved", true);
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function runEditor(){
+  if(!ED.id) return;
+  await saveEditor();
+  await runService(ED.id);
+}
+
+async function refreshStore(){
+  try{
+    var s = await api("/api/store");
+    var rows = s.domains || [];
+    D("storeRows").innerHTML = rows.map(function(d){
+      return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
+        esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
+        "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
+    }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
+    paintStorage(s);
+  }catch(e){}
+}
+async function setLimit(){
+  try{
+    var r = await post("/api/limits", {domain: D("qDomain").value, limit: D("qLimit").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function saveKey(){
+  try{
+    var r = await post("/api/store", {domain: D("sDomain").value, key: D("sKey").value, value: D("sVal").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function clearDomain(d){
+  var ok = await confirmModal("Clear domain", "Clear all keys in " + d + "?");
+  if(!ok) return;
+  try{
+    var r = await post("/api/store/clear", {domain: d});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function refreshVars(){
+  try{
+    var s = await api("/api/vars");
+    var keys = Object.keys(s.vars || {});
+    D("varRows").innerHTML = keys.map(function(k){
+      return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
+    }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
+  }catch(e){}
+}
+function copyText(t, okMsg){
+  t = t || "";
+  function ok(){ toast(okMsg || "copied", "good"); }
+  function fail(){ toast("copy failed — select text manually", "err"); }
+  function fallback(){
+    try{
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var done = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if(done) ok(); else fail();
+    }catch(e){ fail(); }
+  }
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });
+  } else {
+    fallback();
+  }
+}
+function copyVars(){
+  var rows = (D("varRows") && D("varRows").innerText) || "";
+  copyText(rows, "vars copied");
+}
+async function refreshConsole(){
+  try{
+    var s = await api("/api/logs");
+    var box = D("console");
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    var lines = s.lines || [];
+    if(!lines.length){
+      box.innerHTML = '<span class="log-empty">(no lines)</span>';
+    }else{
+      box.innerHTML = lines.map(function(line){
+        var raw = String(line == null ? "" : line);
+        var m = raw.match(/^\[([A-Z0-9_]+)\]:\s*(.*)$/);
+        if(m){
+          var tag = m[1];
+          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};
+          var cls = known[tag] ? ("tag-" + tag) : "tag-other";
+          return '<div class="log-line"><span class="' + cls + '">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';
+        }
+        return '<div class="log-line">' + esc(raw) + '</div>';
+      }).join("");
+    }
+    if(atBottom) box.scrollTop = box.scrollHeight;
+  }catch(e){}
+}
+function copyConsole(){
+  var box = D("console");
+  var txt = (box && (box.innerText || box.textContent)) || "";
+  copyText(txt, "console copied");
+}
+function refreshAll(){
+  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
+  loadAutoDomain(); refreshDomainDatalist(); refreshRegisteredDomains(); loadLimits(); loadSinkConfig();
+}
+var inv = D("inv");
+if(inv) inv.addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
+});
+document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
+setInterval(function(){
+  if(RELOADING) return;
+  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
+}, 3000);
+try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
+refreshAll();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
+
+    fun page(showScreenshot: Boolean): String = FULL.replace(
+        SCREENSHOT_MARKER,
+        if (showScreenshot) SCREENSHOT_BUTTON else "",
+    )
+
+    /**
+     * Login shell only — no dashboard markup, no control JS.
+     * Served for unauthenticated clients so inspect-element cannot "unlock" the panel.
+     * After /api/login sets the session cookie, client reloads `/` and gets [page].
+     */
+    fun loginPage(): String = LOGIN_SHELL
+
+    private val LOGIN_SHELL: String = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>CWBridge - Lock</title>
+<style>
+:root{--bg:#0b0e13;--panel:#11151c;--line:rgba(255,255,255,.08);--text:#eef1f7;--muted:#8b93a7;--accent:#6ea8fe;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:grid;place-items:center}
+main{width:min(360px,92rwl);padding:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+h1{margin:0 0 10px;font-size:1.25rem}
+.subh{color:var(--muted);font-size:13px;margin:0 0 14px}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0e12;color:var(--text);font:inherit;min-height:44px}
+button{width:100%;margin-top:10px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#0b1020;font:inherit;font-weight:650;cursor:pointer;min-height:44px}
+.msg{min-height:1.2em;margin-top:8px;color:#f76c6c;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>CWBridge</h1>
+    <div class="subh">Enter panel password to unlock.</div>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" />
+    <button type="button" id="btn">Unlock</button>
+    <div id="msg" class="msg"></div>
+  </div>
+</main>
+<script>
+(function(){
+  var pw = document.getElementById("pw");
+  var msg = document.getElementById("msg");
+  function unlock(){
+    msg.textContent = "";
+    fetch("/api/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({password: pw.value || ""})
+    }).then(function(r){
+      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+    }).then(function(x){
+      if(!x.ok){
+        msg.textContent = (x.j && x.j.error) || "wrong password";
+        return;
+      }
+      location.reload();
+    }).catch(function(e){
+      msg.textContent = String(e.message || e);
+    });
+  }
+  document.getElementById("btn").onclick = unlock;
+  pw.addEventListener("keydown", function(e){ if(e.key === "Enter") unlock(); });
+})();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
+    private const val SCREENSHOT_BUTTON =
+        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
+}
+}lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"></div><div><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","regex","replace"].map(function(v){return "<option "+((a.mode||"full")===v?"selected":"")+" value=\""+v+"\">"+v+"</option>";}).join("")+"</select></div><div><label>Pattern</label><input value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"></div><div><label>Capture group</label><input type=\"number\" value=\""+esc(String(a.group||1))+"\" onchange=\"ED.actions["+i+"].group=parseInt(this.value,10)||1\"></div><div><label>Replace with</label><input value=\""+esc(a.replaceWith||"")+"\" onchange=\"ED.actions["+i+"].replaceWith=this.value\"></div><div><label>Save result to</label><input value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\"></div>";
+    else if(kind==="TAP") fields = "<div><label>X percent</label><input type=\"number\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>Y percent</label><input type=\"number\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>X pixels</label><input type=\"number\" value=\""+esc(a.xPx==null?"":String(a.xPx))+"\" onchange=\"ED.actions["+i+"].xPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Y pixels</label><input type=\"number\" value=\""+esc(a.yPx==null?"":String(a.yPx))+"\" onchange=\"ED.actions["+i+"].yPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Accessibility text (optional)</label><input value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\"></div>";
+    else if(kind==="GET_INFO") fields = "<div><label>Information type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">"+["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select></div><div><label>Store in variable</label><input value=\""+esc(a.storeInVariable||"")+"\" onchange=\"ED.actions["+i+"].storeInVariable=this.value\"></div>";
+    else if(kind==="HTTP_REQUEST") fields = "<div style=\"grid-column:1/-1\"><label>Request URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div><div style=\"grid-column:1/-1\"><label>Request body</label><textarea onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea></div><details class=\"advanced-settings\" style=\"grid-column:1/-1\"><summary>Advanced · request headers (JSON)</summary><textarea onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON');return}this.setCustomValidity('')\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
+    else if(kind==="AI") fields = "<div style=\"grid-column:1/-1\"><label>Prompt</label><textarea onchange=\"ED.actions["+i+"].prompt=this.value\">"+esc(a.prompt||"")+"</textarea></div><div><label>Model</label><input value=\""+esc(a.model||"default")+"\" onchange=\"ED.actions["+i+"].model=this.value\"></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div>";
+    else if(kind==="RUN_SERVICE") fields = "<div><label>Service ID</label><select onchange=\"ED.actions["+i+"].serviceId=this.value\"><option value=\"\">Choose a service</option>"+SERVICE_CATALOG.filter(function(sv){return sv.id!==ED.id;}).map(function(sv){return "<option value=\""+esc(sv.id)+"\" "+(a.serviceId===sv.id?"selected":"")+">"+esc(sv.name)+"</option>";}).join("")+"</select></div>";
+    else fields = "<div class=\"hint\">This action has no additional settings.</div>";
+    return "<div class=\"workflow-node\"><div class=\"node-title\"><span class=\"ms\">"+(kind==="DELAY"?"schedule":kind==="TAP"?"touch_app":kind==="HTTP_REQUEST"?"http":kind==="AI"?"smart_toy":"play_arrow")+"</span>"+esc(a.name||kind)+"<span class=\"node-kind\">Step "+(i+1)+" · "+esc(kind)+"</span><span class=\"node-actions\"><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",-1)\" "+(i===0?"disabled":"")+">↑</button><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",1)\" "+(i===ED.actions.length-1?"disabled":"")+">↓</button><button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">Remove</button></span></div><div class=\"node-fields\">"+fields+"</div></div>";
+  }).join("");
+}
+function moveAction(index,delta){
+  var next=index+delta;
+  if(next<0||next>=ED.actions.length) return;
+  var item=ED.actions.splice(index,1)[0];
+  ED.actions.splice(next,0,item);
+  renderEditorLists();
+}
+function addTrigger(kind){
+  if(kind==="TIME"){
+    ED.triggers.push({_kind:"TIME",id:uid(),name:"Timer event",intervalMs:5000,repeat:true,type:"TIME"});
+  } else if(kind==="ACCESSIBILITY"){
+    ED.triggers.push({_kind:"ACCESSIBILITY",id:uid(),name:"Accessibility event",textPattern:"",nodeId:"",eventType:"click",type:"ACCESSIBILITY"});
+  } else {
+    ED.triggers.push({_kind:"LOG",id:uid(),name:"Log event",pattern:"invoke|",matchCase:false,useRegex:false,type:"LOG"});
+  }
+  renderEditorLists();
+}
+function addAction(){
+  var kind = (D("edAddAct").value||"DELAY").toUpperCase();
+  var a = {_kind:kind,id:uid(),name:kind,type:kind};
+  if(kind==="DELAY") a.milliseconds = 500;
+  if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
+  if(kind==="SET_VAR"){ a.key=""; a.value=""; }
+  if(kind==="TEXT_MAN"){ a.source="${'"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
+  if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
+  if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
+  if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
+  if(kind==="AI"){ a.prompt=""; a.model="default"; a.storeResponseIn=""; }
+  if(kind==="RUN_SERVICE") a.serviceId="";
+  ED.actions.push(a);
+  renderEditorLists();
+}
+async function saveEditor(){
+  if(!ED.id){ msg("svcMsg","nothing open","err"); return; }
+  ED.name = (D("edName").value||"").trim() || ED.name;
+  ED.description = D("edDesc").value||"";
+  ED.isEnabled = !!D("edEnabled").checked;
+  ED.triggers.forEach(function(tr){ if(!tr._kind) tr._kind = (tr.type||"LOG"); });
+  ED.actions.forEach(function(a){ if(!a._kind) a._kind = (a.type||"DELAY"); });
+  try{
+    var r = await post("/api/services/" + encodeURIComponent(ED.id), {json: JSON.stringify(ED)});
+    if(r.error){ msg("svcMsg", r.error, "err"); toast(r.error,false); return; }
+    msg("svcMsg", r.message || "saved", "good"); toast("Macro saved", true);
+    refreshServices();
+  }catch(e){ msg("svcMsg", e.message, "err"); }
+}
+async function runEditor(){
+  if(!ED.id) return;
+  await saveEditor();
+  await runService(ED.id);
+}
+
+async function refreshStore(){
+  try{
+    var s = await api("/api/store");
+    var rows = s.domains || [];
+    D("storeRows").innerHTML = rows.map(function(d){
+      return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
+        esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
+        "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
+    }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
+    paintStorage(s);
+  }catch(e){}
+}
+async function setLimit(){
+  try{
+    var r = await post("/api/limits", {domain: D("qDomain").value, limit: D("qLimit").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function saveKey(){
+  try{
+    var r = await post("/api/store", {domain: D("sDomain").value, key: D("sKey").value, value: D("sVal").value});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function clearDomain(d){
+  var ok = await confirmModal("Clear domain", "Clear all keys in " + d + "?");
+  if(!ok) return;
+  try{
+    var r = await post("/api/store/clear", {domain: d});
+    msg("storeMsg", r.message, "good"); refreshStore();
+  }catch(e){ msg("storeMsg", e.message, "err"); }
+}
+async function refreshVars(){
+  try{
+    var s = await api("/api/vars");
+    var keys = Object.keys(s.vars || {});
+    D("varRows").innerHTML = keys.map(function(k){
+      return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
+    }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
+  }catch(e){}
+}
+function copyText(t, okMsg){
+  t = t || "";
+  function ok(){ toast(okMsg || "copied", "good"); }
+  function fail(){ toast("copy failed — select text manually", "err"); }
+  function fallback(){
+    try{
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var done = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if(done) ok(); else fail();
+    }catch(e){ fail(); }
+  }
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });
+  } else {
+    fallback();
+  }
+}
+function copyVars(){
+  var rows = (D("varRows") && D("varRows").innerText) || "";
+  copyText(rows, "vars copied");
+}
+async function refreshConsole(){
+  try{
+    var s = await api("/api/logs");
+    var box = D("console");
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    var lines = s.lines || [];
+    if(!lines.length){
+      box.innerHTML = '<span class="log-empty">(no lines)</span>';
+    }else{
+      box.innerHTML = lines.map(function(line){
+        var raw = String(line == null ? "" : line);
+        var m = raw.match(/^\[([A-Z0-9_]+)\]:\s*(.*)$/);
+        if(m){
+          var tag = m[1];
+          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};
+          var cls = known[tag] ? ("tag-" + tag) : "tag-other";
+          return '<div class="log-line"><span class="' + cls + '">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';
+        }
+        return '<div class="log-line">' + esc(raw) + '</div>';
+      }).join("");
+    }
+    if(atBottom) box.scrollTop = box.scrollHeight;
+  }catch(e){}
+}
+function copyConsole(){
+  var box = D("console");
+  var txt = (box && (box.innerText || box.textContent)) || "";
+  copyText(txt, "console copied");
+}
+function refreshAll(){
+  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
+  loadAutoDomain(); refreshDomainDatalist(); refreshRegisteredDomains(); loadLimits(); loadSinkConfig();
+}
+var inv = D("inv");
+if(inv) inv.addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
+});
+document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
+setInterval(function(){
+  if(RELOADING) return;
+  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
+}, 3000);
+try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
+refreshAll();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
+
+    fun page(showScreenshot: Boolean): String = FULL.replace(
+        SCREENSHOT_MARKER,
+        if (showScreenshot) SCREENSHOT_BUTTON else "",
+    )
+
+    /**
+     * Login shell only — no dashboard markup, no control JS.
+     * Served for unauthenticated clients so inspect-element cannot "unlock" the panel.
+     * After /api/login sets the session cookie, client reloads `/` and gets [page].
+     */
+    fun loginPage(): String = LOGIN_SHELL
+
+    private val LOGIN_SHELL: String = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>CWBridge - Lock</title>
+<style>
+:root{--bg:#0b0e13;--panel:#11151c;--line:rgba(255,255,255,.08);--text:#eef1f7;--muted:#8b93a7;--accent:#6ea8fe;}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:grid;place-items:center}
+main{width:min(360px,92rwl);padding:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
+h1{margin:0 0 10px;font-size:1.25rem}
+.subh{color:var(--muted);font-size:13px;margin:0 0 14px}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0e12;color:var(--text);font:inherit;min-height:44px}
+button{width:100%;margin-top:10px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#0b1020;font:inherit;font-weight:650;cursor:pointer;min-height:44px}
+.msg{min-height:1.2em;margin-top:8px;color:#f76c6c;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>CWBridge</h1>
+    <div class="subh">Enter panel password to unlock.</div>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" />
+    <button type="button" id="btn">Unlock</button>
+    <div id="msg" class="msg"></div>
+  </div>
+</main>
+<script>
+(function(){
+  var pw = document.getElementById("pw");
+  var msg = document.getElementById("msg");
+  function unlock(){
+    msg.textContent = "";
+    fetch("/api/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({password: pw.value || ""})
+    }).then(function(r){
+      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
+    }).then(function(x){
+      if(!x.ok){
+        msg.textContent = (x.j && x.j.error) || "wrong password";
+        return;
+      }
+      location.reload();
+    }).catch(function(e){
+      msg.textContent = String(e.message || e);
+    });
+  }
+  document.getElementById("btn").onclick = unlock;
+  pw.addEventListener("keydown", function(e){ if(e.key === "Enter") unlock(); });
+})();
+</script>
+</body>
+</html>
+""".trimIndent()
+
+    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
+    private const val SCREENSHOT_BUTTON =
+        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
+}
+}lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
   if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
   if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
   if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
