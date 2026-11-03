@@ -221,22 +221,17 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 
 
 /* CWBridge visual refresh */
-:root{
-  --bg:#080d16;--panel:#101827;--panel2:#151f30;--line:rgba(148,163,184,.14);
-  --text:#edf3ff;--muted:#91a0b8;--accent:#78aaff;--accent2:#4f8df5;
-  --ok:#43d69a;--warn:#f4bd62;--danger:#fb7777;--radius:18px;
-}
+:root{--bg:#080d16;--panel:#101827;--panel2:#151f30;--line:rgba(148,163,184,.14);--text:#edf3ff;--muted:#91a0b8;--accent:#78aaff;--accent2:#4f8df5;--ok:#43d69a;--warn:#f4bd62;--danger:#fb7777;--radius:18px}
 html,body{background:radial-gradient(ellipse at 70% -15%,rgba(49,95,166,.18),transparent 38%),var(--bg);color:var(--text)}
 .sidebar{width:252px;background:rgba(12,19,31,.97);border-right:1px solid var(--line);padding:20px 12px}
-.sidebar .brand-side{font-size:16px;padding:8px 12px 26px;letter-spacing:.02em}
+.sidebar .brand-side{font-size:16px;padding:8px 12px 26px}
 .nav-side{gap:5px!important}
 .nav-item{min-height:46px;padding:12px 14px;border-radius:12px;font-size:13px;transition:background .16s,color .16s}
 .nav-item.active{background:linear-gradient(90deg,rgba(89,146,255,.19),rgba(89,146,255,.07));color:#a9caff;box-shadow:inset 2px 0 #78aaff}
 .main-wrap{margin-left:252px}
 .top-slim{min-height:60px;padding:10px 28px;background:rgba(8,13,22,.82);border-bottom-color:var(--line)}
-.top-slim #pageTitle{font-size:13px;color:#cbd7eb}
 main{max-width:none;padding:28px clamp(16px,3vw,48px) 48px;gap:18px}
-.page-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:6px 0 24px}
+.page-hero{display:flex;align-items:flex-end;gap:16px;margin:6px 0 24px}
 .page-hero .eyebrow{font-size:10px;letter-spacing:.14em;font-weight:750;color:#7f9bc4;text-transform:uppercase;margin-bottom:8px}
 .page-hero h1{font-size:clamp(25px,3vw,34px);letter-spacing:-.045em;line-height:1.12;margin:0;font-weight:760}
 .page-hero p{margin:8px 0 0;color:var(--muted);font-size:13px}
@@ -263,41 +258,13 @@ td{padding:12px 10px}
 .domain-metric b{display:block;font-size:13px}
 .domain-metric span{font-size:10px;color:var(--muted)}
 .service-list{display:grid;gap:10px}
-.service-entry{display:flex;align-items:center;gap:12px;padding:15px;border:1px solid var(--line);background:rgba(8,16,29,.52);border-radius:15px;flex-wrap:wrap}
-.service-entry .service-meta{flex:1;min-width:150px}
-.service-entry .service-meta strong{display:block;font-size:14px}
-.service-entry .service-meta small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+.service-list>.row{padding:14px;border:1px solid var(--line);background:rgba(8,16,29,.52);border-radius:15px;margin:0 0 10px!important}
 #svcEditor{background:rgba(5,12,22,.58);border:1px solid rgba(120,170,255,.2);border-radius:18px;padding:20px!important}
 #svcEditor h3{font-size:11px!important;letter-spacing:.12em!important;text-transform:uppercase}
-.workflow-node{position:relative;background:linear-gradient(145deg,#17253a,#111c2d);border:1px solid rgba(148,163,184,.18);border-radius:15px;padding:15px;margin:10px 0}
-.workflow-node:before{content:"";position:absolute;left:22px;top:-11px;height:10px;border-left:2px solid rgba(120,170,255,.35)}
-.workflow-node:first-child:before{display:none}
-.workflow-node .node-title{display:flex;align-items:center;gap:9px;font-weight:730;margin-bottom:12px}
-.workflow-node .node-kind{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#9fc3ff;background:rgba(120,170,255,.12);padding:4px 8px;border-radius:999px}
-.workflow-node .node-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
-.workflow-node .node-fields label{display:block;font-size:10px;color:var(--muted);margin-bottom:5px}
-.workflow-node .node-fields input,.workflow-node .node-fields select,.workflow-node .node-fields textarea{min-width:0}
-.workflow-node .node-actions{display:flex;gap:5px;margin-left:auto}
-.workflow-node .node-actions button{min-height:32px;padding:5px 9px;font-size:12px}
-.advanced-settings{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
-.advanced-settings summary{font-size:11px;color:#9fb8da;cursor:pointer;font-weight:700}
-@media(max-width:819px){
-  .sidebar{width:min(290px,86vw);padding:16px 12px}
-  .main-wrap{margin-left:0}
-  .top-slim{padding:9px 14px}
-  main{padding:18px 14px 32px;gap:12px}
-  .card{padding:16px;margin-bottom:12px}
-  .page-hero{margin:2px 0 18px}
-  .stat-card{min-height:92px}
-  .service-entry{align-items:flex-start}
-  .service-entry button{flex:1}
-}
-@media(max-width:480px){
-  .page-hero h1{font-size:27px}
-  .workflow-node{padding:12px}
-  .workflow-node .node-fields{grid-template-columns:1fr}
-  .domain-metrics{grid-template-columns:1fr 1fr 1fr}
-}
+#edTriggers .row,#edActions .row{background:linear-gradient(145deg,#17253a,#111c2d);border:1px solid rgba(148,163,184,.18);border-radius:13px;padding:12px;margin:10px 0!important;align-items:center}
+#edActions .chip,#edTriggers .chip{background:rgba(120,170,255,.12);color:#a9caff}
+@media(max-width:819px){.sidebar{width:min(290px,86vw);padding:16px 12px}.main-wrap{margin-left:0}.top-slim{padding:9px 14px}main{padding:18px 14px 32px;gap:12px}.card{padding:16px;margin-bottom:12px}.page-hero{margin:2px 0 18px}.stat-card{min-height:92px}}
+@media(max-width:480px){.page-hero h1{font-size:27px}.domain-metrics{grid-template-columns:1fr 1fr 1fr}#svcEditor{padding:13px!important}#edTriggers .row,#edActions .row{align-items:stretch}}
 
 </style>
 </head>
@@ -354,9 +321,7 @@ td{padding:12px 10px}
   <a href="#sec-console"><span class="ms sm">terminal</span> Console</a>
 </nav>
 <main>
-<div class="page-hero" id="pageHero">
-  <div><div class="eyebrow" id="pageEyebrow">WORKSPACE / OVERVIEW</div><h1 id="pageHeading">Overview</h1><p id="pageSubheading">Your CWBridge system at a glance.</p></div>
-</div>
+<div class="page-hero" id="pageHero"><div><div class="eyebrow" id="pageEyebrow">CWBRIDGE / OVERVIEW</div><h1 id="pageHeading">Overview</h1><p id="pageSubheading">Your CWBridge system at a glance.</p></div></div>
 <div class="page active" data-page="overview">
   <div class="card" id="sec-storage">
     <h2><span class="ms sm">hard_drive</span> Server storage</h2>
@@ -493,7 +458,7 @@ td{padding:12px 10px}
 <div class="card" id="sec-services">
     <h2><span class="ms sm">extension</span> Services</h2>
     <p class="hint">Macros with triggers + actions. Enabled = always listening (log/time). Edit anytime.</p>
-    <div id="svcList" class="service-list"></div>
+    <div id="svcList"></div>
     <div class="row" style="margin-top:10px">
       <div class="field"><input id="svcName" placeholder="New macro name"></div>
       <button type="button" onclick="createService()"><span class="ms sm">add</span> Create</button>
@@ -511,8 +476,8 @@ td{padding:12px 10px}
       <div class="row" style="margin-top:6px">
         <button type="button" class="ghost" onclick="addTrigger('LOG')"><span class="ms sm">article</span> Log event</button>
         <button type="button" class="ghost" onclick="addTrigger('TIME')"><span class="ms sm">schedule</span> Timer event</button>
-        <span class="hint">Supported events: log matches and intervals. Accessibility triggers are not executable in the current engine yet.</span>
       </div>
+      <p class="hint">Supported event sources: log-pattern matches and repeating intervals. Conditional branches, loops, and accessibility-trigger execution are not implemented by the current engine.</p>
       <h3 style="font-size:12px;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">ACTIONS</h3>
       <div id="edActions"></div>
       <div class="row" style="margin-top:6px">
@@ -731,15 +696,7 @@ function D(id){ return document.getElementById(id); }
 function showPage(name){
   document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-page')===name); });
   document.querySelectorAll('.nav-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-page')===name); });
-  var meta={
-    overview:['Overview','Your CWBridge system at a glance.'],
-    control:['Control','Operate and inspect the connected Android device.'],
-    domains:['Domains','Registered domains, limits, and stored data.'],
-    services:['Services','Build and manage event-driven automations.'],
-    store:['Store','Manage datastore entries and integrations.'],
-    console:['Console','Inspect structured logs and runtime activity.'],
-    about:['About','Version, device, and project information.']
-  };
+  var meta={overview:['Overview','Your CWBridge system at a glance.'],control:['Control','Operate and inspect the connected Android device.'],domains:['Domains','Registered domains, limits, and stored data.'],services:['Services','Build and manage event-driven automations.'],store:['Store','Manage datastore entries and integrations.'],console:['Console','Inspect structured logs and runtime activity.'],about:['About','Version, device, and project information.']};
   var chosen=meta[name]||[name,''];
   var pt=D('pageTitle'); if(pt) pt.textContent=chosen[0];
   var ph=D('pageHeading'); if(ph) ph.textContent=chosen[0];
@@ -748,8 +705,7 @@ function showPage(name){
   try{ localStorage.setItem('cw_page', name); }catch(e){}
   if(window.innerWidth<820){ var sb=D('sidebar'); if(sb) sb.classList.remove('open'); }
 }
-
-function esc(s){
+function esc(s){function esc(s){
   return String(s == null ? "" : s)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
@@ -1321,7 +1277,10 @@ async function refreshDomainDatalist(){
   try {
     var s = await get("/api/store");
     var list = D("domainListDatalist");
-    if(list) list.innerHTML = (s.domains || []).map(function(x){ return "<option value=\"" + esc(x.domain) + "\">"; }).join("");
+    if(!list) return;
+    list.innerHTML = (s.domains || []).map(function(x){
+      return "<option value=\"" + esc(x.domain) + "\">";
+    }).join("");
   } catch(e){}
 }
 async function refreshRegisteredDomains(){
@@ -1329,18 +1288,14 @@ async function refreshRegisteredDomains(){
   try{
     var results=await Promise.all([get("/api/store"),get("/api/auto-domain")]);
     var domains=results[0].domains||[], auto=(results[1].domain||"").toLowerCase();
-    if(!domains.length){host.innerHTML="<div class=\"empty\"><span class=\"ms\">language</span>No domains registered yet. A domain appears here once it has stored data or a configured limit.</div>";return;}
+    if(!domains.length){host.innerHTML="<div class=\"empty\"><span class=\"ms\">language</span>No registered domains yet. Domains appear here when they have a configured limit or stored data.</div>";return;}
     host.innerHTML=domains.map(function(d){
       var isAuto=String(d.domain||"").toLowerCase()===auto;
-      return "<div class=\"domain-card\"><div class=\"domain-card-top\"><span class=\"ms\" style=\"font-size:22px;color:var(--accent)\">language</span><div style=\"flex:1;min-width:0\"><div class=\"domain-card-name\">"+esc(d.domain)+"</div><div class=\"hint\">"+(isAuto?"Auto-start domain":"Registered domain")+"</div></div>"+(isAuto?"<span class=\"chip ACTIVE\">AUTO-START</span>":"")+"</div><div class=\"domain-metrics\"><div class=\"domain-metric\"><b>"+esc(d.keys)+"</b><span>Keys</span></div><div class=\"domain-metric\"><b>"+esc(d.used)+"</b><span>Used</span></div><div class=\"domain-metric\"><b>"+esc(d.limit)+"</b><span>Limit</span></div></div><button type=\"button\" class=\"ghost\" onclick=\"openRegisteredDomain("+arg(d.domain)+")\">Manage stored data <span class=\"ms sm\">arrow_forward</span></button></div>";
+      return "<div class=\"domain-card\"><div class=\"domain-card-top\"><span class=\"ms\" style=\"font-size:22px;color:var(--accent)\">language</span><div style=\"flex:1;min-width:0\"><div class=\"domain-card-name\">"+esc(d.domain)+"</div><div class=\"hint\">Registered domain</div></div>"+(isAuto?"<span class=\"chip ACTIVE\">AUTO-START</span>":"")+"</div><div class=\"domain-metrics\"><div class=\"domain-metric\"><b>"+esc(d.keys)+"</b><span>Keys</span></div><div class=\"domain-metric\"><b>"+esc(d.used)+"</b><span>Used</span></div><div class=\"domain-metric\"><b>"+esc(d.limit)+"</b><span>Limit</span></div></div><button type=\"button\" class=\"ghost\" onclick=\"openRegisteredDomain("+arg(d.domain)+")\">Manage stored data <span class=\"ms sm\">arrow_forward</span></button></div>";
     }).join("");
   }catch(e){host.innerHTML="<div class=\"empty\">Could not load registered domains: "+esc(e.message)+"</div>";}
 }
-function openRegisteredDomain(domain){
-  var input=D("editDomain"); if(input) input.value=domain;
-  loadDomainDb();
-  var editor=D("domainDbMeta"); if(editor) editor.scrollIntoView({behavior:"smooth",block:"center"});
-}
+function openRegisteredDomain(domain){var input=D("editDomain");if(input)input.value=domain;loadDomainDb();var meta=D("domainDbMeta");if(meta)meta.scrollIntoView({behavior:"smooth",block:"center"});}
 async function loadAutoDomain(){
   try {
     var r = await get("/api/auto-domain");
@@ -1390,28 +1345,28 @@ async function tapText(){
 }
 
 var ED = {id:'',name:'',description:'',isEnabled:true,triggers:[],actions:[]};
-function uid(){ return String(Date.now()) + Math.floor(Math.random()*1000); }
 var SERVICE_CATALOG = [];
+function uid(){ return String(Date.now()) + Math.floor(Math.random()*1000); }
 async function refreshServices(){
   try{
     var s = await api("/api/services");
     var list = s.services || [];
     SERVICE_CATALOG = list;
     if(!list.length){
-      D("svcList").innerHTML = "<div class=\"empty\"><span class=\"ms\">extension_off</span>No services yet — create your first workflow</div>";
+      D("svcList").innerHTML = "<div class=\"empty\"><span class=\"ms\">extension_off</span>No macros yet — create one</div>";
       return;
     }
     D("svcList").innerHTML = list.map(function(sv){
       var on = sv.enabled !== false;
-      return "<div class=\"service-entry\">" +
-        "<span class=\"ms\" style=\"font-size:24px;color:var(--accent)\">account_tree</span>" +
-        "<div class=\"service-meta\"><strong>" + esc(sv.name||sv.id) + "</strong>" +
-        "<small>" + (sv.triggers||0) + " events · " + (sv.actions||0) + " blocks · " +
-        (on ? "<span class=\"ok\">Enabled</span>" : "<span class=\"bad\">Disabled</span>") + "</small></div>" +
-        "<button type=\"button\" class=\"ghost\" onclick=\"toggleService(" + arg(sv.id) + "," + (!on) + ")\">" + (on ? "Disable" : "Enable") + "</button>" +
-        "<button type=\"button\" class=\"soft\" onclick=\"editService(" + arg(sv.id) + ")\">Edit workflow</button>" +
-        "<button type=\"button\" class=\"soft\" onclick=\"runService(" + arg(sv.id) + ")\">Run test</button>" +
-        "<button type=\"button\" class=\"ghost\" onclick=\"deleteService(" + arg(sv.id) + ")\">Delete</button></div>";
+      return "<div class=\"row\" style=\"margin-bottom:8px;align-items:center\">" +
+        "<span style=\"flex:1;min-width:0\"><b>" + esc(sv.name||sv.id) + "</b>" +
+        " <span class=\"hint\">" + (sv.triggers||0) + " trig · " + (sv.actions||0) + " act" +
+        (on ? " · <span class=\"ok\">ON</span>" : " · <span class=\"bad\">OFF</span>") + "</span></span>" +
+        "<button type=\"button\" class=\"ghost\" onclick=\"toggleService(" + arg(sv.id) + "," + (!on) + ")\">" +
+        (on ? "Disable" : "Enable") + "</button>" +
+        "<button type=\"button\" class=\"soft\" onclick=\"editService(" + arg(sv.id) + ")\">Edit</button>" +
+        "<button type=\"button\" class=\"soft\" onclick=\"runService(" + arg(sv.id) + ")\">Run</button>" +
+        "<button type=\"button\" class=\"ghost\" onclick=\"deleteService(" + arg(sv.id) + ")\">Del</button></div>";
     }).join("");
   }catch(e){}
 }
@@ -1476,54 +1431,37 @@ function closeEditor(){
 }
 function renderEditorLists(){
   var tg = D("edTriggers");
-  if(!ED.triggers.length) tg.innerHTML = "<div class=\"hint\">No event triggers. This workflow can still be run manually.</div>";
+  if(!ED.triggers.length) tg.innerHTML = "<div class=\"hint\">No triggers — service runs manually or from the Run button</div>";
   else tg.innerHTML = ED.triggers.map(function(tr,i){
-    var kind = (tr._kind||tr.type||"LOG").toString().toUpperCase();
-    var fields = "";
-    if(kind==="TIME"){
-      fields = "<div><label>Interval (ms)</label><input type=\"number\" min=\"100\" value=\"" + esc(String(tr.intervalMs||1000)) + "\" onchange=\"ED.triggers["+i+"].intervalMs=Math.max(100,parseInt(this.value,10)||1000)\"></div>" +
-        "<div><label>Repeat</label><select onchange=\"ED.triggers["+i+"].repeat=this.value==='true'\"><option value=\"true\" "+(tr.repeat!==false?"selected":"")+">Repeating</option><option value=\"false\" "+(tr.repeat===false?"selected":"")+">Once</option></select></div>";
-    } else if(kind==="ACCESSIBILITY"){
-      fields = "<div class=\"hint\">This trigger is retained from older service data but is not fired by the current execution engine.</div>";
-    } else {
-      fields = "<div><label>Log pattern</label><input value=\"" + esc(tr.pattern||"") + "\" onchange=\"ED.triggers["+i+"].pattern=this.value\"></div>" +
-        "<div><label>Match case</label><select onchange=\"ED.triggers["+i+"].matchCase=this.value==='true'\"><option value=\"false\" "+(!tr.matchCase?"selected":"")+">Ignore case</option><option value=\"true\" "+(tr.matchCase?"selected":"")+">Match case</option></select></div>" +
-        "<div><label>Pattern mode</label><select onchange=\"ED.triggers["+i+"].useRegex=this.value==='true'\"><option value=\"false\" "+(!tr.useRegex?"selected":"")+">Contains text</option><option value=\"true\" "+(tr.useRegex?"selected":"")+">Regular expression</option></select></div>";
-    }
-    return "<div class=\"workflow-node\"><div class=\"node-title\"><span class=\"ms\">bolt</span>"+esc(tr.name||kind)+"<span class=\"node-kind\">Event · "+esc(kind)+"</span><span class=\"node-actions\"><button type=\"button\" class=\"ghost\" onclick=\"ED.triggers.splice("+i+",1);renderEditorLists()\">Remove</button></span></div><div class=\"node-fields\">"+fields+"</div></div>";
+    var kind=(tr._kind||tr.type||"LOG").toString().toUpperCase(), body="";
+    if(kind==="TIME") body="every <input type=\"number\" style=\"width:100px\" value=\""+esc(String(tr.intervalMs||1000))+"\" onchange=\"ED.triggers["+i+"].intervalMs=Math.max(100,parseInt(this.value,10)||1000)\"> ms";
+    else if(kind==="ACCESSIBILITY") body="<span class=\"hint\">Legacy trigger — not executed by the current engine</span>";
+    else body="pattern <input style=\"min-width:150px\" value=\""+esc(tr.pattern||"")+"\" onchange=\"ED.triggers["+i+"].pattern=this.value\">";
+    return "<div class=\"row\"><span class=\"chip\">EVENT · "+esc(kind)+"</span> "+body+" <button type=\"button\" class=\"ghost\" onclick=\"ED.triggers.splice("+i+",1);renderEditorLists()\">Remove</button></div>";
   }).join("");
-  var ac = D("edActions");
-  if(!ED.actions.length) ac.innerHTML = "<div class=\"hint\">No action blocks yet. Add the first step below.</div>";
-  else ac.innerHTML = ED.actions.map(function(a,i){
-    var kind = (a._kind||a.type||"?").toString().toUpperCase();
-    var fields = "";
-    if(kind==="DELAY") fields = "<div><label>Duration (ms)</label><input type=\"number\" min=\"0\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=Math.max(0,parseInt(this.value,10)||0)\"></div>";
-    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") fields = "<div style=\"grid-column:1/-1\"><label>Text / variable template</label><textarea onchange=\"ED.actions["+i+"].text=this.value\">"+esc(a.text||"")+"</textarea></div>";
-    else if(kind==="SET_VAR") fields = "<div><label>Variable key</label><input value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"></div><div><label>Value</label><input value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\"></div>";
-    else if(kind==="TEXT_MAN") fields = "<div><label>Source</label><input value=\""+esc(a.source||"${'")+"\" onchange=\"ED.actions["+i+"].source=this.value\"></div><div><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","trim","after","before","replace","regex"].map(function(v){return "<option "+((a.mode||"full")===v?"selected":"")+" value=\""+v+"\">"+v+"</option>";}).join("")+"</select></div><div><label>Pattern</label><input value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"></div><div><label>Capture group</label><input type=\"number\" value=\""+esc(String(a.group||1))+"\" onchange=\"ED.actions["+i+"].group=parseInt(this.value,10)||1\"></div><div><label>Replace with</label><input value=\""+esc(a.replaceWith||"")+"\" onchange=\"ED.actions["+i+"].replaceWith=this.value\"></div><div><label>Save result to</label><input value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\"></div>";
-    else if(kind==="TAP") fields = "<div><label>X percent</label><input type=\"number\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>Y percent</label><input type=\"number\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>X pixels</label><input type=\"number\" value=\""+esc(a.xPx==null?"":String(a.xPx))+"\" onchange=\"ED.actions["+i+"].xPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Y pixels</label><input type=\"number\" value=\""+esc(a.yPx==null?"":String(a.yPx))+"\" onchange=\"ED.actions["+i+"].yPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Accessibility text (optional)</label><input value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\"></div>";
-    else if(kind==="GET_INFO") fields = "<div><label>Information type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">" +["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select></div>";
-    else if(kind==="HTTP_REQUEST") fields = "<div style=\"grid-column:1/-1\"><label>Request URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div><div style=\"grid-column:1/-1\"><label>Request body</label><textarea onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea></div><details class=\"advanced-settings\" style=\"grid-column:1/-1\"><summary>Advanced · request headers (JSON)</summary><textarea onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON');return}this.setCustomValidity('')\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
-    else if(kind==="AI") fields = "<div style=\"grid-column:1/-1\"><label>Prompt</label><textarea onchange=\"ED.actions["+i+"].prompt=this.value\">"+esc(a.prompt||"")+"</textarea></div><div class=\"hint\" style=\"grid-column:1/-1\">Uses the global AI provider and model configuration.</div>";
-    else if(kind==="RUN_SERVICE") fields = "<div><label>Service ID</label><select onchange=\"ED.actions["+i+"].serviceId=this.value\"><option value=\"\">Choose a service</option>"+SERVICE_CATALOG.filter(function(sv){return sv.id!==ED.id;}).map(function(sv){return "<option value=\""+esc(sv.id)+"\" "+(a.serviceId===sv.id?"selected":"")+">"+esc(sv.name)+"</option>";}).join("")+"</select></div>";
-    else fields = "<div class=\"hint\">This action has no additional settings.</div>";
-    return "<div class=\"workflow-node\"><div class=\"node-title\"><span class=\"ms\">"+(kind==="DELAY"?"schedule":kind==="TAP"?"touch_app":kind==="HTTP_REQUEST"?"http":kind==="AI"?"smart_toy":"play_arrow")+"</span>"+esc(a.name||kind)+"<span class=\"node-kind\">Step "+(i+1)+" · "+esc(kind)+"</span><span class=\"node-actions\"><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",-1)\" "+(i===0?"disabled":"")+">↑</button><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",1)\" "+(i===ED.actions.length-1?"disabled":"")+">↓</button><button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">Remove</button></span></div><div class=\"node-fields\">"+fields+"</div></div>";
+  var ac=D("edActions");
+  if(!ED.actions.length) ac.innerHTML="<div class=\"hint\">No action blocks yet</div>";
+  else ac.innerHTML=ED.actions.map(function(a,i){
+    var kind=(a._kind||a.type||"?").toString().toUpperCase(), body="";
+    if(kind==="DELAY") body="<label>Duration (ms)</label><input type=\"number\" style=\"width:100px\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=Math.max(0,parseInt(this.value,10)||0)\">";
+    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body="<label>Text / variable template</label><input style=\"min-width:180px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\">";
+    else if(kind==="SET_VAR") body="<label>Variable key</label><input style=\"width:100px\" value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"><label>Value</label><input style=\"width:140px\" value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\">";
+    else if(kind==="TEXT_MAN") body="<label>Source</label><input style=\"width:110px\" value=\""+esc(a.source||"lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","trim","after","before","replace","regex"].map(function(v){return "<option value=\""+v+"\" "+((a.mode||"full")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select><label>Pattern</label><input style=\"width:110px\" value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"><label>Save as</label><input style=\"width:100px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
+    else if(kind==="TAP") body="<label>X %</label><input type=\"number\" style=\"width:70px\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"><label>Y %</label><input type=\"number\" style=\"width:70px\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"><label>Text</label><input style=\"width:110px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\">";
+    else if(kind==="GET_INFO") body="<label>Info type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">"+["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select>";
+    else if(kind==="HTTP_REQUEST") body="<div class=\"field\" style=\"min-width:220px\"><label>URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select><label>Save response to</label><input style=\"width:120px\" value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"><details class=\"advanced-settings\"><summary>Body & headers</summary><textarea placeholder=\"Request body\" onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea><textarea placeholder=\"Headers JSON\" onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON')}\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
+    else if(kind==="AI") body="<div class=\"field\" style=\"min-width:220px\"><label>Prompt</label><textarea onchange=\"ED.actions["+i+"].prompt=this.value\">"+esc(a.prompt||"")+"</textarea></div><span class=\"hint\">Uses global AI settings</span>";
+    else if(kind==="RUN_SERVICE") body="<label>Target service</label><select onchange=\"ED.actions["+i+"].serviceId=this.value\"><option value=\"\">Choose…</option>"+SERVICE_CATALOG.filter(function(sv){return sv.id!==ED.id;}).map(function(sv){return "<option value=\""+esc(sv.id)+"\" "+(a.serviceId===sv.id?"selected":"")+">"+esc(sv.name)+"</option>";}).join("")+"</select>";
+    else body="<span class=\"hint\">No additional settings</span>";
+    return "<div class=\"row\"><span class=\"chip\">STEP "+(i+1)+" · "+esc(kind)+"</span> "+body+" <button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",-1)\" "+(i===0?"disabled":"")+">↑</button><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",1)\" "+(i===ED.actions.length-1?"disabled":"")+">↓</button><button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">Remove</button></div>";
   }).join("");
 }
-function moveAction(index,delta){
-  var next=index+delta;
-  if(next<0||next>=ED.actions.length) return;
-  var item=ED.actions.splice(index,1)[0];
-  ED.actions.splice(next,0,item);
-  renderEditorLists();
-}
-function addTrigger(kind){
+function moveAction(index,delta){var next=index+delta;if(next<0||next>=ED.actions.length)return;var item=ED.actions.splice(index,1)[0];ED.actions.splice(next,0,item);renderEditorLists();}
+function addTrigger(kind){function addTrigger(kind){
   if(kind==="TIME"){
-    ED.triggers.push({_kind:"TIME",id:uid(),name:"Timer event",intervalMs:5000,repeat:true,type:"TIME"});
-  } else if(kind==="ACCESSIBILITY"){
-    ED.triggers.push({_kind:"ACCESSIBILITY",id:uid(),name:"Accessibility event",textPattern:"",nodeId:"",eventType:"click",type:"ACCESSIBILITY"});
+    ED.triggers.push({_kind:"TIME",id:uid(),name:"Interval",intervalMs:5000,repeat:true,type:"TIME"});
   } else {
-    ED.triggers.push({_kind:"LOG",id:uid(),name:"Log event",pattern:"invoke|",matchCase:false,useRegex:false,type:"LOG"});
+    ED.triggers.push({_kind:"LOG",id:uid(),name:"Log",pattern:"invoke|",matchCase:false,useRegex:false,type:"LOG"});
   }
   renderEditorLists();
 }
@@ -1533,500 +1471,11 @@ function addAction(){
   if(kind==="DELAY") a.milliseconds = 500;
   if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
   if(kind==="SET_VAR"){ a.key=""; a.value=""; }
-  if(kind==="TEXT_MAN"){ a.source="$lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
+  if(kind==="TEXT_MAN"){ a.source="${'$'}lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
   if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
-  if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
+  if(kind==="GET_INFO") a.infoType="SCREEN_TEXT";
   if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
-  if(kind==="AI"){ a.prompt=""; a.model="default"; a.storeResponseIn=""; }
-  if(kind==="RUN_SERVICE") a.serviceId="";
-  ED.actions.push(a);
-  renderEditorLists();
-}
-async function saveEditor(){
-  if(!ED.id){ msg("svcMsg","nothing open","err"); return; }
-  ED.name = (D("edName").value||"").trim() || ED.name;
-  ED.description = D("edDesc").value||"";
-  ED.isEnabled = !!D("edEnabled").checked;
-  ED.triggers.forEach(function(tr){ if(!tr._kind) tr._kind = (tr.type||"LOG"); });
-  ED.actions.forEach(function(a){ if(!a._kind) a._kind = (a.type||"DELAY"); });
-  try{
-    var r = await post("/api/services/" + encodeURIComponent(ED.id), {json: JSON.stringify(ED)});
-    if(r.error){ msg("svcMsg", r.error, "err"); toast(r.error,false); return; }
-    msg("svcMsg", r.message || "saved", "good"); toast("Macro saved", true);
-    refreshServices();
-  }catch(e){ msg("svcMsg", e.message, "err"); }
-}
-async function runEditor(){
-  if(!ED.id) return;
-  await saveEditor();
-  await runService(ED.id);
-}
-
-async function refreshStore(){
-  try{
-    var s = await api("/api/store");
-    var rows = s.domains || [];
-    D("storeRows").innerHTML = rows.map(function(d){
-      return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
-        esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
-        "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
-    }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
-    paintStorage(s);
-  }catch(e){}
-}
-async function setLimit(){
-  try{
-    var r = await post("/api/limits", {domain: D("qDomain").value, limit: D("qLimit").value});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function saveKey(){
-  try{
-    var r = await post("/api/store", {domain: D("sDomain").value, key: D("sKey").value, value: D("sVal").value});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function clearDomain(d){
-  var ok = await confirmModal("Clear domain", "Clear all keys in " + d + "?");
-  if(!ok) return;
-  try{
-    var r = await post("/api/store/clear", {domain: d});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function refreshVars(){
-  try{
-    var s = await api("/api/vars");
-    var keys = Object.keys(s.vars || {});
-    D("varRows").innerHTML = keys.map(function(k){
-      return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
-    }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
-  }catch(e){}
-}
-function copyText(t, okMsg){
-  t = t || "";
-  function ok(){ toast(okMsg || "copied", "good"); }
-  function fail(){ toast("copy failed — select text manually", "err"); }
-  function fallback(){
-    try{
-      var ta = document.createElement("textarea");
-      ta.value = t;
-      ta.setAttribute("readonly", "");
-      ta.style.cssText = "position:fixed;left:-9999px;top:0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, ta.value.length);
-      var done = document.execCommand("copy");
-      document.body.removeChild(ta);
-      if(done) ok(); else fail();
-    }catch(e){ fail(); }
-  }
-  if(navigator.clipboard && window.isSecureContext){
-    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });
-  } else {
-    fallback();
-  }
-}
-function copyVars(){
-  var rows = (D("varRows") && D("varRows").innerText) || "";
-  copyText(rows, "vars copied");
-}
-async function refreshConsole(){
-  try{
-    var s = await api("/api/logs");
-    var box = D("console");
-    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    var lines = s.lines || [];
-    if(!lines.length){
-      box.innerHTML = '<span class="log-empty">(no lines)</span>';
-    }else{
-      box.innerHTML = lines.map(function(line){
-        var raw = String(line == null ? "" : line);
-        var m = raw.match(/^\[([A-Z0-9_]+)\]:\s*(.*)$/);
-        if(m){
-          var tag = m[1];
-          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};
-          var cls = known[tag] ? ("tag-" + tag) : "tag-other";
-          return '<div class="log-line"><span class="' + cls + '">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';
-        }
-        return '<div class="log-line">' + esc(raw) + '</div>';
-      }).join("");
-    }
-    if(atBottom) box.scrollTop = box.scrollHeight;
-  }catch(e){}
-}
-function copyConsole(){
-  var box = D("console");
-  var txt = (box && (box.innerText || box.textContent)) || "";
-  copyText(txt, "console copied");
-}
-function refreshAll(){
-  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
-  loadAutoDomain(); refreshDomainDatalist(); refreshRegisteredDomains(); loadLimits(); loadSinkConfig();
-}
-var inv = D("inv");
-if(inv) inv.addEventListener("keydown", function(e){
-  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
-});
-document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
-setInterval(function(){
-  if(RELOADING) return;
-  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
-}, 3000);
-try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
-refreshAll();
-</script>
-</body>
-</html>
-""".trimIndent()
-
-    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
-
-    fun page(showScreenshot: Boolean): String = FULL.replace(
-        SCREENSHOT_MARKER,
-        if (showScreenshot) SCREENSHOT_BUTTON else "",
-    )
-
-    /**
-     * Login shell only — no dashboard markup, no control JS.
-     * Served for unauthenticated clients so inspect-element cannot "unlock" the panel.
-     * After /api/login sets the session cookie, client reloads `/` and gets [page].
-     */
-    fun loginPage(): String = LOGIN_SHELL
-
-    private val LOGIN_SHELL: String = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<title>CWBridge - Lock</title>
-<style>
-:root{--bg:#0b0e13;--panel:#11151c;--line:rgba(255,255,255,.08);--text:#eef1f7;--muted:#8b93a7;--accent:#6ea8fe;}
-*{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:grid;place-items:center}
-main{width:min(360px,92rwl);padding:24px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
-h1{margin:0 0 10px;font-size:1.25rem}
-.subh{color:var(--muted);font-size:13px;margin:0 0 14px}
-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0e12;color:var(--text);font:inherit;min-height:44px}
-button{width:100%;margin-top:10px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#0b1020;font:inherit;font-weight:650;cursor:pointer;min-height:44px}
-.msg{min-height:1.2em;margin-top:8px;color:#f76c6c;font-size:13px}
-</style>
-</head>
-<body>
-<main>
-  <div class="card">
-    <h1>CWBridge</h1>
-    <div class="subh">Enter panel password to unlock.</div>
-    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" />
-    <button type="button" id="btn">Unlock</button>
-    <div id="msg" class="msg"></div>
-  </div>
-</main>
-<script>
-(function(){
-  var pw = document.getElementById("pw");
-  var msg = document.getElementById("msg");
-  function unlock(){
-    msg.textContent = "";
-    fetch("/api/login", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({password: pw.value || ""})
-    }).then(function(r){
-      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
-    }).then(function(x){
-      if(!x.ok){
-        msg.textContent = (x.j && x.j.error) || "wrong password";
-        return;
-      }
-      location.reload();
-    }).catch(function(e){
-      msg.textContent = String(e.message || e);
-    });
-  }
-  document.getElementById("btn").onclick = unlock;
-  pw.addEventListener("keydown", function(e){ if(e.key === "Enter") unlock(); });
-})();
-</script>
-</body>
-</html>
-""".trimIndent()
-
-    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
-    private const val SCREENSHOT_BUTTON =
-        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
-}
-}lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"></div><div><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","regex","replace"].map(function(v){return "<option "+((a.mode||"full")===v?"selected":"")+" value=\""+v+"\">"+v+"</option>";}).join("")+"</select></div><div><label>Pattern</label><input value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"></div><div><label>Capture group</label><input type=\"number\" value=\""+esc(String(a.group||1))+"\" onchange=\"ED.actions["+i+"].group=parseInt(this.value,10)||1\"></div><div><label>Replace with</label><input value=\""+esc(a.replaceWith||"")+"\" onchange=\"ED.actions["+i+"].replaceWith=this.value\"></div><div><label>Save result to</label><input value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\"></div>";
-    else if(kind==="TAP") fields = "<div><label>X percent</label><input type=\"number\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>Y percent</label><input type=\"number\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"></div><div><label>X pixels</label><input type=\"number\" value=\""+esc(a.xPx==null?"":String(a.xPx))+"\" onchange=\"ED.actions["+i+"].xPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Y pixels</label><input type=\"number\" value=\""+esc(a.yPx==null?"":String(a.yPx))+"\" onchange=\"ED.actions["+i+"].yPx=this.value===''?null:parseInt(this.value,10)\"></div><div><label>Accessibility text (optional)</label><input value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\"></div>";
-    else if(kind==="GET_INFO") fields = "<div><label>Information type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">"+["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select></div><div><label>Store in variable</label><input value=\""+esc(a.storeInVariable||"")+"\" onchange=\"ED.actions["+i+"].storeInVariable=this.value\"></div>";
-    else if(kind==="HTTP_REQUEST") fields = "<div style=\"grid-column:1/-1\"><label>Request URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div><div style=\"grid-column:1/-1\"><label>Request body</label><textarea onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea></div><details class=\"advanced-settings\" style=\"grid-column:1/-1\"><summary>Advanced · request headers (JSON)</summary><textarea onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON');return}this.setCustomValidity('')\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
-    else if(kind==="AI") fields = "<div style=\"grid-column:1/-1\"><label>Prompt</label><textarea onchange=\"ED.actions["+i+"].prompt=this.value\">"+esc(a.prompt||"")+"</textarea></div><div><label>Model</label><input value=\""+esc(a.model||"default")+"\" onchange=\"ED.actions["+i+"].model=this.value\"></div><div><label>Store response in</label><input value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"></div>";
-    else if(kind==="RUN_SERVICE") fields = "<div><label>Service ID</label><select onchange=\"ED.actions["+i+"].serviceId=this.value\"><option value=\"\">Choose a service</option>"+SERVICE_CATALOG.filter(function(sv){return sv.id!==ED.id;}).map(function(sv){return "<option value=\""+esc(sv.id)+"\" "+(a.serviceId===sv.id?"selected":"")+">"+esc(sv.name)+"</option>";}).join("")+"</select></div>";
-    else fields = "<div class=\"hint\">This action has no additional settings.</div>";
-    return "<div class=\"workflow-node\"><div class=\"node-title\"><span class=\"ms\">"+(kind==="DELAY"?"schedule":kind==="TAP"?"touch_app":kind==="HTTP_REQUEST"?"http":kind==="AI"?"smart_toy":"play_arrow")+"</span>"+esc(a.name||kind)+"<span class=\"node-kind\">Step "+(i+1)+" · "+esc(kind)+"</span><span class=\"node-actions\"><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",-1)\" "+(i===0?"disabled":"")+">↑</button><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",1)\" "+(i===ED.actions.length-1?"disabled":"")+">↓</button><button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">Remove</button></span></div><div class=\"node-fields\">"+fields+"</div></div>";
-  }).join("");
-}
-function moveAction(index,delta){
-  var next=index+delta;
-  if(next<0||next>=ED.actions.length) return;
-  var item=ED.actions.splice(index,1)[0];
-  ED.actions.splice(next,0,item);
-  renderEditorLists();
-}
-function addTrigger(kind){
-  if(kind==="TIME"){
-    ED.triggers.push({_kind:"TIME",id:uid(),name:"Timer event",intervalMs:5000,repeat:true,type:"TIME"});
-  } else if(kind==="ACCESSIBILITY"){
-    ED.triggers.push({_kind:"ACCESSIBILITY",id:uid(),name:"Accessibility event",textPattern:"",nodeId:"",eventType:"click",type:"ACCESSIBILITY"});
-  } else {
-    ED.triggers.push({_kind:"LOG",id:uid(),name:"Log event",pattern:"invoke|",matchCase:false,useRegex:false,type:"LOG"});
-  }
-  renderEditorLists();
-}
-function addAction(){
-  var kind = (D("edAddAct").value||"DELAY").toUpperCase();
-  var a = {_kind:kind,id:uid(),name:kind,type:kind};
-  if(kind==="DELAY") a.milliseconds = 500;
-  if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
-  if(kind==="SET_VAR"){ a.key=""; a.value=""; }
-  if(kind==="TEXT_MAN"){ a.source="${'"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
-  if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
-  if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
-  if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
-  if(kind==="AI"){ a.prompt=""; a.model="default"; a.storeResponseIn=""; }
-  if(kind==="RUN_SERVICE") a.serviceId="";
-  ED.actions.push(a);
-  renderEditorLists();
-}
-async function saveEditor(){
-  if(!ED.id){ msg("svcMsg","nothing open","err"); return; }
-  ED.name = (D("edName").value||"").trim() || ED.name;
-  ED.description = D("edDesc").value||"";
-  ED.isEnabled = !!D("edEnabled").checked;
-  ED.triggers.forEach(function(tr){ if(!tr._kind) tr._kind = (tr.type||"LOG"); });
-  ED.actions.forEach(function(a){ if(!a._kind) a._kind = (a.type||"DELAY"); });
-  try{
-    var r = await post("/api/services/" + encodeURIComponent(ED.id), {json: JSON.stringify(ED)});
-    if(r.error){ msg("svcMsg", r.error, "err"); toast(r.error,false); return; }
-    msg("svcMsg", r.message || "saved", "good"); toast("Macro saved", true);
-    refreshServices();
-  }catch(e){ msg("svcMsg", e.message, "err"); }
-}
-async function runEditor(){
-  if(!ED.id) return;
-  await saveEditor();
-  await runService(ED.id);
-}
-
-async function refreshStore(){
-  try{
-    var s = await api("/api/store");
-    var rows = s.domains || [];
-    D("storeRows").innerHTML = rows.map(function(d){
-      return "<tr><td>" + esc(d.domain) + "</td><td>" + esc(d.keys) + "</td><td>" +
-        esc(d.used) + "</td><td>" + esc(d.limit) + "</td><td>" +
-        "<button type=\"button\" class=\"danger\" onclick='clearDomain(" + arg(d.domain) + ")'>Clear</button></td></tr>";
-    }).join("") || "<tr><td colspan=\"5\"><div class=\"empty\"><span class=\"ms\">database</span>empty</div></td></tr>";
-    paintStorage(s);
-  }catch(e){}
-}
-async function setLimit(){
-  try{
-    var r = await post("/api/limits", {domain: D("qDomain").value, limit: D("qLimit").value});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function saveKey(){
-  try{
-    var r = await post("/api/store", {domain: D("sDomain").value, key: D("sKey").value, value: D("sVal").value});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function clearDomain(d){
-  var ok = await confirmModal("Clear domain", "Clear all keys in " + d + "?");
-  if(!ok) return;
-  try{
-    var r = await post("/api/store/clear", {domain: d});
-    msg("storeMsg", r.message, "good"); refreshStore();
-  }catch(e){ msg("storeMsg", e.message, "err"); }
-}
-async function refreshVars(){
-  try{
-    var s = await api("/api/vars");
-    var keys = Object.keys(s.vars || {});
-    D("varRows").innerHTML = keys.map(function(k){
-      return "<tr><td>" + esc(k) + "</td><td style=\"word-break:break-all\">" + esc(s.vars[k]) + "</td></tr>";
-    }).join("") || "<tr><td colspan=\"2\"><div class=\"empty\"><span class=\"ms\">data_object</span>none</div></td></tr>";
-  }catch(e){}
-}
-function copyText(t, okMsg){
-  t = t || "";
-  function ok(){ toast(okMsg || "copied", "good"); }
-  function fail(){ toast("copy failed — select text manually", "err"); }
-  function fallback(){
-    try{
-      var ta = document.createElement("textarea");
-      ta.value = t;
-      ta.setAttribute("readonly", "");
-      ta.style.cssText = "position:fixed;left:-9999px;top:0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, ta.value.length);
-      var done = document.execCommand("copy");
-      document.body.removeChild(ta);
-      if(done) ok(); else fail();
-    }catch(e){ fail(); }
-  }
-  if(navigator.clipboard && window.isSecureContext){
-    navigator.clipboard.writeText(t).then(ok).catch(function(){ fallback(); });
-  } else {
-    fallback();
-  }
-}
-function copyVars(){
-  var rows = (D("varRows") && D("varRows").innerText) || "";
-  copyText(rows, "vars copied");
-}
-async function refreshConsole(){
-  try{
-    var s = await api("/api/logs");
-    var box = D("console");
-    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    var lines = s.lines || [];
-    if(!lines.length){
-      box.innerHTML = '<span class="log-empty">(no lines)</span>';
-    }else{
-      box.innerHTML = lines.map(function(line){
-        var raw = String(line == null ? "" : line);
-        var m = raw.match(/^\[([A-Z0-9_]+)\]:\s*(.*)$/);
-        if(m){
-          var tag = m[1];
-          var known = {BRIDGE:1, APP:1, ROBOT:1, SHIZUKU:1};
-          var cls = known[tag] ? ("tag-" + tag) : "tag-other";
-          return '<div class="log-line"><span class="' + cls + '">[' + esc(tag) + ']:</span> ' + esc(m[2]) + '</div>';
-        }
-        return '<div class="log-line">' + esc(raw) + '</div>';
-      }).join("");
-    }
-    if(atBottom) box.scrollTop = box.scrollHeight;
-  }catch(e){}
-}
-function copyConsole(){
-  var box = D("console");
-  var txt = (box && (box.innerText || box.textContent)) || "";
-  copyText(txt, "console copied");
-}
-function refreshAll(){
-  refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
-  loadAutoDomain(); refreshDomainDatalist(); refreshRegisteredDomains(); loadLimits(); loadSinkConfig();
-}
-var inv = D("inv");
-if(inv) inv.addEventListener("keydown", function(e){
-  if(e.key === "Enter"){ e.preventDefault(); sendInvoke(); }
-});
-document.fonts && document.fonts.load && document.fonts.load('20px "Material Symbols Rounded"').catch(function(){});
-setInterval(function(){
-  if(RELOADING) return;
-  if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
-}, 3000);
-try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
-refreshAll();
-</script>
-</body>
-</html>
-""".trimIndent()
-
-    private val FULL: String by lazy { PART_A + PART_B + PART_C + PART_D + PART_E + PART_F }
-
-    fun page(showScreenshot: Boolean): String = FULL.replace(
-        SCREENSHOT_MARKER,
-        if (showScreenshot) SCREENSHOT_BUTTON else "",
-    )
-
-    /**
-     * Login shell only — no dashboard markup, no control JS.
-     * Served for unauthenticated clients so inspect-element cannot "unlock" the panel.
-     * After /api/login sets the session cookie, client reloads `/` and gets [page].
-     */
-    fun loginPage(): String = LOGIN_SHELL
-
-    private val LOGIN_SHELL: String = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<title>CWBridge - Lock</title>
-<style>
-:root{--bg:#0b0e13;--panel:#11151c;--line:rgba(255,255,255,.08);--text:#eef1f7;--muted:#8b93a7;--accent:#6ea8fe;}
-*{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:grid;place-items:center}
-main{width:min(360px,92rwl);padding:24px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 12px 32px rgba(0,0,0,.35)}
-h1{margin:0 0 10px;font-size:1.25rem}
-.subh{color:var(--muted);font-size:13px;margin:0 0 14px}
-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#0c0e12;color:var(--text);font:inherit;min-height:44px}
-button{width:100%;margin-top:10px;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#0b1020;font:inherit;font-weight:650;cursor:pointer;min-height:44px}
-.msg{min-height:1.2em;margin-top:8px;color:#f76c6c;font-size:13px}
-</style>
-</head>
-<body>
-<main>
-  <div class="card">
-    <h1>CWBridge</h1>
-    <div class="subh">Enter panel password to unlock.</div>
-    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" />
-    <button type="button" id="btn">Unlock</button>
-    <div id="msg" class="msg"></div>
-  </div>
-</main>
-<script>
-(function(){
-  var pw = document.getElementById("pw");
-  var msg = document.getElementById("msg");
-  function unlock(){
-    msg.textContent = "";
-    fetch("/api/login", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({password: pw.value || ""})
-    }).then(function(r){
-      return r.json().then(function(j){ return {ok: r.ok, j: j}; });
-    }).then(function(x){
-      if(!x.ok){
-        msg.textContent = (x.j && x.j.error) || "wrong password";
-        return;
-      }
-      location.reload();
-    }).catch(function(e){
-      msg.textContent = String(e.message || e);
-    });
-  }
-  document.getElementById("btn").onclick = unlock;
-  pw.addEventListener("keydown", function(e){ if(e.key === "Enter") unlock(); });
-})();
-</script>
-</body>
-</html>
-""".trimIndent()
-
-    private const val SCREENSHOT_MARKER = "<!--SCREENSHOT_BUTTON-->"
-    private const val SCREENSHOT_BUTTON =
-        """<button type="button" class="ghost" onclick="loadShot()"><span class="ms sm">photo_camera</span> Screenshot</button>"""
-}
-}lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
-  if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
-  if(kind==="GET_INFO"){ a.infoType="SCREEN_TEXT"; a.storeInVariable=""; }
-  if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
-  if(kind==="AI"){ a.prompt=""; a.model="default"; a.storeResponseIn=""; }
+  if(kind==="AI") a.prompt="";
   if(kind==="RUN_SERVICE") a.serviceId="";
   ED.actions.push(a);
   renderEditorLists();
