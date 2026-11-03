@@ -1034,7 +1034,7 @@ class MainActivity : AppCompatActivity() {
                     val address = addresses.nextElement()
                     if (address is Inet4Address && !address.isLoopbackAddress &&
                         !address.isLinkLocalAddress && address.isSiteLocalAddress
-                    ) candidates += address.hostAddress ?: continue
+                    ) address.hostAddress?.let { candidates.add(it) }
                 }
             }
             candidates.sortedBy {
