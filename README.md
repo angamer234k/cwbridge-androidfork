@@ -148,7 +148,7 @@ JSON fields: `source`, `event`, `time`, `domain`, `key`, `value`, `truncated`, `
 
 ## Web server (control panel)
 
-When the local server is on, open `http://<device-ip>:<port>/` (port tries **8080**, then **8765**, then **80**).
+The local WebUI server starts automatically when CWBridge opens. In the app, open **Server** to see the current LAN URL, scan its QR code from another device, copy the address, or open the dashboard on the phone. If you stop the server manually, use **Start server** to bring it back. The port tries **8080**, then **8765**, then **80**; the dashboard URL is `http://<device-ip>:<port>/`.
 
 ### Access rules
 
