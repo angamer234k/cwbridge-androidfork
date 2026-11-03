@@ -44,6 +44,10 @@
 + CATWEB PACK — public CLIENT/SERVER JSON + PROTOCOL.md + codec under catweb/ (v2 action shapes)
 + NSD DISCOVERY — main app advertises `_cwbridge._tcp` while the web server is up;
   helper scans and opens the panel. Not a custom `cwbridge.local` hostname (Android won't allow it).
++ OFF-DEVICE SAVE — webhook POST + Google Apps Script sheet; saves only or every invoke.
+  Discord webhook URLs get a short message. invoke|sink / invoke|sink.test
++ ADVANCED AI — GET /v1/models in the panel and invoke|ai.models; USD per 1M via provider
+  pricing or a public catalog (invoke|ai.pricing). System prompt, temperature, max tokens.
 
 ## STILL TO DO
 
@@ -59,4 +63,4 @@
 - Debug keystore: decode keystore/cwbridge-debug.p12.b64 before local build
 - Helper needs AdbLib vendored at build time (see build-debug-apk.yml)
 - Same-LAN clients still skip the password by design
-- Current versionName: 2.16.0-android
+- Current versionName: 2.17.0-android

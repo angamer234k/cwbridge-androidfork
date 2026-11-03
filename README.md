@@ -82,7 +82,10 @@ Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engi
 |---------|------|--------|
 | **weather** | `weather.<lat>.<lon>` or `weather.<City>` | Cost **2**. Fetches weather and pastes a short result. |
 | **alive** | `alive` | Free. Pastes `1` if accessibility is up, else `0`. |
-| **ai** | `ai.<prompt>` | Cost **2**. Uses AI settings from the web panel; pastes model text (may auto-Enter depending on build). |
+| **ai** | `ai.<prompt>` | Cost **2**. Uses AI settings from the web panel (model, system prompt, temperature, max tokens); pastes model text and may auto-Enter. |
+| **ai.models** | `ai.models` | Cost **1**. Pastes ids from the provider `GET /v1/models`. |
+| **ai.pricing** | `ai.pricing` or `ai.pricing.<model>` | Cost **1**. Pastes USD per 1M input/output. Provider prices when `/models` includes them, otherwise a public catalog match. |
+| **sink** | `sink` / `sink.test` | Off-device mirror. `sink` pastes `1` if a webhook or sheet is configured and enabled, else `0`. `sink.test` posts a test row (cost **1**). |
 
 ### Input / UI
 
@@ -109,6 +112,39 @@ Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engi
 ### Timing note (load / paste)
 
 After `load` or `paste`, expect roughly **1.5–2.5s** before text appears (focus tap → **1s** wait → paste). Identical `invoke|` lines within **3s** are **deduped** so Roblox does not triple-fire the same command.
+
+## Off-device save (webhook + Google Sheet)
+
+Turn it on in the web panel under **Store → Off-device save**. Every successful datastore `save` (from the game or the panel) is POSTed as JSON. Optional scope **every invoke** also mirrors other `invoke|` lines (the save itself is still sent once, with the value).
+
+| Field | What to paste |
+|-------|----------------|
+| Webhook | Any `https://` URL that accepts JSON. A Discord webhook URL is sent as a short message instead of raw JSON. |
+| Google Sheet | An **Apps Script web app** URL ending in `/exec`. Not the spreadsheet link. |
+| Secret | Optional. Sent as header `X-CWBridge-Token`. |
+
+Apps Script (Extensions → Apps Script, deploy as web app, anyone):
+
+```javascript
+function doPost(e) {
+  var body = JSON.parse(e.postData.contents);
+  var sheet = SpreadsheetApp.getActive().getSheets()[0];
+  sheet.appendRow([
+    body.time || new Date(),
+    body.event || "",
+    body.domain || "",
+    body.key || "",
+    body.value || "",
+    body.arg1 || "",
+    body.arg2 || ""
+  ]);
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+JSON fields: `source`, `event`, `time`, `domain`, `key`, `value`, `truncated`, `arg1`, `arg2`, `note`. Values longer than 24k characters are clipped.
 
 ## Web server (control panel)
 

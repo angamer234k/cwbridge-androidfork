@@ -16,7 +16,9 @@ import com.cwbridge.android.data.ServiceConverters
 import com.cwbridge.android.data.ServiceRepository
 import com.cwbridge.android.data.DatastoreRateLimit
 import com.cwbridge.android.data.Store
+import com.cwbridge.android.data.OffDeviceSink
 import com.cwbridge.android.data.VarStore
+import com.cwbridge.android.engine.AiCatalog
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -329,6 +331,10 @@ class LocalHttpServer(
 
             path == "/api/ai-config" && method == "GET" -> respond(out, 200, aiConfigJson())
             path == "/api/ai-config" && method == "POST" -> respond(out, 200, setAiConfigJson(body))
+            path == "/api/ai-models" && method == "GET" -> respond(out, 200, aiModelsJson())
+            path == "/api/sink-config" && method == "GET" -> respond(out, 200, sinkConfigJson())
+            path == "/api/sink-config" && method == "POST" -> respond(out, 200, setSinkConfigJson(body))
+            path == "/api/sink-test" && method == "POST" -> respond(out, 200, sinkTestJson())
 
             // External storage API endpoints
             path == "/api/storage/status" && method == "GET" -> respond(out, 200, storageStatusJson())
@@ -766,6 +772,7 @@ class LocalHttpServer(
         val timeoutSec = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_timeout_sec", "90") ?: "90"
         val temperature = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_temperature", "0.7") ?: "0.7"
         val maxTokens = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_max_tokens", "1024") ?: "1024"
+        val system = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_system", "") ?: ""
         val masked = when {
             tok.isEmpty() -> ""
             tok.length <= 8 -> "••••"
@@ -781,6 +788,7 @@ class LocalHttpServer(
                 "timeoutSec" to (timeoutSec.toIntOrNull()?.coerceIn(15, 300) ?: 90),
                 "temperature" to (temperature.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7),
                 "maxTokens" to (maxTokens.toIntOrNull()?.coerceIn(1, 16384) ?: 1024),
+                "system" to system,
             ),
         )
     }
@@ -794,6 +802,7 @@ class LocalHttpServer(
         val timeoutRaw = jsonString(body, "timeoutSec").trim()
         val temperatureRaw = jsonString(body, "temperature").trim()
         val maxTokensRaw = jsonString(body, "maxTokens").trim()
+        val systemRaw = jsonString(body, "system")
 
         if (url.isNotBlank()) {
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_url", url.trimEnd('/'))
@@ -812,6 +821,17 @@ class LocalHttpServer(
             val sec = timeoutRaw.toIntOrNull()?.coerceIn(15, 300) ?: 90
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_timeout_sec", sec.toString())
         }
+        if (temperatureRaw.isNotBlank()) {
+            val t = temperatureRaw.toDoubleOrNull()?.coerceIn(0.0, 2.0) ?: 0.7
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_temperature", t.toString())
+        }
+        if (maxTokensRaw.isNotBlank()) {
+            val n = maxTokensRaw.toIntOrNull()?.coerceIn(1, 16384) ?: 1024
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_max_tokens", n.toString())
+        }
+        if (bodyField(body, "system") != null) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_system", systemRaw.take(4000))
+        }
         if (clearToken) {
             com.cwbridge.android.data.UserFileStore.putSetting(context, "ai_token", "")
         } else if (token.isNotBlank()) {
@@ -819,6 +839,104 @@ class LocalHttpServer(
         }
         LogBuffer.i("Server", "ai-config updated style=${com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_style", "chat")}")
         return aiConfigJson()
+    }
+
+    private fun aiModelsJson(): String {
+        val url = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_url", "")?.trim().orEmpty()
+        val token = com.cwbridge.android.data.UserFileStore.getSetting(context, "ai_token", "")?.trim().orEmpty()
+        if (url.isEmpty()) return json(mapOf("error" to "configure AI URL first"))
+        return try {
+            val rows = AiCatalog.fetch(url, token)
+            val models = rows.map { row ->
+                mapOf(
+                    "id" to row.id,
+                    "ownedBy" to row.ownedBy,
+                    "input" to row.inPerM?.let { AiCatalog.money(it) },
+                    "output" to row.outPerM?.let { AiCatalog.money(it) },
+                    "priceSource" to row.priceSource,
+                )
+            }
+            val priced = rows.count { it.inPerM != null || it.outPerM != null }
+            val note = when {
+                priced == 0 -> "provider /models has no prices"
+                rows.any { it.priceSource == "catalog" } -> "prices from public catalog when the provider omits them"
+                else -> "prices from provider"
+            }
+            json(
+                mapOf(
+                    "ok" to true,
+                    "endpoint" to AiCatalog.modelsUrl(url),
+                    "count" to rows.size,
+                    "note" to note,
+                    "models" to models,
+                ),
+            )
+        } catch (t: Throwable) {
+            json(mapOf("error" to (t.message ?: "models failed")))
+        }
+    }
+
+    private fun sinkConfigJson(): String {
+        val secret = com.cwbridge.android.data.UserFileStore.getSetting(context, "sink_secret", "")?.trim().orEmpty()
+        return json(
+            mapOf(
+                "on" to OffDeviceSink.enabled(context),
+                "scope" to OffDeviceSink.scope(context),
+                "webhook" to OffDeviceSink.webhook(context),
+                "sheet" to OffDeviceSink.sheet(context),
+                "secretSet" to secret.isNotEmpty(),
+            ),
+        )
+    }
+
+    private fun setSinkConfigJson(body: String): String {
+        val onEl = bodyField(body, "on")
+        if (onEl != null && !onEl.isJsonNull && onEl.isJsonPrimitive) {
+            val prim = onEl.asJsonPrimitive
+            val on = when {
+                prim.isBoolean -> prim.asBoolean
+                prim.isString -> prim.asString == "1" || prim.asString.equals("true", true)
+                else -> false
+            }
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "sink_on", if (on) "1" else "0")
+        }
+        if (bodyField(body, "scope") != null) {
+            val scope = jsonString(body, "scope").trim().lowercase()
+            val norm = if (scope == OffDeviceSink.SCOPE_ALL) OffDeviceSink.SCOPE_ALL else OffDeviceSink.SCOPE_SAVE
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "sink_scope", norm)
+        }
+        if (bodyField(body, "webhook") != null) {
+            com.cwbridge.android.data.UserFileStore.putSetting(
+                context,
+                "sink_webhook",
+                jsonString(body, "webhook").trim().take(2000),
+            )
+        }
+        if (bodyField(body, "sheet") != null) {
+            com.cwbridge.android.data.UserFileStore.putSetting(
+                context,
+                "sink_sheet",
+                jsonString(body, "sheet").trim().take(2000),
+            )
+        }
+        val clearSecret = bodyField(body, "clearSecret")?.asBoolean == true
+        val secret = jsonString(body, "secret")
+        if (clearSecret) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "sink_secret", "")
+        } else if (secret.isNotBlank()) {
+            com.cwbridge.android.data.UserFileStore.putSetting(context, "sink_secret", secret.trim().take(200))
+        }
+        LogBuffer.i("Server", "sink-config on=${OffDeviceSink.enabled(context)} scope=${OffDeviceSink.scope(context)}")
+        return sinkConfigJson()
+    }
+
+    private fun sinkTestJson(): String {
+        return try {
+            val msg = OffDeviceSink.test(context)
+            json(mapOf("ok" to true, "message" to msg))
+        } catch (t: Throwable) {
+            json(mapOf("error" to (t.message ?: "sink test failed")))
+        }
     }
 
 

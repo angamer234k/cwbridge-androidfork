@@ -7,6 +7,7 @@ import com.cwbridge.android.DeviceStatus
 import com.cwbridge.android.TapService
 import com.cwbridge.android.bridge.LogBuffer
 import com.cwbridge.android.data.DatastoreRateLimit
+import com.cwbridge.android.data.OffDeviceSink
 import com.cwbridge.android.data.Store
 import com.cwbridge.android.data.UserFileStore
 import java.util.concurrent.atomic.AtomicBoolean
@@ -72,7 +73,7 @@ class InvokeEngine(
         LogBuffer.i("Invoke", "engine on — watching for invoke|")
         LogBuffer.i(
             "Invoke",
-            "cmds: save load storeinfo setlimit weather exists alive keys status tap paste qr totp totpcheck help",
+            "cmds: save load storeinfo setlimit weather alive ai ai.models ai.pricing sink status tap paste qr totp help",
         )
     }
 
@@ -171,6 +172,10 @@ class InvokeEngine(
     }
 
     private suspend fun dispatch(request: String, data1: String, data2: String) {
+        try {
+            OffDeviceSink.onInvoke(context, request, data1, data2)
+        } catch (_: Throwable) {
+        }
         when (request) {
             "save" -> {
                 // save.<key>.<value>[.<domain.rbx>]
@@ -575,15 +580,21 @@ class InvokeEngine(
           "help",
           "save.key.data | load.key.domain | storeinfo.domain | setlimit.domain.type.val | " +
               "status | tap.x.y | paste.text | qr.text | totp.secret | totpcheck.secret.code | " +
+              "ai.prompt | ai.models | ai.pricing | sink | sink.test | " +
               "enter | clip | focus | submit | wait | toast | echo | help",
       )
   }
 
             "ai" -> {
+                val head = data1.lowercase()
+                if (head == "models" || head == "pricing" || head == "price") {
+                    dispatchAiMeta(head, data2)
+                    return
+                }
                 // ai.<prompt> — uses web AI settings; pastes model text; costs 2
                 val prompt = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
                 if (prompt.isEmpty()) {
-                    replyErr("ai", "need ai.prompt")
+                    replyErr("ai", "need ai.prompt (or ai.models / ai.pricing)")
                     return
                 }
                 val domain = Store.DEFAULT_DOMAIN
@@ -597,6 +608,7 @@ class InvokeEngine(
                 val model = UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini")?.trim().orEmpty()
                     .ifBlank { "gpt-4o-mini" }
                 val style = UserFileStore.getSetting(context, "ai_style", "chat")?.trim()?.lowercase().orEmpty()
+                val system = UserFileStore.getSetting(context, "ai_system", "")?.trim().orEmpty()
                 if (url.isEmpty()) {
                     replyErr("ai", "configure AI URL in web panel")
                     return
@@ -622,6 +634,7 @@ class InvokeEngine(
                             timeoutSec = timeoutSec,
                             temperature = temperature,
                             maxTokens = maxTokens,
+                            system = system,
                         )
                     }
                     if (text.isBlank()) {
@@ -632,6 +645,35 @@ class InvokeEngine(
                     replyOk("ai", text.take(500))
                 } catch (t: Throwable) {
                     replyErr("ai", t.message ?: "llm failed")
+                }
+            }
+
+            "sink" -> {
+                val sub = data1.lowercase()
+                when (sub) {
+                    "", "status" -> {
+                        val on = OffDeviceSink.enabled(context) &&
+                            (OffDeviceSink.webhook(context).isNotEmpty() || OffDeviceSink.sheet(context).isNotEmpty())
+                        val bit = if (on) "1" else "0"
+                        pasteIntoGame(bit)
+                        replyOk("sink", bit)
+                    }
+                    "test" -> {
+                        val domain = Store.DEFAULT_DOMAIN
+                        val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 1)
+                        if (rl != null) {
+                            replyErr("sink", rl)
+                            return
+                        }
+                        try {
+                            val msg = withContext(Dispatchers.IO) { OffDeviceSink.test(context) }
+                            pasteIntoGame("1")
+                            replyOk("sink", msg)
+                        } catch (t: Throwable) {
+                            replyErr("sink", t.message ?: "sink failed")
+                        }
+                    }
+                    else -> replyErr("sink", "need sink or sink.test")
                 }
             }
 
@@ -759,6 +801,45 @@ class InvokeEngine(
     }
 
 
+    /** ai.models / ai.pricing[.<model>] — list ids or paste USD per 1M tokens. Cost 1. */
+    private suspend fun dispatchAiMeta(head: String, data2: String) {
+        val domain = Store.DEFAULT_DOMAIN
+        val rl = DatastoreRateLimit.checkAndConsume(context, domain, cost = 1)
+        if (rl != null) {
+            replyErr("ai", rl)
+            return
+        }
+        val url = UserFileStore.getSetting(context, "ai_url", "")?.trim().orEmpty()
+        val token = UserFileStore.getSetting(context, "ai_token", "")?.trim().orEmpty()
+        if (url.isEmpty()) {
+            replyErr("ai", "configure AI URL in web panel")
+            return
+        }
+        try {
+            val rows = withContext(Dispatchers.IO) { AiCatalog.fetch(url, token) }
+            if (head == "models") {
+                val ids = rows.joinToString(",") { it.id }
+                val clip = if (ids.length > 700) ids.take(700) + "…" else ids
+                pasteIntoGame(clip)
+                replyOk("ai", "${rows.size} models")
+                return
+            }
+            val configured = UserFileStore.getSetting(context, "ai_model", "gpt-4o-mini")
+                ?.trim().orEmpty().ifBlank { "gpt-4o-mini" }
+            val want = data2.ifBlank { configured }
+            val row = AiCatalog.find(rows, want)
+            if (row == null) {
+                replyErr("ai", "model not in /models: $want")
+                return
+            }
+            val line = AiCatalog.formatPrice(row)
+            pasteIntoGame(line)
+            replyOk("ai", line)
+        } catch (t: Throwable) {
+            replyErr("ai", t.message ?: "models failed")
+        }
+    }
+
     /**
      * OpenAI-compatible call.
      * style "chat" → POST {base}/v1/chat/completions
@@ -773,6 +854,7 @@ class InvokeEngine(
         timeoutSec: Int = 90,
         temperature: Double = 0.7,
         maxTokens: Int = 1024,
+        system: String = "",
     ): String {
         val root = baseUrl.trim().trimEnd('/')
         val useResponses = style == "responses" || style == "v2" || style == "response"
@@ -786,17 +868,21 @@ class InvokeEngine(
         }
         val temp = temperature.coerceIn(0.0, 2.0)
         val maxTok = maxTokens.coerceIn(1, 16384)
+        val sys = system.trim()
         val jsonBody = if (useResponses) {
-            JSONObject()
+            val o = JSONObject()
                 .put("model", model)
                 .put("input", prompt)
                 .put("temperature", temp)
                 .put("max_output_tokens", maxTok)
-                .toString()
+            if (sys.isNotEmpty()) o.put("instructions", sys)
+            o.toString()
         } else {
-            val messages = JSONArray().put(
-                JSONObject().put("role", "user").put("content", prompt),
-            )
+            val messages = JSONArray()
+            if (sys.isNotEmpty()) {
+                messages.put(JSONObject().put("role", "system").put("content", sys))
+            }
+            messages.put(JSONObject().put("role", "user").put("content", prompt))
             JSONObject()
                 .put("model", model)
                 .put("messages", messages)

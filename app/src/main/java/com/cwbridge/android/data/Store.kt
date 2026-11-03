@@ -49,6 +49,11 @@ class Store(context: Context) {
             }
         }
         UserFileStore.storePut(app, slot, data)
+        try {
+            OffDeviceSink.onSave(app, d, key, data)
+        } catch (t: Throwable) {
+            LogBuffer.w("Store", "off-device sink: ${t.message ?: "failed"}")
+        }
         return Result.success(Unit)
     }
 

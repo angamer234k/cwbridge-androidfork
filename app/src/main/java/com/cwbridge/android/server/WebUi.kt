@@ -451,7 +451,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 
   <div class="card" id="sec-ai">
     <h2><span class="ms sm">smart_toy</span> AI (LLM)</h2>
-    <p class="hint">Used by invoke|ai.prompt — OpenAI-compatible. Token stays on device. Style: chat = /v1/chat/completions · responses = /v1/responses.</p>
+    <p class="hint">invoke|ai.prompt uses this. OpenAI-compatible. Token stays on device. Load models hits /v1/models. Prices are USD per 1M tokens (from the provider, or a public catalog when the provider omits them). invoke|ai.models · invoke|ai.pricing · invoke|ai.pricing.model</p>
     <div class="row">
       <div class="field" style="flex:2"><label class="hint">Base URL</label>
         <input id="aiUrl" placeholder="https://api.openai.com"></div>
@@ -468,11 +468,29 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
         <input id="aiToken" type="password" placeholder="sk-… (leave blank to keep)" autocomplete="off"></div>
     </div>
     <div class="row" style="margin-top:8px">
+      <div class="field" style="flex:2"><label class="hint">System prompt</label>
+        <input id="aiSystem" placeholder="optional instructions"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label class="hint">Temperature</label>
+        <input id="aiTemp" placeholder="0.7"></div>
+      <div class="field"><label class="hint">Max tokens</label>
+        <input id="aiMax" placeholder="1024"></div>
+      <div class="field"><label class="hint">Timeout (sec)</label>
+        <input id="aiTimeout" placeholder="90"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button type="button" onclick="saveAiConfig()"><span class="ms sm">save</span> Save AI</button>
       <button type="button" class="ghost" onclick="loadAiConfig()"><span class="ms sm">refresh</span> Reload</button>
+      <button type="button" class="ghost" onclick="loadAiModels()"><span class="ms sm">list</span> Load models</button>
       <button type="button" class="ghost" onclick="clearAiToken()">Clear token</button>
     </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field" style="flex:2"><label class="hint">From /models</label>
+        <select id="aiModelPick" onchange="applyAiModel()"><option value="">load models first</option></select></div>
+    </div>
     <div id="aiMeta" class="hint" style="margin-top:8px"></div>
+    <div id="aiModels" style="margin-top:8px;overflow-x:auto"></div>
     <div id="aiMsg" class="msg"></div>
   </div>
 
@@ -525,6 +543,37 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 """.trimIndent()
 
     private val PART_E: String = """
+  <div class="card" id="sec-sink">
+    <h2><span class="ms sm">cloud_upload</span> Off-device save</h2>
+    <p class="hint">Copies datastore saves off the phone. Webhook is any HTTPS POST (Discord webhook URLs get a short message). Google Sheet is an Apps Script web app URL ending in /exec — not the spreadsheet link. Scope “saves only” or “every invoke”. Game: invoke|sink (pastes 1 or 0) · invoke|sink.test</p>
+    <div class="row">
+      <label class="hint" style="display:flex;align-items:center;gap:6px;padding-top:18px">
+        <input type="checkbox" id="sinkOn" style="width:auto;min-height:0"> Enabled
+      </label>
+      <div class="field"><label class="hint">What to send</label>
+        <select id="sinkScope">
+          <option value="save">Saves only</option>
+          <option value="all">Every invoke</option>
+        </select></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field" style="flex:1"><label class="hint">Webhook URL</label>
+        <input id="sinkWebhook" placeholder="https://discord.com/api/webhooks/… or https://…"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field" style="flex:1"><label class="hint">Google Sheet (Apps Script /exec)</label>
+        <input id="sinkSheet" placeholder="https://script.google.com/macros/s/…/exec"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label class="hint">Shared secret (optional header)</label>
+        <input id="sinkSecret" type="password" placeholder="leave blank to keep" autocomplete="off"></div>
+      <button type="button" onclick="saveSink()"><span class="ms sm">save</span> Save sink</button>
+      <button type="button" class="ghost" onclick="testSink()">Send test</button>
+      <button type="button" class="ghost" onclick="clearSinkSecret()">Clear secret</button>
+    </div>
+    <div id="sinkMeta" class="hint" style="margin-top:8px"></div>
+    <div id="sinkMsg" class="msg"></div>
+  </div>
   <div class="card">
     <h2><span class="ms sm">data_object</span> Variables</h2>
     <div class="row" style="margin-bottom:8px">
@@ -942,6 +991,14 @@ async function loadAiConfig(){
     if(u) u.value=j.url||'';
     if(m) m.value=j.model||'';
     if(s) s.value=(j.style==='responses'?'responses':'chat');
+    var sys=document.getElementById('aiSystem');
+    var temp=document.getElementById('aiTemp');
+    var mx=document.getElementById('aiMax');
+    var to=document.getElementById('aiTimeout');
+    if(sys) sys.value=j.system||'';
+    if(temp) temp.value=(j.temperature!=null?j.temperature:'');
+    if(mx) mx.value=(j.maxTokens!=null?j.maxTokens:'');
+    if(to) to.value=(j.timeoutSec!=null?j.timeoutSec:'');
     if(meta) meta.textContent=j.tokenSet?('Token: '+(j.tokenMasked||'set')):'Token: not set';
   }catch(e){}
 }
@@ -949,7 +1006,11 @@ async function saveAiConfig(){
   const body={
     url:(document.getElementById('aiUrl')&&document.getElementById('aiUrl').value||'').trim(),
     model:(document.getElementById('aiModel')&&document.getElementById('aiModel').value||'').trim(),
-    style:(document.getElementById('aiStyle')&&document.getElementById('aiStyle').value)||'chat'
+    style:(document.getElementById('aiStyle')&&document.getElementById('aiStyle').value)||'chat',
+    system:(document.getElementById('aiSystem')&&document.getElementById('aiSystem').value||''),
+    temperature:(document.getElementById('aiTemp')&&document.getElementById('aiTemp').value||'').trim(),
+    maxTokens:(document.getElementById('aiMax')&&document.getElementById('aiMax').value||'').trim(),
+    timeoutSec:(document.getElementById('aiTimeout')&&document.getElementById('aiTimeout').value||'').trim()
   };
   const tok=document.getElementById('aiToken');
   if(tok&&tok.value) body.token=tok.value;
@@ -967,6 +1028,85 @@ async function clearAiToken(){
     await post('/api/ai-config', {clearToken:true});
     toast('Token cleared', true);
     loadAiConfig();
+  }catch(e){ toast(e.message||String(e), false); }
+}
+function applyAiModel(){
+  var pick=document.getElementById('aiModelPick');
+  var m=document.getElementById('aiModel');
+  if(pick&&m&&pick.value) m.value=pick.value;
+}
+async function loadAiModels(){
+  try{
+    const j=await api('/api/ai-models');
+    if(j.error){ msg('aiMsg', j.error, 'err'); return; }
+    const rows=j.models||[];
+    const pick=document.getElementById('aiModelPick');
+    if(pick){
+      var html='<option value="">pick a model</option>';
+      for(var i=0;i<rows.length;i++){
+        html+='<option value="'+esc(rows[i].id)+'">'+esc(rows[i].id)+'</option>';
+      }
+      pick.innerHTML=html;
+    }
+    const box=document.getElementById('aiModels');
+    if(box){
+      var n=Math.min(rows.length, 40);
+      var t='<table><thead><tr><th>Model</th><th>In / 1M</th><th>Out / 1M</th><th></th></tr></thead><tbody>';
+      for(var k=0;k<n;k++){
+        var r=rows[k];
+        t+='<tr><td>'+esc(r.id)+'</td><td>'+esc(r.input==null?'-':String(r.input))+'</td><td>'+esc(r.output==null?'-':String(r.output))+'</td><td>'+esc(r.priceSource||'')+'</td></tr>';
+      }
+      if(rows.length>n) t+='<tr><td colspan="4">+'+(rows.length-n)+' more</td></tr>';
+      t+='</tbody></table>';
+      box.innerHTML=t;
+    }
+    msg('aiMsg', (j.count||rows.length)+' models'+(j.note?(' — '+j.note):''), 'good');
+  }catch(e){ msg('aiMsg', e.message||String(e), 'err'); }
+}
+async function loadSinkConfig(){
+  try{
+    const j=await api('/api/sink-config');
+    const on=document.getElementById('sinkOn');
+    const sc=document.getElementById('sinkScope');
+    const wh=document.getElementById('sinkWebhook');
+    const sh=document.getElementById('sinkSheet');
+    const meta=document.getElementById('sinkMeta');
+    if(on) on.checked=!!j.on;
+    if(sc) sc.value=(j.scope==='all'?'all':'save');
+    if(wh) wh.value=j.webhook||'';
+    if(sh) sh.value=j.sheet||'';
+    if(meta) meta.textContent=j.secretSet?'Secret: set':'Secret: not set';
+  }catch(e){}
+}
+async function saveSink(){
+  const body={
+    on:!!(document.getElementById('sinkOn')&&document.getElementById('sinkOn').checked),
+    scope:(document.getElementById('sinkScope')&&document.getElementById('sinkScope').value)||'save',
+    webhook:(document.getElementById('sinkWebhook')&&document.getElementById('sinkWebhook').value||'').trim(),
+    sheet:(document.getElementById('sinkSheet')&&document.getElementById('sinkSheet').value||'').trim()
+  };
+  const sec=document.getElementById('sinkSecret');
+  if(sec&&sec.value) body.secret=sec.value;
+  try{
+    const j=await post('/api/sink-config', body);
+    if(j.error){ msg('sinkMsg', j.error, 'err'); return; }
+    if(sec) sec.value='';
+    msg('sinkMsg', 'Off-device save updated', 'good');
+    loadSinkConfig();
+  }catch(e){ msg('sinkMsg', e.message||String(e), 'err'); }
+}
+async function testSink(){
+  try{
+    const j=await post('/api/sink-test', {});
+    if(j.error){ msg('sinkMsg', j.error, 'err'); return; }
+    msg('sinkMsg', j.message||'test sent', 'good');
+  }catch(e){ msg('sinkMsg', e.message||String(e), 'err'); }
+}
+async function clearSinkSecret(){
+  try{
+    await post('/api/sink-config', {clearSecret:true});
+    toast('Secret cleared', true);
+    loadSinkConfig();
   }catch(e){ toast(e.message||String(e), false); }
 }
 
@@ -1385,7 +1525,7 @@ function copyConsole(){
 }
 function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
-  loadAutoDomain(); refreshDomainDatalist(); loadLimits();
+  loadAutoDomain(); refreshDomainDatalist(); loadLimits(); loadSinkConfig();
 }
 var inv = D("inv");
 if(inv) inv.addEventListener("keydown", function(e){
