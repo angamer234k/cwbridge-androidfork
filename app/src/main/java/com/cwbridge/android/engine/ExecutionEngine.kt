@@ -225,11 +225,22 @@ class ExecutionEngine(
     private fun executeHttpRequest(action: Action.HttpRequestAction) {
         scope.launch(Dispatchers.IO) {
             try {
-                val b = Request.Builder().url(action.url).method(action.method, action.body.toRequestBody(null))
+                val method = action.method.uppercase()
+                val requestBody = if (method == "GET" || method == "HEAD") null
+                    else action.body.toRequestBody(null)
+                val b = Request.Builder().url(action.url).method(method, requestBody)
                 action.headers.forEach { (k, v) -> b.addHeader(k, v) }
-                val resp = okHttpClient.newCall(b.build()).execute()
-                if (!resp.isSuccessful) LogBuffer.e("ExecutionEngine", "HTTP ${resp.code}: ${resp.message}")
-                else LogBuffer.i("ExecutionEngine", "HTTP ${resp.code} ${action.url}")
+                okHttpClient.newCall(b.build()).execute().use { resp ->
+                    val responseText = resp.body?.string().orEmpty()
+                    if (!resp.isSuccessful) {
+                        LogBuffer.e("ExecutionEngine", "HTTP ${resp.code}: ${resp.message}")
+                    } else {
+                        LogBuffer.i("ExecutionEngine", "HTTP ${resp.code} ${action.url}")
+                    }
+                    if (action.storeResponseIn.isNotBlank()) {
+                        VarStore.set(action.storeResponseIn, responseText)
+                    }
+                }
             } catch (e: Exception) {
                 LogBuffer.e("ExecutionEngine", "HTTP error: ${e.message}")
             }
