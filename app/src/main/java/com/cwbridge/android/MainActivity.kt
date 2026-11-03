@@ -1007,7 +1007,7 @@ class MainActivity : AppCompatActivity() {
                 lastQrUrl = url
             } catch (t: Throwable) {
                 binding.serverQr.setImageDrawable(null)
-                LogBuffer.w("Server", "QR generation failed: \${t.message}")
+                LogBuffer.w("Server", "QR generation failed: ${t.message}")
             }
         } else if (url == null) {
             lastQrUrl = null
@@ -1019,7 +1019,7 @@ class MainActivity : AppCompatActivity() {
         val server = localServer ?: return null
         if (!server.isRunning()) return null
         val ip = getLanIpv4Address() ?: return null
-        return "http://$ip:\${server.port()}/"
+        return "http://$ip:${server.port()}/"
     }
 
     private fun getLanIpv4Address(): String? {
