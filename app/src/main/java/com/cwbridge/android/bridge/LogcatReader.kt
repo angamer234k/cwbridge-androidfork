@@ -66,55 +66,62 @@ class LogcatReader(
                 attempt++
                 reconnectRequested = false
                 try {
-                    // After restart Roblox may not exist yet — wait for a PID
-                    var robloxPid: Int? = null
-                    var waitTicks = 0
-                    while (isActive && wantRunning && !reconnectRequested) {
-                        robloxPid = resolveRobloxPid()
-                        if (robloxPid != null && robloxPid > 0) break
-                        waitTicks++
-                        if (waitTicks == 1 || waitTicks % 5 == 0) {
-                            LogBuffer.i("Logcat", "waiting for Roblox process…")
-                        }
-                        delay(1000)
-                    }
+                    // pidof/ps only works when shell can see other apps (Shizuku).
+                    // READ_LOGS alone cannot list pids (hidepid), but it CAN read
+                    // the log. Don't sit on "waiting for Roblox process" forever.
+                    val robloxPid = resolveRobloxPid()
                     if (!isActive || !wantRunning) break
                     if (reconnectRequested) continue
 
-                    val pid = robloxPid!!
-                    LogBuffer.i("Logcat", "filtering to Roblox pid=$pid (attempt $attempt)")
-                    val proc = ProcessBuilder(
-                        "logcat",
-                        "-v", "threadtime",
-                        "-T", "1",
-                        "--pid=$pid",
-                    ).redirectErrorStream(true).start()
+                    val cmd = mutableListOf("logcat", "-v", "threadtime", "-T", "1")
+                    if (robloxPid != null && robloxPid > 0) {
+                        LogBuffer.i("Logcat", "filtering to Roblox pid=$robloxPid (attempt $attempt)")
+                        cmd += "--pid=$robloxPid"
+                    } else {
+                        LogBuffer.w(
+                            "Logcat",
+                            "Roblox pid not found — ${com.cwbridge.android.ShizukuShell.statusLine()}. " +
+                                "Tailing logcat without --pid. " +
+                                "pidof is empty when Shizuku is off (Android hides other apps' /proc).",
+                        )
+                    }
+                    val proc = ProcessBuilder(cmd)
+                        .redirectErrorStream(true).start()
                     process = proc
                     if (attempt == 1) {
                         LogBuffer.i("Logcat", "attached — Roblox-only tail")
                     } else {
-                        LogBuffer.i("Logcat", "re-attached (attempt $attempt, pid=$pid)")
+                        LogBuffer.i("Logcat", "re-attached (attempt $attempt, pid=${robloxPid ?: "any"})")
                     }
 
                     val myPkg = context.packageName
+                    val myPid = android.os.Process.myPid()
                     var lastAliveCheck = System.currentTimeMillis()
+                    var attachedAt = lastAliveCheck
+                    var sawRoblox = false
+                    var warnedNoLines = false
                     BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                         while (isActive && wantRunning && !reconnectRequested) {
-                            // Dead PID / hung logcat: poll every ~1.5s
                             val now = System.currentTimeMillis()
                             if (now - lastAliveCheck >= 1500L) {
                                 lastAliveCheck = now
-                                if (!isPidAlive(pid)) {
-                                    LogBuffer.w("Logcat", "Roblox pid $pid gone — reconnect")
+                                if (robloxPid != null && robloxPid > 0 && !isPidAlive(robloxPid)) {
+                                    LogBuffer.w("Logcat", "Roblox pid $robloxPid gone — reconnect")
                                     break
                                 }
-                                // process died?
                                 try {
                                     proc.exitValue()
                                     LogBuffer.w("Logcat", "logcat process exited — reconnect")
                                     break
                                 } catch (_: IllegalThreadStateException) {
-                                    // still running
+                                }
+                                if (!sawRoblox && !warnedNoLines && now - attachedAt >= 8_000L) {
+                                    warnedNoLines = true
+                                    LogBuffer.w(
+                                        "Logcat",
+                                        "no Roblox lines after 8s. If Roblox is open, READ_LOGS was revoked — " +
+                                            "open Helper and grant it again (allow the logs popup, or rerun the adb grant).",
+                                    )
                                 }
                             }
 
@@ -123,8 +130,12 @@ class LogcatReader(
                                 continue
                             }
                             val line = reader.readLine() ?: break
+                            if (linePid(line) == myPid || OWN_TAG.containsMatchIn(line)) continue
                             if (line.contains(myPkg) && !line.contains("invoke|")) continue
                             if (line.contains("attached —") || line.contains("re-attached")) continue
+                            val unfiltered = robloxPid == null || robloxPid <= 0
+                            if (unfiltered && !looksLikeRobloxLine(line)) continue
+                            sawRoblox = true
 
                             RecentLogLines.add(line)
                             CatWebTracker.onLogLine(line)
@@ -190,6 +201,11 @@ class LogcatReader(
         return current != null && current == pid
     }
 
+    private fun linePid(line: String): Int? {
+        val m = THREADTIME_PID.find(line) ?: return null
+        return m.groupValues[1].toIntOrNull()
+    }
+
     private fun resolveRobloxPid(): Int? {
         val pkgs = listOf(
             "com.roblox.client",
@@ -202,6 +218,14 @@ class LogcatReader(
                 val (code, out) = com.cwbridge.android.ShizukuShell.exec("pidof $joined")
                 val pid = out.trim().split(Regex("\\s+")).firstOrNull()?.toIntOrNull()
                 if (code == 0 && pid != null && pid > 0) return pid
+                // Process name can be the truncated comm (15 chars) so pidof misses.
+                val (c2, ps) = com.cwbridge.android.ShizukuShell.exec(
+                    "ps -A | grep -i roblox | grep -v grep",
+                )
+                if (c2 == 0) {
+                    val fromPs = pidFromPs(ps)
+                    if (fromPs != null) return fromPs
+                }
             }
         } catch (_: Throwable) {
         }
@@ -214,6 +238,18 @@ class LogcatReader(
                 if (pid != null && pid > 0) return pid
             }
         } catch (_: Throwable) {
+        }
+        return null
+    }
+
+    /** toybox `ps -A` columns are USER PID PPID ... NAME. Take the first real pid. */
+    private fun pidFromPs(out: String): Int? {
+        for (line in out.lineSequence()) {
+            if (!line.contains("roblox", ignoreCase = true)) continue
+            val pid = line.trim().split(Regex("\\s+"))
+                .mapNotNull { it.toIntOrNull() }
+                .firstOrNull { it > 50 }
+            if (pid != null) return pid
         }
         return null
     }
@@ -246,6 +282,13 @@ class LogcatReader(
     }
 
     companion object {
+        private val THREADTIME_PID = Regex(
+            """^(?:\d{4}-)?\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+\d+\s""",
+        )
+        private val OWN_TAG = Regex(
+            """\s[VDIWEF]\s+(ROBOT|Logcat|CatWeb|OCR|APP|BRIDGE|Shizuku|A11y|Control|AntiDC)\s*:""",
+        )
+
         @Volatile
         var activeInstance: LogcatReader? = null
             private set

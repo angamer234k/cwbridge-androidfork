@@ -432,8 +432,9 @@ object BridgeControl {
     }
 
     /**
-     * Called when CatWeb logs "finished". Opens domains saved for auto-load
-     * by focusing the URL bar (no Ctrl+T — mobile CatWeb is not Chrome).
+     * Called when CatWeb logs "finished". Opens the saved auto-load domain
+     * in the current tab (no Ctrl+T — mobile CatWeb is not Chrome).
+     * One open at a time: boot prints Finished more than once.
      */
     fun openDomainsOnCwLoad(context: Context): String {
         val domains = loadAutoOpenDomains(context)
@@ -441,9 +442,20 @@ object BridgeControl {
             LogBuffer.i("ROBOT", "catweb loaded — no auto-open domain configured")
             return "no auto-open domains"
         }
-        val one = domains.take(1)
-        LogBuffer.i("ROBOT", "catweb loaded — opening starter domain ${one.firstOrNull()}")
-        return openSingleDomainOnLoad(one.first())
+        val domain = domains.first()
+        synchronized(domainOpenLock) {
+            if (domainOpenRunning) {
+                LogBuffer.i("ROBOT", "domain open already in progress — ignoring extra finished")
+                return "busy"
+            }
+            domainOpenRunning = true
+        }
+        LogBuffer.i("ROBOT", "catweb loaded — opening starter domain $domain")
+        return try {
+            openSingleDomainOnLoad(domain)
+        } finally {
+            domainOpenRunning = false
+        }
     }
 
     fun loadAutoOpenDomains(context: Context): List<String> {
@@ -472,46 +484,80 @@ object BridgeControl {
 
 
     /**
-     * Navigate the current CatWeb tab to [domain] via OCR URL bar
-     * (region X 5-90%, Y 0-50%). No new-tab / multi-tab logic.
+     * Navigate the current CatWeb tab to [domain].
+     * Waits until OCR actually sees "Search or type a URL" — the first
+     * "Finished" line fires while the browser chrome is still loading,
+     * and a blind tap at 6% hits the tab strip (y≈43px in landscape).
      */
     fun openSingleDomainOnLoad(domain: String): String {
         val d = domain.trim()
         if (d.isEmpty()) return "empty domain"
         val svc = TapService.instance
             ?: return "$d: no accessibility (need CWBridge Tap)"
-        val appCtx = svc.applicationContext
-        // OCR URL bar: X 5-90%, Y 0-50% (case-insensitive)
-        LogBuffer.i("ROBOT", "looking for URL bar...")
-        val hit = ScreenOcr.findText(appCtx, "search or type a url", 5f, 90f, 0f, 50f)
-            ?: ScreenOcr.findText(appCtx, "type a url", 5f, 90f, 0f, 50f)
-            ?: ScreenOcr.findText(appCtx, "search or type", 5f, 90f, 0f, 50f)
-        val tapped = if (hit != null) {
-            svc.clickAt(hit.centerX, hit.centerY)
+        LogBuffer.i("ROBOT", "looking for URL bar (waiting until it is on screen)...")
+        val queries = listOf("search or type a url", "type a url", "search or type")
+        var hit: ScreenOcr.Hit? = null
+        val attempts = 12
+        for (i in 1..attempts) {
+            hit = ScreenOcr.findAny(
+                svc.applicationContext,
+                queries,
+                announceMiss = i == 1 || i == attempts,
+            )
+            if (hit != null) break
+            if (i == 1 || i % 3 == 0) {
+                LogBuffer.i("ROBOT", "URL bar not visible yet ($i/$attempts) — CatWeb still loading")
+            }
+            try {
+                Thread.sleep(1500)
+            } catch (_: InterruptedException) {
+                return "$d: interrupted"
+            }
+        }
+        val tapped = if (hit != null && hit.bitmapW > 0 && hit.bitmapH > 0) {
+            val xp = hit.centerX / hit.bitmapW * 100f
+            val yp = hit.centerY / hit.bitmapH * 100f
+            LogBuffer.i(
+                "ROBOT",
+                "URL bar OCR \"${hit.text.take(32)}\" @ ${xp.toInt()}%,${yp.toInt()}%",
+            )
+            svc.clickAtPercent(xp, yp)
         } else {
-            LogBuffer.w("ROBOT", "OCR URL bar miss — percent fallback 50%,6%")
-            svc.clickAtPercent(50f, 6f)
+            val dm = svc.resources.displayMetrics
+            val landscape = dm.widthPixels > dm.heightPixels
+            // Tabs occupy the top few percent. 6% is the tab strip in landscape
+            // (this user's tap landed at y=43). The URL bar is the row under it.
+            val yPct = if (landscape) 13f else 8f
+            val orient = if (landscape) "landscape" else "portrait"
+            LogBuffer.w(
+                "ROBOT",
+                "OCR never saw the URL bar — fallback tap 50%,${yPct.toInt()}% ($orient)",
+            )
+            svc.clickAtPercent(50f, yPct)
         }
         if (!tapped) {
             LogBuffer.w("ROBOT", "URL bar tap failed for $d")
             return "$d: URL bar tap failed"
         }
-        LogBuffer.i("ROBOT", "found, tapping n typing the start domain..")
-        try { Thread.sleep(400) } catch (_: InterruptedException) {}
+        LogBuffer.i("ROBOT", "URL bar tapped, typing $d")
+        try { Thread.sleep(450) } catch (_: InterruptedException) {}
         val typed = if (ShizukuShell.isReady()) ShizukuShell.inputText(d) else svc.sendText(d)
         if (!typed) {
-            LogBuffer.w("ROBOT", "type failed for $d")
+            LogBuffer.w("ROBOT", "type failed for $d (need Shizuku)")
             return "$d: type failed"
         }
-        try { Thread.sleep(200) } catch (_: InterruptedException) {}
+        try { Thread.sleep(250) } catch (_: InterruptedException) {}
         val enter = if (ShizukuShell.isReady()) ShizukuShell.pressEnter() else svc.pressEnter()
         return if (enter) {
-            LogBuffer.i("ROBOT", "domain $d is opened")
+            LogBuffer.i("ROBOT", "submitted $d (typed + enter)")
             "$d: ok"
         } else {
             LogBuffer.w("ROBOT", "Enter failed for $d")
             "$d: Enter failed"
         }
     }
+
+    private val domainOpenLock = Any()
+    @Volatile private var domainOpenRunning = false
 
 }

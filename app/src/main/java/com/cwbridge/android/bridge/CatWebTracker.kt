@@ -84,23 +84,6 @@ object CatWebTracker {
             } else {
                 // already handled this session — stay quiet (was flooding the console)
             }
-        } else if (
-            ready && (
-                lower.contains("waiting for server") ||
-                    lower.contains("loading") ||
-                    (lower.contains("catweb") && (lower.contains("v") || lower.contains("version")))
-            )
-        ) {
-            // Session reloading after reconnect — arm so next finished reopens domain
-            armForNextReady()
-            val detail = when {
-                lower.contains("waiting for server") -> "Waiting for server…"
-                lower.contains("loading") -> "CatWeb loading…"
-                else -> "CatWeb restarting…"
-            }
-            if (BridgeStatus.state != OverlayState.ERROR) {
-                BridgeStatus.set(OverlayState.WAITING, detail)
-            }
         } else if (!ready) {
             val detail = when {
                 lower.contains("waiting for server") -> "Waiting for server…"
@@ -112,6 +95,11 @@ object CatWebTracker {
                 BridgeStatus.set(OverlayState.WAITING, detail)
             }
         }
+        // Do NOT re-arm on "waiting for server" / "loading" after ready.
+        // A normal boot prints Finished, then "Loading console module",
+        // "Waiting for server", Finished again. Treating that as a reload
+        // started a second domain-open while the URL bar was not up yet.
+        // Real disconnects re-arm via AntiDisconnect / DisconnectOcrWatch.
         return true
     }
 }

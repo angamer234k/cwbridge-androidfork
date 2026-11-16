@@ -26,9 +26,15 @@ object ScreenOcr {
         val centerX: Float,
         val centerY: Float,
         val bounds: Rect,
+        val bitmapW: Int = 0,
+        val bitmapH: Int = 0,
     )
 
-    fun capture(context: Context): Bitmap? {
+    private val captureLock = Any()
+
+    fun capture(context: Context): Bitmap? = synchronized(captureLock) { captureLocked(context) }
+
+    private fun captureLocked(context: Context): Bitmap? {
         if (ShizukuShell.isReady()) {
             val dir = context.getExternalFilesDir(null) ?: context.cacheDir
             val file = File(dir, "cw_screencap.png")
@@ -63,6 +69,85 @@ object ScreenOcr {
         } catch (_: InterruptedException) {
         }
         return box.get()
+    }
+
+    /**
+     * One screencap, several case-insensitive substrings.
+     * Prefers the longest query, then the topmost hit (the locked URL bar, not the new-tab box).
+     */
+    fun findAny(
+        context: Context,
+        queries: List<String>,
+        x0Pct: Float = 0f,
+        x1Pct: Float = 100f,
+        y0Pct: Float = 0f,
+        y1Pct: Float = 100f,
+        announceMiss: Boolean = true,
+    ): Hit? {
+        val qs = queries.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        if (qs.isEmpty()) return null
+        val full = capture(context) ?: run {
+            if (announceMiss) LogBuffer.w("OCR", "no bitmap")
+            return null
+        }
+        try {
+            val w = full.width
+            val h = full.height
+            if (w < 2 || h < 2) return null
+            val left = ((x0Pct / 100f) * w).toInt().coerceIn(0, w - 1)
+            val top = ((y0Pct / 100f) * h).toInt().coerceIn(0, h - 1)
+            val right = ((x1Pct / 100f) * w).toInt().coerceIn(left + 1, w)
+            val bottom = ((y1Pct / 100f) * h).toInt().coerceIn(top + 1, h)
+            val crop = try {
+                if (left == 0 && top == 0 && right == w && bottom == h) full
+                else Bitmap.createBitmap(full, left, top, right - left, bottom - top)
+            } catch (t: Throwable) {
+                LogBuffer.w("OCR", "crop: ${t.message}")
+                full
+            }
+            val hits = recognizeAll(crop)
+            if (crop !== full) {
+                try {
+                    crop.recycle()
+                } catch (_: Throwable) {
+                }
+            }
+            var best: Hit? = null
+            var bestQ = ""
+            for (raw in hits) {
+                val low = raw.text.lowercase()
+                val q = qs.filter { low.contains(it) }.maxByOrNull { it.length } ?: continue
+                val b = Rect(
+                    raw.bounds.left + left,
+                    raw.bounds.top + top,
+                    raw.bounds.right + left,
+                    raw.bounds.bottom + top,
+                )
+                val hit = Hit(raw.text, b.exactCenterX(), b.exactCenterY(), b, w, h)
+                val better = best == null ||
+                    q.length > bestQ.length ||
+                    (q.length == bestQ.length && hit.centerY < best.centerY)
+                if (better) {
+                    best = hit
+                    bestQ = q
+                }
+            }
+            if (best != null) {
+                LogBuffer.i(
+                    "OCR",
+                    "hit \"${best.text.take(40)}\" @ (${best.centerX.toInt()},${best.centerY.toInt()}) ${w}x${h} q=\"$bestQ\"",
+                )
+            } else if (announceMiss) {
+                val sample = hits.take(4).joinToString(" | ") { it.text.take(28) }.ifBlank { "(no text)" }
+                LogBuffer.w("OCR", "no hit in ${w}x${h}. saw: $sample")
+            }
+            return best
+        } finally {
+            try {
+                full.recycle()
+            } catch (_: Throwable) {
+            }
+        }
     }
 
     /**
@@ -112,7 +197,7 @@ object ScreenOcr {
                     raw.bounds.right + left,
                     raw.bounds.bottom + top,
                 )
-                val hit = Hit(raw.text, b.exactCenterX(), b.exactCenterY(), b)
+                val hit = Hit(raw.text, b.exactCenterX(), b.exactCenterY(), b, w, h)
                 if (best == null || hit.text.length > best.text.length) best = hit
             }
             if (best != null) {
