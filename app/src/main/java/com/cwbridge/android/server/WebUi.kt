@@ -243,6 +243,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
     <button type="button" class="nav-item" data-page="services" onclick="showPage('services')"><span class="ms sm">extension</span> Services</button>
     <button type="button" class="nav-item" data-page="store" onclick="showPage('store')"><span class="ms sm">database</span> Store</button>
     <button type="button" class="nav-item" data-page="console" onclick="showPage('console')"><span class="ms sm">terminal</span> Console</button>
+    <button type="button" class="nav-item" data-page="settings" onclick="showPage('settings')"><span class="ms sm">settings</span> Settings</button>
     <button type="button" class="nav-item" data-page="about" onclick="showPage('about')"><span class="ms sm">info</span> About</button>
   </nav>
   <button type="button" class="ghost" style="width:100%;margin-top:8px" onclick="logout()"><span class="ms sm">lock</span> Lock</button>
@@ -274,6 +275,19 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
   <a href="#sec-console"><span class="ms sm">terminal</span> Console</a>
 </nav>
 <main>
+  <div class="card" id="updateBanner" hidden style="border-color:rgba(110,168,254,.35)">
+    <div class="row" style="align-items:flex-start">
+      <span class="ms" style="font-size:24px;color:var(--accent)">system_update</span>
+      <div style="flex:1;min-width:180px">
+        <div id="updateBannerTitle" style="font-weight:750">New app version available</div>
+        <div id="updateBannerText" class="hint" style="margin:4px 0 0">A newer version of CWBridge is ready.</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <a id="updateReleaseLink" class="btn" href="https://github.com/angamer234k/cwbridge-androidfork/releases/latest" target="_blank" rel="noopener noreferrer">View release</a>
+      <button type="button" class="ghost" onclick="dismissUpdateBanner()">Dismiss</button>
+    </div>
+  </div>
 <div class="page active" data-page="overview">
   <div class="card" id="sec-storage">
     <h2><span class="ms sm">hard_drive</span> Server storage</h2>
@@ -599,6 +613,32 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
     </div>
   </div>
 </div>
+<div class="page" data-page="settings">
+  <div class="card" id="sec-settings">
+    <h2><span class="ms sm">system_update</span> App updates</h2>
+    <p class="hint">CWBridge checks GitHub Releases for a newer Android app version. Checks run only while this dashboard is open; mobile browsers may delay background timers.</p>
+    <div class="row">
+      <div class="field">
+        <label for="updateCheckInterval">Automatic update checks</label>
+        <select id="updateCheckInterval" onchange="saveUpdateSettings()">
+          <option value="0">Off (manual only)</option>
+          <option value="5">Every 5 minutes</option>
+          <option value="15">Every 15 minutes</option>
+          <option value="30" selected>Every 30 minutes</option>
+          <option value="60">Every hour</option>
+          <option value="180">Every 3 hours</option>
+          <option value="360">Every 6 hours</option>
+          <option value="720">Every 12 hours</option>
+          <option value="1440">Every 24 hours</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button type="button" onclick="checkForAppUpdate(false)"><span class="ms sm">refresh</span> Check now</button>
+    </div>
+    <div id="updateCheckStatus" class="hint" style="margin-top:10px" aria-live="polite">Checking update settings…</div>
+  </div>
+</div>
 <div class="page" data-page="about">
   <div class="card" id="sec-about">
     <h2><span class="ms sm">info</span> About</h2>
@@ -638,9 +678,108 @@ function D(id){ return document.getElementById(id); }
 function showPage(name){
   document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-page')===name); });
   document.querySelectorAll('.nav-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-page')===name); });
-  var pt=D('pageTitle'); if(pt){ var m={overview:'Overview',control:'Control',domains:'Domains',services:'Services',store:'Store',console:'Console',about:'About'}; pt.textContent=m[name]||name; }
+  var pt=D('pageTitle'); if(pt){ var m={overview:'Overview',control:'Control',domains:'Domains',services:'Services',store:'Store',console:'Console',settings:'Settings',about:'About'}; pt.textContent=m[name]||name; }
   try{ localStorage.setItem('cw_page', name); }catch(e){}
   if(window.innerWidth<820){ var sb=D('sidebar'); if(sb) sb.classList.remove('open'); }
+}
+
+var UPDATE_CHECK_TIMER = null;
+var UPDATE_CHECK_BUSY = false;
+var UPDATE_CHECK_KEY = 'cw_update_check_minutes';
+var UPDATE_DISMISSED_KEY = 'cw_update_dismissed_tag';
+
+function updateCheckMinutes(){
+  try{
+    var raw = localStorage.getItem(UPDATE_CHECK_KEY);
+    if(raw === null) return 30;
+    var n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 30;
+  }catch(e){ return 30; }
+}
+function updateCheckStatus(text){
+  var el = D('updateCheckStatus');
+  if(el) el.textContent = text;
+}
+function scheduleUpdateChecks(){
+  if(UPDATE_CHECK_TIMER){ clearInterval(UPDATE_CHECK_TIMER); UPDATE_CHECK_TIMER = null; }
+  var minutes = updateCheckMinutes();
+  var select = D('updateCheckInterval');
+  if(select) select.value = String(minutes);
+  if(minutes > 0){
+    UPDATE_CHECK_TIMER = setInterval(function(){ checkForAppUpdate(true); }, minutes * 60 * 1000);
+    updateCheckStatus('Automatic checks: every ' + (minutes >= 60 && minutes % 60 === 0 ? (minutes/60) + ' hour(s)' : minutes + ' minute(s)') + '.');
+  }else{
+    updateCheckStatus('Automatic checks are off. Use “Check now” whenever you want.');
+  }
+}
+function saveUpdateSettings(){
+  var select = D('updateCheckInterval');
+  var minutes = select ? parseInt(select.value, 10) : 30;
+  if(!Number.isFinite(minutes) || minutes < 0) minutes = 30;
+  try{ localStorage.setItem(UPDATE_CHECK_KEY, String(minutes)); }catch(e){}
+  scheduleUpdateChecks();
+  toast(minutes > 0 ? 'Update check schedule saved' : 'Automatic update checks disabled', true);
+  if(minutes > 0) checkForAppUpdate(true);
+}
+function dismissUpdateBanner(){
+  var banner = D('updateBanner');
+  var tag = banner ? banner.getAttribute('data-release-tag') : '';
+  if(tag){ try{ localStorage.setItem(UPDATE_DISMISSED_KEY, tag); }catch(e){} }
+  if(banner) banner.hidden = true;
+}
+function updateVersionParts(value){
+  var match = String(value || '').match(/^\\s*v?(\\d+(?:\\.\\d+)*)/i);
+  return match ? match[1].split('.').map(function(x){ return parseInt(x,10)||0; }) : [];
+}
+function updateIsNewer(latest, current){
+  var a = updateVersionParts(latest), b = updateVersionParts(current);
+  if(!a.length || !b.length) return false;
+  for(var i=0;i<Math.max(a.length,b.length);i++){
+    var av = a[i] || 0, bv = b[i] || 0;
+    if(av > bv) return true;
+    if(av < bv) return false;
+  }
+  return false;
+}
+async function checkForAppUpdate(silent){
+  if(UPDATE_CHECK_BUSY || RELOADING) return;
+  UPDATE_CHECK_BUSY = true;
+  var statusEl = D('updateCheckStatus');
+  if(statusEl && !silent) statusEl.textContent = 'Checking GitHub Releases…';
+  try{
+    var local = await get('/api/status');
+    var response = await fetch('https://api.github.com/repos/angamer234k/cwbridge-androidfork/releases/latest', {
+      headers:{'Accept':'application/vnd.github+json'},
+      cache:'no-store'
+    });
+    if(!response.ok) throw new Error('GitHub returned HTTP ' + response.status);
+    var release = await response.json();
+    var latest = String(release.tag_name || '');
+    var current = String(local.versionName || '');
+    if(!latest) throw new Error('Latest release has no version tag');
+    var banner = D('updateBanner');
+    var dismissed = '';
+    try{ dismissed = localStorage.getItem(UPDATE_DISMISSED_KEY) || ''; }catch(e){}
+    if(updateIsNewer(latest, current)){
+      if(banner){
+        banner.setAttribute('data-release-tag', latest);
+        D('updateBannerTitle').textContent = 'CWBridge ' + latest + ' is available';
+        D('updateBannerText').textContent = 'You are running ' + current + '. A newer version is ready to view.';
+        var link = D('updateReleaseLink');
+        if(link) link.href = release.html_url || ('https://github.com/angamer234k/cwbridge-androidfork/releases/tag/' + encodeURIComponent(latest));
+        banner.hidden = dismissed === latest;
+      }
+      updateCheckStatus('Update available: ' + latest + ' (installed: ' + current + ').');
+    }else{
+      if(banner) banner.hidden = true;
+      updateCheckStatus('You are up to date (' + current + ').');
+    }
+  }catch(e){
+    if(statusEl) statusEl.textContent = 'Could not check for updates: ' + (e.message || String(e));
+    if(!silent) toast('Update check failed: ' + (e.message || String(e)), false);
+  }finally{
+    UPDATE_CHECK_BUSY = false;
+  }
 }
 
 function esc(s){
@@ -1537,6 +1676,8 @@ setInterval(function(){
   if(D("auto") && D("auto").checked){ refreshConsole(); refreshStatus(); }
 }, 3000);
 try{ showPage(localStorage.getItem('cw_page')||'overview'); }catch(e){ showPage('overview'); }
+scheduleUpdateChecks();
+if(updateCheckMinutes() > 0) checkForAppUpdate(true);
 refreshAll();
 </script>
 </body>
