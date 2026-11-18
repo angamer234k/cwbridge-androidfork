@@ -728,7 +728,7 @@ function dismissUpdateBanner(){
   if(banner) banner.hidden = true;
 }
 function updateVersionParts(value){
-  var match = String(value || '').match(/^\\s*v?(\\d+(?:\\.\\d+)*)/i);
+  var match = String(value || '').match(/^\s*v?(\d+(?:\.\d+)*)/i);
   return match ? match[1].split('.').map(function(x){ return parseInt(x,10)||0; }) : [];
 }
 function updateIsNewer(latest, current){
