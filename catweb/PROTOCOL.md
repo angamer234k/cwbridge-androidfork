@@ -30,7 +30,7 @@ C|<reqId>|<encFullUrl>|<encCmd>[|<encArg1>[|<encArg2>]]
 ```
 
 - `C` = call
-- `reqId` = short id (digits preferred) — **not encoded**
+- `reqId` = unique ID (1–64 ASCII letters, digits, `_` or `-`) — **not encoded**. The bundled client combines a page-load tick with a per-page counter so a reload does not immediately reuse IDs.
 - other fields = CatWeb-encoded (`e` / §9 table)
 
 SERVER handles this on **When cross-site message received** (event 14).
