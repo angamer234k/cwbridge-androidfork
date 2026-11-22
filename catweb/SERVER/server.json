@@ -64,7 +64,7 @@
               "t": "string",
               "l": "separator"
             },
-            "\u2192 (50)",
+            "→ (50)",
             {
               "value": "50",
               "t": "string",
@@ -88,7 +88,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (51)",
+            "→ (51)",
             {
               "value": "51",
               "t": "string",
@@ -130,7 +130,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (52)",
+            "→ (52)",
             {
               "value": "52",
               "t": "string",
@@ -154,7 +154,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (53)",
+            "→ (53)",
             {
               "value": "53",
               "t": "string",
@@ -182,7 +182,7 @@
               ],
               "t": "tuple"
             },
-            "\u2192 (54)",
+            "→ (54)",
             {
               "value": "54",
               "t": "string",
@@ -206,7 +206,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (55)",
+            "→ (55)",
             {
               "value": "55",
               "t": "string",
@@ -234,7 +234,7 @@
               ],
               "t": "tuple"
             },
-            "\u2192 (56)",
+            "→ (56)",
             {
               "value": "56",
               "t": "string",
@@ -288,7 +288,7 @@
               "t": "string",
               "l": "array"
             },
-            "\u2192 (59)",
+            "→ (59)",
             {
               "value": "59",
               "t": "string",
@@ -330,7 +330,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (60)",
+            "→ (60)",
             {
               "value": "60",
               "t": "string",
@@ -358,7 +358,7 @@
               ],
               "t": "tuple"
             },
-            "\u2192 (57)",
+            "→ (57)",
             {
               "value": "57",
               "t": "string",
@@ -407,7 +407,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (61)",
+            "→ (61)",
             {
               "value": "61",
               "t": "string",
@@ -435,7 +435,7 @@
               ],
               "t": "tuple"
             },
-            "\u2192 (58)",
+            "→ (58)",
             {
               "value": "58",
               "t": "string",
@@ -488,7 +488,7 @@
               "value": "{56}",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -528,7 +528,7 @@
               "value": ".",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -550,7 +550,7 @@
               "value": "{57}",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -597,7 +597,7 @@
               "value": ".",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -619,7 +619,7 @@
               "value": "{58}",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -648,7 +648,7 @@
               "value": "||",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -670,7 +670,7 @@
               "value": "{52}",
               "t": "string"
             },
-            "\u2192 (62)",
+            "→ (62)",
             {
               "value": "62",
               "t": "string",
@@ -743,7 +743,7 @@
               "t": "string",
               "l": "separator"
             },
-            "\u2192 (71)",
+            "→ (71)",
             {
               "value": "71",
               "t": "string",
@@ -761,7 +761,7 @@
               "t": "string",
               "l": "array"
             },
-            "\u2192 (72)",
+            "→ (72)",
             {
               "value": "72",
               "t": "string",
@@ -803,7 +803,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (73)",
+            "→ (73)",
             {
               "value": "73",
               "t": "string",
@@ -827,7 +827,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (74)",
+            "→ (74)",
             {
               "value": "74",
               "t": "string",
@@ -851,7 +851,7 @@
               "t": "string",
               "l": "table"
             },
-            "\u2192 (75)",
+            "→ (75)",
             {
               "value": "75",
               "t": "string",
@@ -897,7 +897,7 @@
               ],
               "t": "tuple"
             },
-            "\u2192 (76)",
+            "→ (76)",
             {
               "value": "76",
               "t": "string",
@@ -919,7 +919,7 @@
               "value": "{74}",
               "t": "string"
             },
-            "\u2192 (77)",
+            "→ (77)",
             {
               "value": "77",
               "t": "string",
@@ -941,7 +941,7 @@
               "value": "|",
               "t": "string"
             },
-            "\u2192 (77)",
+            "→ (77)",
             {
               "value": "77",
               "t": "string",
@@ -963,7 +963,7 @@
               "value": "{76}",
               "t": "string"
             },
-            "\u2192 (77)",
+            "→ (77)",
             {
               "value": "77",
               "t": "string",
@@ -1051,6 +1051,140 @@
           "globalid": "b119"
         },
         {
+          "id": "10",
+          "text": [
+            "Set (inbox)",
+            {
+              "value": "ib",
+              "t": "object"
+            },
+            "text to ()",
+            {
+              "value": "",
+              "t": "string"
+            }
+          ],
+          "globalid": "acks1"
+        },
+        {
+          "id": "11",
+          "text": [
+            "Set (79)",
+            {
+              "value": "79",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ({73})",
+            {
+              "value": "{73}",
+              "t": "string",
+              "l": "any"
+            }
+          ],
+          "globalid": "acks2"
+        },
+        {
+          "id": "42",
+          "text": [
+            "Sub ({79})",
+            {
+              "value": "79",
+              "t": "string",
+              "l": "variable"
+            },
+            {
+              "value": "1",
+              "t": "number",
+              "l": "start"
+            },
+            "-",
+            {
+              "value": "10",
+              "t": "number",
+              "l": "end"
+            }
+          ],
+          "globalid": "acks3"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "invoke||ACK||",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "{74}",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks4"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "{80}",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "||",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks5"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "{80}",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "{79}",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks6"
+        },
+        {
+          "id": "0",
+          "text": [
+            "Log",
+            {
+              "value": "{80}",
+              "t": "any"
+            }
+          ],
+          "globalid": "acks7"
+        },
+        {
           "id": "25",
           "text": [
             "end"
@@ -1093,7 +1227,7 @@
               "value": "inbox",
               "t": "object"
             },
-            "\u2192 (70)",
+            "→ (70)",
             {
               "value": "70",
               "t": "string",
@@ -1133,7 +1267,7 @@
               "value": [],
               "t": "tuple"
             },
-            "\u2192 (78)",
+            "→ (78)",
             {
               "value": "78",
               "t": "string",
