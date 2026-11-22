@@ -845,11 +845,8 @@ class InvokeEngine(
                     svc.clickAtPercent(focusXPct, focusYPct)
                     delay(100)
                 }
-                val (code, output) = ShizukuShell.exec(
-                    "input keycombination KEYCODE_CTRL_LEFT KEYCODE_A",
-                )
-                if (code != 0) {
-                    LogBuffer.w("Invoke", "could not select inbox before retry: ${output.take(80)}")
+                if (!ShizukuShell.injectCtrlChordShell(android.view.KeyEvent.KEYCODE_A)) {
+                    LogBuffer.w("Invoke", "could not select inbox before retry; pausing delivery")
                     break
                 }
                 delay(100)
