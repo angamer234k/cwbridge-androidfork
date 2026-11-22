@@ -792,7 +792,33 @@ class InvokeEngine(
             ?: throw IllegalStateException("paste attempted outside an active request")
         if (active.delivered) return
 
-        val safe = text.replace("||", "|").replace("\n", " ").replace("\r", " ").take(900)
+        val restoreClipboard = when {
+            active.queued.command == "paste" -> {
+                if (active.queued.data1.isEmpty() && active.queued.data2.isEmpty()) {
+                    getClipboard()
+                } else {
+                    listOf(active.queued.data1, active.queued.data2)
+                        .filter { it.isNotEmpty() }
+                        .joinToString(".")
+                }
+            }
+            active.queued.command == "clip" && active.queued.data1.equals("set", ignoreCase = true) ->
+                active.queued.data2
+            else -> null
+        }
+        fun markDelivered() {
+            active.delivered = true
+            active.pendingAck = null
+            if (restoreClipboard != null) {
+                try {
+                    setClipboard(restoreClipboard)
+                } catch (t: Throwable) {
+                    LogBuffer.w("Invoke", "could not restore clipboard: ${t.message}")
+                }
+            }
+        }
+
+        val safe = text.replace("\n", " ").replace("\r", " ").replace("||", "|").take(900)
         val responseBody = if (active.queued.requiresAck) {
             "${if (success) "0." else "1."}$safe"
         } else {
@@ -842,7 +868,7 @@ class InvokeEngine(
         if (svc == null && !ShizukuShell.isReady()) {
             LogBuffer.e("Invoke", "cannot deliver id=${active.queued.requestId}: no TapService/Shizuku; queue paused")
             ack.await()
-            active.delivered = true
+            markDelivered()
             return
         }
 
@@ -894,8 +920,7 @@ class InvokeEngine(
 
             val acknowledged = withTimeoutOrNull(ackTimeoutMs) { ack.await() } == true
             if (acknowledged) {
-                active.delivered = true
-                active.pendingAck = null
+                markDelivered()
                 return
             }
             if (attempt < maxDeliveryAttempts && ShizukuShell.isReady()) {
@@ -906,8 +931,7 @@ class InvokeEngine(
         }
 
         if (ack.isCompleted && ack.await()) {
-            active.delivered = true
-            active.pendingAck = null
+            markDelivered()
             return
         }
         LogBuffer.e(
@@ -916,8 +940,7 @@ class InvokeEngine(
         )
         // A late ACK still releases the queue; otherwise the operator can stop the bridge.
         ack.await()
-        active.delivered = true
-        active.pendingAck = null
+        markDelivered()
     }
 
     private fun setClipboard(text: String) {
