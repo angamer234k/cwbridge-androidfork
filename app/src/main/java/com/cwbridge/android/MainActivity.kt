@@ -982,7 +982,7 @@ class MainActivity : AppCompatActivity() {
         val server = LocalHttpServer(
             context = applicationContext,
             preferredPort = 8080,
-            onInvoke = { raw -> invokeEngine.onExternalLog(raw) },
+            onInvoke = { raw -> invokeEngine.onLocalInvoke(raw) },
             onToggleBridge = {
                 // toggleBridge() can refuse to start (no a11y / no READ_LOGS),
                 // so report the state that actually resulted, not a guess.
