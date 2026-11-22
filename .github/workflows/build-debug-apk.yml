@@ -54,6 +54,9 @@ jobs:
         with:
           gradle-version: "8.7"
 
+      - name: Run app unit tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build debug APKs (app + helper)
         run: gradle :app:assembleDebug :helper:assembleDebug --no-daemon --stacktrace
 
