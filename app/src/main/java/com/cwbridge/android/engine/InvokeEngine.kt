@@ -11,12 +11,18 @@ import com.cwbridge.android.data.OffDeviceSink
 import com.cwbridge.android.data.Store
 import com.cwbridge.android.data.UserFileStore
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.PriorityQueue
+import java.util.LinkedHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -48,18 +54,44 @@ class InvokeEngine(
         .callTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
+    private data class QueuedRequest(
+        val command: String,
+        val data1: String,
+        val data2: String,
+        val requestId: String,
+        val priority: Int,
+        val sequence: Long,
+        val requiresAck: Boolean,
+    )
+
+    private data class RequestReply(val ok: Boolean, val body: String)
+
+    private class ActiveRequest(val queued: QueuedRequest) {
+        @Volatile var reply: RequestReply? = null
+        @Volatile var delivered: Boolean = false
+        @Volatile var expectedAckPrefix: String? = null
+        @Volatile var pendingAck: CompletableDeferred<Boolean>? = null
+    }
+
     private val running = AtomicBoolean(false)
-    private var job: Job? = null
+    private val queueLock = Any()
+    private val requestQueue = PriorityQueue<QueuedRequest>(
+        compareBy<QueuedRequest> { it.priority }.thenBy { it.sequence },
+    )
+    private val seenRequestIds = LinkedHashMap<String, Unit>()
+    private val queueSignal = Channel<Unit>(Channel.CONFLATED)
+    private var nextSequence = 0L
+    private var workerJob: Job? = null
+    @Volatile private var activeRequest: ActiveRequest? = null
 
-    @Volatile private var lastInvokePayload: String = ""
-    @Volatile private var lastInvokeAtMs: Long = 0L
-    private val invokeDedupMs: Long = 3000L
+    private val maxQueuedRequests = 64
+    private val maxRememberedRequestIds = 512
+    private val ackTimeoutMs = 5_000L
+    private val maxDeliveryAttempts = 3
 
-    
     @Volatile var focusXPct = 50f
     @Volatile var focusYPct = 50f
 
-    
     @Volatile var submitXPx = 0f
     @Volatile var submitYPx = 0f
 
@@ -70,19 +102,28 @@ class InvokeEngine(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         LogBuffer.addListener(listener)
-        LogBuffer.i("Invoke", "engine on — watching for invoke|")
+        workerJob = scope.launch(Dispatchers.Main) { runQueue() }
+        LogBuffer.i("Invoke", "engine on — watching for invoke| requests with REQID")
         LogBuffer.i(
             "Invoke",
-            "cmds: save load storeinfo setlimit weather alive ai ai.models ai.pricing sink status tap paste qr totp help",
+            "queue: datastore → admin/control → weather → AI; one request at a time",
         )
     }
 
     fun stop() {
         if (!running.compareAndSet(true, false)) return
         LogBuffer.removeListener(listener)
-        job?.cancel()
-        job = null
-        LogBuffer.i("Invoke", "engine off")
+        activeRequest?.pendingAck?.complete(false)
+        workerJob?.cancel()
+        workerJob = null
+        val dropped = synchronized(queueLock) {
+            val count = requestQueue.size
+            requestQueue.clear()
+            seenRequestIds.clear()
+            count
+        }
+        activeRequest = null
+        LogBuffer.i("Invoke", "engine off; dropped $dropped queued request(s)")
     }
 
     fun isRunning(): Boolean = running.get()
@@ -90,75 +131,123 @@ class InvokeEngine(
     /** Also feed raw system logcat lines (may include Roblox FLog). */
     fun onExternalLog(raw: String) {
         if (!running.get()) return
+        if (InvokeProtocol.isAck(raw)) {
+            handleAck(raw)
+            return
+        }
         if (raw.contains("invoke|", ignoreCase = false)) {
             handleLine(raw)
         }
     }
 
     private fun handleLine(raw: String) {
-        val idx = raw.indexOf("invoke|")
-        if (idx < 0) return
-        val payloadRaw = raw.substring(idx + "invoke|".length).trim()
-        if (payloadRaw.isEmpty()) return
+        if (!running.get() || InvokeProtocol.isAck(raw)) return
+        val parsed = InvokeProtocol.parseRequest(raw) ?: return
 
-        // Avoid re-entrancy on our own reply lines
-        if (raw.contains("cwbridge|")) return
-
-        val (payload, reqId) = stripReqId(payloadRaw)
-        currentReqId = reqId
-
-        val now = System.currentTimeMillis()
-        // Dedup the full line including ||id so queued calls are not collapsed.
-        if (payloadRaw == lastInvokePayload && now - lastInvokeAtMs < invokeDedupMs) {
-            LogBuffer.i("Invoke", "dedup skip (${now - lastInvokeAtMs}ms) ${payload.take(60)}")
-            return
-        }
-        lastInvokePayload = payloadRaw
-        lastInvokeAtMs = now
-
-        val parts = payload.split(".", limit = 3)
-        val request = parts[0].trim().lowercase()
-        val data1 = parts.getOrNull(1)?.trim().orEmpty()
-        val data2 = parts.getOrNull(2)?.trim().orEmpty()
-
-        // Prefer domain from the request payload itself (e.g. load.key.domain.rbx).
-        val domainGuess = listOf(data1, data2)
+        val domainGuess = listOf(parsed.data1, parsed.data2)
             .flatMap { it.split(".") }
             .map { it.trim().lowercase() }
-            .firstOrNull { it.endsWith(".rbx") || it.matches(Regex("^[a-z0-9_-]+\\.rbx$")) }
-            ?: listOf(data1, data2).firstOrNull {
-                it.contains(".rbx")
-            }?.let { blob ->
-                Regex("[a-z0-9_-]+\\.rbx").find(blob.lowercase())?.value
+            .firstOrNull { it.endsWith(".rbx") }
+            ?: listOf(parsed.data1, parsed.data2).firstOrNull { it.contains(".rbx") }
+                ?.let { blob -> Regex("[a-z0-9_-]+\\.rbx").find(blob.lowercase())?.value }
+
+        val requiresAck = !parsed.requestId.startsWith("local_") &&
+            !parsed.requestId.startsWith("internal_")
+
+        val result = synchronized(queueLock) {
+            when {
+                seenRequestIds.containsKey(parsed.requestId) -> "duplicate"
+                requestQueue.size >= maxQueuedRequests -> "full"
+                else -> {
+                    val queued = QueuedRequest(
+                        command = parsed.command,
+                        data1 = parsed.data1,
+                        data2 = parsed.data2,
+                        requestId = parsed.requestId,
+                        priority = InvokeProtocol.priorityFor(parsed.command),
+                        sequence = nextSequence++,
+                        requiresAck = requiresAck,
+                    )
+                    requestQueue.add(queued)
+                    seenRequestIds[parsed.requestId] = Unit
+                    while (seenRequestIds.size > maxRememberedRequestIds) {
+                        val oldest = seenRequestIds.entries.iterator()
+                        if (oldest.hasNext()) {
+                            oldest.next()
+                            oldest.remove()
+                        }
+                    }
+                    "queued"
+                }
             }
+        }
+
+        when (result) {
+            "duplicate" -> {
+                LogBuffer.i("Invoke", "duplicate request ignored id=${parsed.requestId}")
+                return
+            }
+            "full" -> {
+                LogBuffer.e("Invoke", "request queue full; ignored id=${parsed.requestId}")
+                return
+            }
+        }
+
         LogBuffer.i(
             "BRIDGE",
-            "incoming ($request) from ${domainGuess ?: "local"}" +
-                (if (reqId != null) " id=$reqId" else "") +
-                " ${data1.take(40)}${if (data2.isNotEmpty()) ".${data2.take(40)}" else ""}",
+            "queued (${parsed.command}) priority=${InvokeProtocol.priorityFor(parsed.command)}" +
+                " from ${domainGuess ?: "local"} id=${parsed.requestId}" +
+                " ${parsed.data1.take(40)}${if (parsed.data2.isNotEmpty()) ".${parsed.data2.take(40)}" else ""}",
         )
+        queueSignal.trySend(Unit)
+    }
 
-        job?.cancel()
-        job = scope.launch(Dispatchers.Main) {
-            try {
-                dispatch(request, data1, data2)
-            } catch (t: Throwable) {
-                replyErr(request, t.message ?: t::class.java.simpleName)
-            }
+    private fun handleAck(raw: String) {
+        val active = activeRequest ?: return
+        val expected = active.expectedAckPrefix ?: return
+        if (!InvokeProtocol.ackMatches(raw, active.queued.requestId, expected)) return
+        val pending = active.pendingAck ?: return
+        if (pending.complete(true)) {
+            LogBuffer.i("Invoke", "ACK received id=${active.queued.requestId}")
         }
     }
 
+    private suspend fun runQueue() {
+        while (running.get()) {
+            val queued = synchronized(queueLock) { requestQueue.poll() }
+            if (queued == null) {
+                queueSignal.receive()
+                continue
+            }
 
-    @Volatile private var currentReqId: String? = null
+            val active = ActiveRequest(queued)
+            activeRequest = active
+            LogBuffer.i("Invoke", "starting id=${queued.requestId} command=${queued.command}")
+            try {
+                try {
+                    dispatch(queued.command, queued.data1, queued.data2)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (t: Throwable) {
+                    replyErr(queued.command, t.message ?: t::class.java.simpleName)
+                }
 
-    /** Peel trailing ||reqId used by the public CatWeb server queue. */
-    private fun stripReqId(payload: String): Pair<String, String?> {
-        val idx = payload.lastIndexOf("||")
-        if (idx <= 0) return payload to null
-        val id = payload.substring(idx + 2).trim()
-        if (id.isEmpty() || id.length > 64) return payload to null
-        if (!id.all { it.isLetterOrDigit() || it == '_' || it == '-' }) return payload to null
-        return payload.substring(0, idx).trimEnd() to id
+                if (queued.requiresAck && !active.delivered) {
+                    val reply = active.reply ?: RequestReply(true, "ok")
+                    pasteIntoGame(reply.body, success = reply.ok)
+                }
+                LogBuffer.i("Invoke", "request released id=${queued.requestId}")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (t: Throwable) {
+                LogBuffer.e(
+                    "Invoke",
+                    "request failed id=${queued.requestId}: ${t.message ?: t::class.java.simpleName}",
+                )
+            } finally {
+                activeRequest = null
+            }
+        }
     }
 
     /** If raw ends with .name.rbx, peel; otherwise return */
@@ -471,19 +560,16 @@ class InvokeEngine(
             }
 
             "paste" -> {
-                // paste.<text>  (data1 + optional .data2 rejoined)
-                // paste with no arg -> paste whatever is already on the clipboard.
+                // paste.<text>  (data1 + optional data2 rejoined)
+                // With no argument, return the existing clipboard contents.
                 val text = listOf(data1, data2).filter { it.isNotEmpty() }.joinToString(".")
-                if (text.isEmpty()) {
-                    val existing = getClipboard()
-                    if (existing.isNullOrEmpty()) {
-                        replyErr("paste", "no text arg and clipboard is empty")
-                        return
-                    }
-                    pasteExisting(existing)
-                } else {
-                    runPasteSequence(text)
+                val value = if (text.isEmpty()) getClipboard().orEmpty() else text
+                if (value.isEmpty()) {
+                    replyErr("paste", "no text arg and clipboard is empty")
+                    return
                 }
+                pasteIntoGame(value)
+                replyOk("paste", "pasted ${value.length} chars")
             }
 
             "clip" -> {
@@ -682,82 +768,133 @@ class InvokeEngine(
     }
 
 
-    /** Focus → paste [text] into game. Does not emit replyOk (caller does). */
+    /**
+     * Deliver one response through the focused CatWeb inbox.
+     * CatWeb requests are wrapped in the 0./1. protocol and hold the worker
+     * until the matching invoke||ACK||REQID||PREFIX is observed.
+     */
     private suspend fun pasteIntoGame(
         text: String,
         pressEnter: Boolean = false,
-        protocol: Boolean = true,
+        success: Boolean = true,
     ) {
-        val id = currentReqId
-        val out = if (protocol && id != null) {
-            val safe = text.replace("||", "|").replace("\n", " ").replace("\r", " ").take(900)
-            "0.$safe||$id"
+        val active = activeRequest
+            ?: throw IllegalStateException("paste attempted outside an active request")
+        if (active.delivered) return
+
+        val safe = text.replace("||", "|").replace("\n", " ").replace("\r", " ").take(900)
+        val wire = if (active.queued.requiresAck) {
+            "${if (success) "0." else "1."}$safe||${active.queued.requestId}"
         } else {
             text
         }
-        val svc = TapService.instance
-        setClipboard(out)
-        if (svc != null) {
-            svc.clickAtPercent(focusXPct, focusYPct)
-            delay(1000)
-            svc.pasteClipboard()
-            delay(400)
-            if (submitXPx > 0f || submitYPx > 0f) {
-                svc.clickAt(submitXPx, submitYPx)
-                delay(200)
-            }
-            if (pressEnter) {
-                val ok = svc.pressEnter()
-                LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
-            }
-        } else if (ShizukuShell.isReady()) {
-            ShizukuShell.exec("input keyevent KEYCODE_PASTE")
-            delay(400)
-            if (pressEnter) {
-                val ok = ShizukuShell.pressEnter()
-                LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
-            }
-        } else {
-            LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
-        }
-    }
 
-    private suspend fun runPasteSequence(text: String) {
         val svc = TapService.instance
-        if (svc == null) {
-            replyErr("paste", "TapService offline")
+        if (!active.queued.requiresAck) {
+            setClipboard(wire)
+            if (svc != null) {
+                svc.clickAtPercent(focusXPct, focusYPct)
+                delay(1000)
+                svc.pasteClipboard()
+                delay(400)
+                if (submitXPx > 0f || submitYPx > 0f) {
+                    svc.clickAt(submitXPx, submitYPx)
+                    delay(200)
+                }
+                if (pressEnter) {
+                    val ok = svc.pressEnter()
+                    LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
+                }
+            } else if (ShizukuShell.isReady()) {
+                ShizukuShell.exec("input keyevent KEYCODE_PASTE")
+                delay(400)
+                if (pressEnter) {
+                    val ok = ShizukuShell.pressEnter()
+                    LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
+                }
+            } else {
+                LogBuffer.w("Invoke", "pasteIntoGame: no TapService/Shizuku")
+            }
+            active.delivered = true
             return
         }
-        setClipboard(text)
-        svc.clickAtPercent(focusXPct, focusYPct)
-        delay(1000)
-        svc.pasteClipboard()
-        delay(1000)
-        if (submitXPx > 0f || submitYPx > 0f) {
-            svc.clickAt(submitXPx, submitYPx)
-        }
-        replyOk("paste", "done ${text.length} chars focus=$focusXPct,$focusYPct submit=$submitXPx,$submitYPx")
-    }
 
-    /**
-     * `paste` with no text arg: the clipboard already holds the content, so only
-     * the focus-tap -> paste -> submit sequence runs. We deliberately do NOT
-     * rewrite the clipboard here.
-     */
-    private suspend fun pasteExisting(existing: String) {
-        val svc = TapService.instance
-        if (svc == null) {
-            replyErr("paste", "TapService offline")
+        val expectedPrefix = wire.take(10)
+        val ack = CompletableDeferred<Boolean>()
+        active.expectedAckPrefix = expectedPrefix
+        active.pendingAck = ack
+
+        if (svc == null && !ShizukuShell.isReady()) {
+            LogBuffer.e("Invoke", "cannot deliver id=${active.queued.requestId}: no TapService/Shizuku; queue paused")
+            ack.await()
+            active.delivered = true
             return
         }
-        svc.clickAtPercent(focusXPct, focusYPct)
-        delay(1000)
-        svc.pasteClipboard()
-        delay(1000)
-        if (submitXPx > 0f || submitYPx > 0f) {
-            svc.clickAt(submitXPx, submitYPx)
+
+        for (attempt in 1..maxDeliveryAttempts) {
+            if (attempt > 1) {
+                // Replacing the TextBox contents makes retries idempotent instead of appending.
+                if (!ShizukuShell.isReady()) break
+                val (code, output) = ShizukuShell.exec(
+                    "input keycombination KEYCODE_CTRL_LEFT KEYCODE_A",
+                )
+                if (code != 0) {
+                    LogBuffer.w("Invoke", "could not select inbox before retry: ${output.take(80)}")
+                    break
+                }
+                delay(100)
+            }
+
+            try {
+                setClipboard(wire)
+                if (svc != null) {
+                    svc.clickAtPercent(focusXPct, focusYPct)
+                    delay(1000)
+                    svc.pasteClipboard()
+                    delay(400)
+                    if (submitXPx > 0f || submitYPx > 0f) {
+                        svc.clickAt(submitXPx, submitYPx)
+                        delay(200)
+                    }
+                    if (pressEnter) {
+                        val ok = svc.pressEnter()
+                        LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
+                    }
+                } else {
+                    ShizukuShell.exec("input keyevent KEYCODE_PASTE")
+                    delay(400)
+                    if (pressEnter) {
+                        val ok = ShizukuShell.pressEnter()
+                        LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
+                    }
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (t: Throwable) {
+                LogBuffer.w("Invoke", "delivery attempt $attempt failed: ${t.message}")
+            }
+
+            val acknowledged = withTimeoutOrNull(ackTimeoutMs) { ack.await() } == true
+            if (acknowledged) {
+                active.delivered = true
+                active.pendingAck = null
+                return
+            }
+            if (attempt < maxDeliveryAttempts && ShizukuShell.isReady()) {
+                LogBuffer.w("Invoke", "ACK timeout for id=${active.queued.requestId}; resending")
+            } else {
+                break
+            }
         }
-        replyOk("paste", "pasted clipboard (${existing.length} chars) focus=$focusXPct,$focusYPct")
+
+        LogBuffer.e(
+            "Invoke",
+            "UNCONFIRMED id=${active.queued.requestId}; queue paused until a matching ACK arrives",
+        )
+        // A late ACK still releases the queue; otherwise the operator can stop the bridge.
+        ack.await()
+        active.delivered = true
+        active.pendingAck = null
     }
 
     private fun setClipboard(text: String) {
@@ -955,23 +1092,16 @@ class InvokeEngine(
 
 
     private fun replyOk(request: String, payload: String) {
-        val id = currentReqId
+        activeRequest?.reply = RequestReply(true, payload)
+        val id = activeRequest?.queued?.requestId
         val tag = if (id != null) "|$id" else ""
         LogBuffer.i("Invoke", "cwbridge|ok|$request|${payload.take(500)}$tag")
     }
 
     private fun replyErr(request: String, payload: String) {
-        val id = currentReqId
+        activeRequest?.reply = RequestReply(false, payload)
+        val id = activeRequest?.queued?.requestId
         val tag = if (id != null) "|$id" else ""
         LogBuffer.e("Invoke", "cwbridge|err|$request|${payload.take(500)}$tag")
-        if (id != null) {
-            val body = payload.replace("||", "|").replace("\n", " ").replace("\r", " ").take(200)
-            scope.launch(Dispatchers.Main) {
-                try {
-                    pasteIntoGame("1.$body||$id", protocol = false)
-                } catch (_: Throwable) {
-                }
-            }
-        }
     }
 }
