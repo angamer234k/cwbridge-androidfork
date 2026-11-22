@@ -464,8 +464,8 @@ object BridgeControl {
             val raw = com.cwbridge.android.data.UserFileStore.getSetting(
                 context.applicationContext,
                 "auto_open_domains",
-                "",
-            ) ?: ""
+                "android.cw-b.rbx/new",
+            ) ?: "android.cw-b.rbx/new"
             raw.lines().flatMap { it.split(",", ";") }.map { it.trim() }.filter { it.isNotEmpty() }
         } catch (t: Throwable) {
             LogBuffer.w("Control", "loadAutoOpenDomains: ${t.message}")
