@@ -18,9 +18,10 @@ internal object InvokeProtocol {
      * Missing, malformed, and reserved ID 0 requests are intentionally ignored.
      */
     fun parseRequest(raw: String): ParsedInvokeRequest? {
-        if (raw.contains("cwbridge|")) return null
         val marker = raw.indexOf(REQUEST_MARKER)
         if (marker < 0) return null
+        val ownReplyMarker = raw.indexOf("cwbridge|")
+        if (ownReplyMarker >= 0 && ownReplyMarker < marker) return null
 
         val rawPayload = raw.substring(marker + REQUEST_MARKER.length).trim()
         val separator = rawPayload.lastIndexOf("||")
@@ -68,5 +69,8 @@ internal object InvokeProtocol {
         return fields[0].trim() == requestId && fields[1].take(10) == expectedPrefix
     }
 
-    fun isAck(raw: String): Boolean = raw.contains(ACK_MARKER)
+    fun isAck(raw: String): Boolean {
+        val ackMarker = raw.indexOf(ACK_MARKER)
+        return ackMarker >= 0 && raw.indexOf(REQUEST_MARKER) == ackMarker
+    }
 }
