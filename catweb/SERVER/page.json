@@ -142,8 +142,14 @@
                 {"id": "90", "text": ["Delete entry", {"value": "{74}", "t": "string", "l": "entry"}, "of", {"value": "40", "t": "string", "l": "table"}], "globalid": "aZ"},
                 {"id": "11", "text": ["Set", {"value": "42", "t": "string", "l": "variable"}, "to", {"value": "replied", "t": "string", "l": "any"}], "globalid": "a0"},
                 {"id": "10", "text": ["Set", {"value": "ql", "t": "object"}, "text to", {"value": "replied {74}", "t": "string"}], "globalid": "a1"},
-                {"id": "10", "text": ["Set", {"value": "ib", "t": "object"}, "text to", {"value": "", "t": "string"}], "globalid": "a2"},
                 {"id": "25", "text": ["end"], "globalid": "a4"},
+                {"id": "10", "text": ["Set (inbox)", {"value": "ib", "t": "object"}, "text to ()", {"value": "", "t": "string"}], "globalid": "ackp1"},
+                {"id": "11", "text": ["Set (79)", {"value": "79", "t": "string", "l": "variable"}, "to ({73})", {"value": "{73}", "t": "string", "l": "any"}], "globalid": "ackp2"},
+                {"id": "42", "text": ["Sub ({79})", {"value": "79", "t": "string", "l": "variable"}, {"value": "1", "t": "number", "l": "start"}, "-", {"value": "10", "t": "number", "l": "end"}], "globalid": "ackp3"},
+                {"id": "109", "text": ["Concatenate", {"value": "invoke||ACK||", "t": "string"}, "with", {"value": "{74}", "t": "string"}, "→", {"value": "80", "t": "string", "l": "variable"}], "globalid": "ackp4"},
+                {"id": "109", "text": ["Concatenate", {"value": "{80}", "t": "string"}, "with", {"value": "||", "t": "string"}, "→", {"value": "80", "t": "string", "l": "variable"}], "globalid": "ackp5"},
+                {"id": "109", "text": ["Concatenate", {"value": "{80}", "t": "string"}, "with", {"value": "{79}", "t": "string"}, "→", {"value": "80", "t": "string", "l": "variable"}], "globalid": "ackp6"},
+                {"id": "0", "text": ["Log", {"value": "{80}", "t": "any"}], "globalid": "ackp7"},
                 {"id": "25", "text": ["end"], "globalid": "a5"}
               ]
             },

@@ -153,7 +153,7 @@ class ExecutionEngine(
                 val cmd = actionToInvokeCommand(action)
                 if (cmd.isNotEmpty()) {
                     LogBuffer.i("ExecutionEngine", "Executing: $cmd")
-                    invokeEngine.onExternalLog("Info · invoke|$cmd")
+                    invokeEngine.onInternalInvoke("Info · invoke|$cmd||internal_${java.util.UUID.randomUUID().toString().replace("-", "")}")
                 }
             }
         }

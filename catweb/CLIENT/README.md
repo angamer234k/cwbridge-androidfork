@@ -25,4 +25,4 @@ Run function (call)   # or load / save
 Result also shows live on the page under "Last result".
 
 Wire: `C|reqId|urlEnc|cmdEnc[|arg1][|arg2]` → server → `R|reqId|bodyEnc`  
-Timeout 30s.
+The request ID combines a page-load tick and a per-page counter, so reloading the client does not immediately reuse IDs. Timeout 30s.

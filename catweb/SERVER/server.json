@@ -1028,6 +1028,13 @@
           "globalid": "b117"
         },
         {
+          "id": "25",
+          "text": [
+            "end"
+          ],
+          "globalid": "b119"
+        },
+        {
           "id": "10",
           "text": [
             "Set (inbox)",
@@ -1041,14 +1048,125 @@
               "t": "string"
             }
           ],
-          "globalid": "b118"
+          "globalid": "acks1"
         },
         {
-          "id": "25",
+          "id": "11",
           "text": [
-            "end"
+            "Set (79)",
+            {
+              "value": "79",
+              "t": "string",
+              "l": "variable"
+            },
+            "to ({73})",
+            {
+              "value": "{73}",
+              "t": "string",
+              "l": "any"
+            }
           ],
-          "globalid": "b119"
+          "globalid": "acks2"
+        },
+        {
+          "id": "42",
+          "text": [
+            "Sub ({79})",
+            {
+              "value": "79",
+              "t": "string",
+              "l": "variable"
+            },
+            {
+              "value": "1",
+              "t": "number",
+              "l": "start"
+            },
+            "-",
+            {
+              "value": "10",
+              "t": "number",
+              "l": "end"
+            }
+          ],
+          "globalid": "acks3"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "invoke||ACK||",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "{74}",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks4"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "{80}",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "||",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks5"
+        },
+        {
+          "id": "109",
+          "text": [
+            "Concatenate",
+            {
+              "value": "{80}",
+              "t": "string"
+            },
+            "with",
+            {
+              "value": "{79}",
+              "t": "string"
+            },
+            "→",
+            {
+              "value": "80",
+              "t": "string",
+              "l": "variable"
+            }
+          ],
+          "globalid": "acks6"
+        },
+        {
+          "id": "0",
+          "text": [
+            "Log",
+            {
+              "value": "{80}",
+              "t": "any"
+            }
+          ],
+          "globalid": "acks7"
         },
         {
           "id": "25",

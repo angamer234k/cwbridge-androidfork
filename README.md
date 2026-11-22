@@ -46,21 +46,21 @@ To publish a new build: **Actions → Release APKs → Run workflow** (tag e.g. 
 
 ## Built-in `invoke|` commands
 
-The bridge watches **Roblox logcat** for lines that contain `invoke|…`. Format:
+The bridge watches **Roblox logcat** for `invoke|` requests. Every request must end with a valid `||reqId` (1–64 letters, digits, `_` or `-`; `0` is reserved). Requests without an ID, with an empty/malformed ID, or with ID `0` are silently ignored.
 
 ```text
-invoke|<command>[.<arg1>[.<arg2>…]]
+invoke|<command>[.<arg1>[.<arg2>…]]||<reqId>
 ```
 
 Dots separate parts. Example from a CatWeb / game print:
 
 ```text
-invoke|load.mykey.weather.rbx
-invoke|tap.50.85
-invoke|enter
+invoke|load.mykey.weather.rbx||req_123
+invoke|tap.50.85||req_124
+invoke|enter||req_125
 ```
 
-Replies (when the engine answers) show up as log-style `cwbridge|…` lines the game can read back if it watches output.
+Replies are delivered to the CatWeb SERVER inbox as `0.body||reqId` or `1.error||reqId`. The page broadcasts the reply to the matching client, clears the inbox, then logs `invoke||ACK||reqId||<first 10 response characters>`. CWBridge makes up to three total delivery attempts (the initial paste plus two retries) with the same ID and waits for a matching ACK before starting the next request.
 
 Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt).
 
@@ -109,9 +109,16 @@ Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engi
 | **echo** | `echo.<message>` | Echoes in reply only. |
 | **help** | `help` | Short command list in the reply. |
 
-### Timing note (load / paste)
+### Invoke queue and delivery
 
-After `load` or `paste`, expect roughly **1.5–2.5s** before text appears (focus tap → **1s** wait → paste). Identical `invoke|` lines within **3s** are **deduped** so Roblox does not triple-fire the same command.
+CWBridge runs **one request at a time**. Higher-priority work can move ahead of queued lower-priority work, but never interrupts a running request:
+
+1. P0 datastore: `save`, `load`, `storeinfo`, `exists`, `keys`
+2. P1 `setlimit` and other administration/control commands
+3. P2 weather
+4. P3 AI: `ai`, `ai.models`, `ai.pricing`
+
+Requests are FIFO within each priority. CatWeb's ACK confirms that the response was parsed, broadcast, and the inbox cleared. CWBridge checks the request ID and the first ten response characters, makes up to three total delivery attempts for the same response, and pauses the queue if delivery remains unconfirmed.
 
 ## Off-device save (webhook + Google Sheet)
 

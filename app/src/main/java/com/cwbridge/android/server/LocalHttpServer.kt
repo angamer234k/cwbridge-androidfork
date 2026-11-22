@@ -293,12 +293,31 @@ class LocalHttpServer(
             }
 
             path == "/api/invoke" && method == "POST" -> {
-                val cmd = jsonString(body, "command")
+                val cmd = jsonString(body, "command").trim()
                 if (cmd.isBlank()) {
                     respond(out, 400, json(mapOf("error" to "command required")))
                 } else {
-                    onInvoke(if (cmd.contains("invoke|")) cmd else "invoke|$cmd")
-                    respond(out, 200, json(mapOf("message" to "sent: $cmd")))
+                    val raw = if (cmd.contains("invoke|")) cmd else "invoke|$cmd"
+                    val marker = raw.indexOf("invoke|")
+                    val payload = raw.substring(marker + "invoke|".length).trim()
+                    val separator = payload.lastIndexOf("||")
+                    val suppliedId = if (separator > 0) payload.substring(separator + 2).trim() else ""
+                    val requestId = when {
+                        separator < 0 -> "local_${java.util.UUID.randomUUID().toString().replace("-", "")}"
+                        suppliedId == "0" || !Regex("^[A-Za-z0-9_-]{1,64}$").matches(suppliedId) -> null
+                        else -> suppliedId
+                    }
+                    if (requestId == null) {
+                        respond(out, 400, json(mapOf("error" to "invalid request ID")))
+                    } else {
+                        val request = if (separator < 0) "$raw||$requestId" else raw
+                        onInvoke(request)
+                        respond(
+                            out,
+                            200,
+                            json(mapOf("message" to "sent: $cmd", "requestId" to requestId)),
+                        )
+                    }
                 }
             }
 
