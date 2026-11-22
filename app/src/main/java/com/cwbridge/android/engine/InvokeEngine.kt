@@ -802,7 +802,7 @@ class InvokeEngine(
                         .joinToString(".")
                 }
             }
-            active.queued.command == "clip" && active.queued.data1.equals("set", ignoreCase = true) ->
+            success && active.queued.command == "clip" && active.queued.data1.equals("set", ignoreCase = true) ->
                 active.queued.data2
             else -> null
         }
