@@ -62,7 +62,8 @@ internal object InvokeProtocol {
     fun ackMatches(raw: String, requestId: String, expectedPrefix: String): Boolean {
         val marker = raw.indexOf(ACK_MARKER)
         if (marker < 0) return false
-        val fields = raw.substring(marker + ACK_MARKER.length).trimEnd().split("||", limit = 2)
+        val payload = raw.substring(marker + ACK_MARKER.length).removeSuffix("\\r").removeSuffix("\\n")
+        val fields = payload.split("||", limit = 2)
         if (fields.size != 2) return false
         return fields[0].trim() == requestId && fields[1].take(10) == expectedPrefix
     }
