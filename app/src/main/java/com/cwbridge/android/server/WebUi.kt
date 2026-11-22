@@ -17,16 +17,20 @@ object WebUi {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>CWBridge</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700;750;800&family=JetBrains+Mono:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
 <style>
 :root{
   --bg:#0b0e13; --panel:#11151c; --panel2:#171c24; --line:rgba(255,255,255,.08);
   --text:#eef1f7; --muted:#8b93a7; --accent:#6ea8fe; --accent2:#5b8def;
   --ok:#3dd68c; --warn:#f5a524; --danger:#f76c6c; --radius:14px;
+  --font-sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);
-  font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  font:15px/1.45 var(--font-sans);
   -webkit-text-size-adjust:100%}
 a{color:var(--accent)}
 .ms{
@@ -151,7 +155,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:650;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 #console{
   margin:0;padding:10px;border-radius:10px;background:#0a0c10;border:1px solid var(--line);
-  max-height:280px;overflow:auto;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;
+  max-height:280px;overflow:auto;font:12px/1.45 var(--font-mono);white-space:pre-wrap;
 }
 #console .log-line{display:block;padding:1px 0;word-break:break-word}
 #console .tag-BRIDGE{color:#ffffff;font-weight:650}
