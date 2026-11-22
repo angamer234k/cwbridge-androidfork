@@ -60,7 +60,7 @@ invoke|tap.50.85||req_124
 invoke|enter||req_125
 ```
 
-Replies are delivered to the CatWeb SERVER inbox as `0.body||reqId` or `1.error||reqId`. The page broadcasts the reply to the matching client, clears the inbox, then logs `invoke||ACK||reqId||<first 10 response characters>`. CWBridge retries an unacknowledged paste with the same ID and waits for a matching ACK before starting the next request.
+Replies are delivered to the CatWeb SERVER inbox as `0.body||reqId` or `1.error||reqId`. The page broadcasts the reply to the matching client, clears the inbox, then logs `invoke||ACK||reqId||<first 10 response characters>`. CWBridge makes up to three total delivery attempts (the initial paste plus two retries) with the same ID and waits for a matching ACK before starting the next request.
 
 Source of truth: [`InvokeEngine.kt`](app/src/main/java/com/cwbridge/android/engine/InvokeEngine.kt).
 
@@ -118,7 +118,7 @@ CWBridge runs **one request at a time**. Higher-priority work can move ahead of 
 3. P2 weather
 4. P3 AI: `ai`, `ai.models`, `ai.pricing`
 
-Requests are FIFO within each priority. CatWeb's ACK confirms that the response was parsed, broadcast, and the inbox cleared. CWBridge checks the request ID and the first ten response characters, retries the same response up to three times, and pauses the queue if delivery remains unconfirmed.
+Requests are FIFO within each priority. CatWeb's ACK confirms that the response was parsed, broadcast, and the inbox cleared. CWBridge checks the request ID and the first ten response characters, makes up to three total delivery attempts for the same response, and pauses the queue if delivery remains unconfirmed.
 
 ## Off-device save (webhook + Google Sheet)
 
