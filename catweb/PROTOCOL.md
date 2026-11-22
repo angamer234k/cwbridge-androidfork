@@ -6,7 +6,7 @@ Wire format for **CLIENT** (any CatWeb page) ↔ **SERVER** (page that talks to 
 
 - CLIENT never talks to CWBridge directly (only SERVER does).
 - Payloads that can hit the Roblox filter are encoded with the CatWeb decoder table (SiteGPT §9).
-- Every request has a short **reqId**; the bridge echoes it so SERVER can match responses.
+- Every request has a short **reqId**; the bridge requires it and echoes it so SERVER can match responses. Missing, malformed, empty, or reserved `0` IDs are silently ignored.
 - Status is always a single leading digit on the decoded body:
   - `0.` = ok
   - `1.` = error (empty load, missing key, bridge down, timeout, etc.)
@@ -67,6 +67,18 @@ Examples:
 
 SERVER keeps focus on a reply inbox TextBox, reads the paste, checks the queue for `reqId`, then replies to the client.
 
+## SERVER → CWBridge (ACK log)
+
+After the response has been parsed, the client reply has been broadcast (when a matching queue row exists), and the inbox has been cleared, SERVER logs:
+
+```
+invoke||ACK||<reqId>||<first 10 characters of the pasted 0./1. response>
+```
+
+The ten-character prefix includes the leading `0.` or `1.`. CWBridge releases its single active request only when both the REQID and prefix match.
+
+If CWBridge resends the same response because the ACK was lost, SERVER clears the inbox and logs the same ACK again. It must not broadcast the client reply a second time for an already-consumed REQID.
+
 ## SERVER → CLIENT (cross-site broadcast)
 
 ```
@@ -101,7 +113,15 @@ Or convenience wrappers `load` / `save` once those scripts are imported.
 
 | reqId | clientUrl | createdTick |
 
-On matching paste `||reqId`: delete row, encode body (keep `0.`/`1.` prefix), cross-site broadcast `R|...` to `clientUrl`.
+On matching paste `||reqId`: delete row, encode body (keep `0.`/`1.` prefix), cross-site broadcast `R|...` to `clientUrl`, clear the inbox, then log the ACK above.
+
+CWBridge processes only one request at a time. Queue order is:
+1. P0 datastore: `save`, `load`, `storeinfo`, `exists`, `keys`
+2. P1 administration/control: `setlimit` and other control commands
+3. P2 weather
+4. P3 AI: `ai`, `ai.models`, `ai.pricing`
+
+FIFO is preserved within each priority. A running request is never preempted. CWBridge waits 5 seconds for an ACK and makes up to three delivery attempts; after that it marks the response unconfirmed and pauses the queue until a matching late ACK arrives or the bridge is stopped.
 
 ## Requirements
 
