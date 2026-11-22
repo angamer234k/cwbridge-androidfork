@@ -91,6 +91,8 @@
               "actions": [
                 {"id": "11", "text": ["Set", {"value": "1", "t": "string", "l": "variable"}, "to", {"value": "yoursite.rbx/bridge", "t": "string", "l": "any"}], "globalid": "ab"},
                 {"id": "11", "text": ["Set", {"value": "3", "t": "string", "l": "variable"}, "to", {"value": "1000", "t": "string", "l": "any"}], "globalid": "ac"},
+                {"id": "83", "text": ["Get tick →", {"value": "27", "t": "string", "l": "variable"}], "globalid": "tick27"},
+                {"id": "43", "text": ["Replace", {"value": ".", "t": "string"}, "in", {"value": "27", "t": "string", "l": "variable"}, "by", {"value": "_", "t": "string"}], "globalid": "tick27replace"},
                 {"id": "11", "text": ["Set", {"value": "4", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ad"},
                 {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "ae"},
                 {"id": "11", "text": ["Set", {"value": "30", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "af"},
@@ -125,7 +127,8 @@
               "globalid": "aw",
               "actions": [
                 {"id": "12", "text": ["Increase", {"value": "3", "t": "string", "l": "variable"}, "by", {"value": "1", "t": "number"}], "globalid": "ax"},
-                {"id": "11", "text": ["Set", {"value": "5", "t": "string", "l": "variable"}, "to", {"value": "{3}", "t": "string", "l": "any"}], "globalid": "ay"},
+                {"id": "109", "text": ["Concatenate", {"value": "{27}", "t": "string"}, "with", {"value": "_", "t": "string"}, "→", {"value": "5", "t": "string", "l": "variable"}], "globalid": "reqidprefix"},
+                {"id": "109", "text": ["Concatenate", {"value": "{5}", "t": "string"}, "with", {"value": "{3}", "t": "string"}, "→", {"value": "5", "t": "string", "l": "variable"}], "globalid": "reqidcounter"},
                 {"id": "11", "text": ["Set", {"value": "4", "t": "string", "l": "variable"}, "to", {"value": "", "t": "string", "l": "any"}], "globalid": "az"},
                 {"id": "11", "text": ["Set", {"value": "26", "t": "string", "l": "variable"}, "to", {"value": "0", "t": "string", "l": "any"}], "globalid": "aA"},
                 {"id": "117", "text": ["Get URL →", {"value": "20", "t": "string", "l": "variable"}], "globalid": "aB"},
