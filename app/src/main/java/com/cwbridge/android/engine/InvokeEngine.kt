@@ -833,8 +833,12 @@ class InvokeEngine(
 
         for (attempt in 1..maxDeliveryAttempts) {
             if (attempt > 1) {
-                // Replacing the TextBox contents makes retries idempotent instead of appending.
+                // Focus first, then select all: tapping after Ctrl+A would collapse the selection.
                 if (!ShizukuShell.isReady()) break
+                if (svc != null) {
+                    svc.clickAtPercent(focusXPct, focusYPct)
+                    delay(100)
+                }
                 val (code, output) = ShizukuShell.exec(
                     "input keycombination KEYCODE_CTRL_LEFT KEYCODE_A",
                 )
@@ -848,7 +852,7 @@ class InvokeEngine(
             try {
                 setClipboard(wire)
                 if (svc != null) {
-                    svc.clickAtPercent(focusXPct, focusYPct)
+                    if (attempt == 1) svc.clickAtPercent(focusXPct, focusYPct)
                     delay(1000)
                     svc.pasteClipboard()
                     delay(400)
@@ -856,14 +860,14 @@ class InvokeEngine(
                         svc.clickAt(submitXPx, submitYPx)
                         delay(200)
                     }
-                    if (pressEnter) {
+                    if (pressEnter && attempt == 1) {
                         val ok = svc.pressEnter()
                         LogBuffer.i("Invoke", "pasteEnter a11y=$ok")
                     }
                 } else {
                     ShizukuShell.exec("input keyevent KEYCODE_PASTE")
                     delay(400)
-                    if (pressEnter) {
+                    if (pressEnter && attempt == 1) {
                         val ok = ShizukuShell.pressEnter()
                         LogBuffer.i("Invoke", "pasteEnter shizuku=$ok")
                     }
