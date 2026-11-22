@@ -16,6 +16,13 @@ class InvokeProtocolTest {
     }
 
     @Test
+    fun commandPayloadMayContainTheReplyMarkerText() {
+        val parsed = InvokeProtocol.parseRequest("Info invoke|echo.cwbridge|hello||req_123")
+        assertEquals("echo", parsed?.command)
+        assertEquals("cwbridge|hello", parsed?.data1)
+    }
+
+    @Test
     fun validRequestIsParsedWithItsId() {
         val parsed = InvokeProtocol.parseRequest("Info invoke|load.profile.weather.rbx||req_123")
 
