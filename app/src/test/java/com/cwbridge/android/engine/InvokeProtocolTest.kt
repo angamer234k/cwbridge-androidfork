@@ -45,5 +45,6 @@ class InvokeProtocolTest {
         assertFalse(InvokeProtocol.ackMatches(ack, "other", prefix))
         assertFalse(InvokeProtocol.ackMatches(ack, "req_123", "0.goodbye "))
         assertFalse(InvokeProtocol.ackMatches("Info invoke||ACK||req_123", "req_123", prefix))
+        assertTrue(InvokeProtocol.ackMatches("Info invoke||ACK||req_123||0.hello \r\n", "req_123", "0.hello "))
     }
 }
