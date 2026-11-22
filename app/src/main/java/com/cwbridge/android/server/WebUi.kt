@@ -219,6 +219,53 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
   .stat-card{min-height:0;padding:12px 14px}
 }
 
+
+/* CWBridge visual refresh */
+:root{--bg:#080d16;--panel:#101827;--panel2:#151f30;--line:rgba(148,163,184,.14);--text:#edf3ff;--muted:#91a0b8;--accent:#78aaff;--accent2:#4f8df5;--ok:#43d69a;--warn:#f4bd62;--danger:#fb7777;--radius:18px}
+html,body{background:radial-gradient(ellipse at 70% -15%,rgba(49,95,166,.18),transparent 38%),var(--bg);color:var(--text)}
+.sidebar{width:252px;background:rgba(12,19,31,.97);border-right:1px solid var(--line);padding:20px 12px}
+.sidebar .brand-side{font-size:16px;padding:8px 12px 26px}
+.nav-side{gap:5px!important}
+.nav-item{min-height:46px;padding:12px 14px;border-radius:12px;font-size:13px;transition:background .16s,color .16s}
+.nav-item.active{background:linear-gradient(90deg,rgba(89,146,255,.19),rgba(89,146,255,.07));color:#a9caff;box-shadow:inset 2px 0 #78aaff}
+.main-wrap{margin-left:252px}
+.top-slim{min-height:60px;padding:10px 28px;background:rgba(8,13,22,.82);border-bottom-color:var(--line)}
+main{max-width:none;padding:28px clamp(16px,3vw,48px) 48px;gap:18px}
+.page-hero{display:flex;align-items:flex-end;gap:16px;margin:6px 0 24px}
+.page-hero .eyebrow{font-size:10px;letter-spacing:.14em;font-weight:750;color:#7f9bc4;text-transform:uppercase;margin-bottom:8px}
+.page-hero h1{font-size:clamp(25px,3vw,34px);letter-spacing:-.045em;line-height:1.12;margin:0;font-weight:760}
+.page-hero p{margin:8px 0 0;color:var(--muted);font-size:13px}
+.card{background:linear-gradient(145deg,rgba(18,29,46,.96),rgba(14,22,36,.98));border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 12px 34px rgba(0,0,0,.16);margin-bottom:16px}
+.card h2{font-size:14px;letter-spacing:-.01em;text-transform:none;color:#dce8fa;margin:0 0 16px;font-weight:700}
+.hint{line-height:1.6;color:#91a0b8}
+.stat-card{background:rgba(21,32,50,.82);border:1px solid var(--line);border-radius:16px;padding:18px;min-height:110px}
+.stat-card .stat-label{font-size:10px;letter-spacing:.12em}
+.stat-card .stat-value{font-size:1.9rem}
+button,.btn{border-radius:11px;font-weight:680;box-shadow:none}
+button.ghost{border-color:rgba(148,163,184,.2);background:rgba(255,255,255,.025)}
+button.soft{background:#1b2a41}
+input,textarea,select{background:#0b1422;border-color:rgba(148,163,184,.2);border-radius:11px}
+table{border-collapse:separate;border-spacing:0}
+th{font-size:10px;letter-spacing:.1em;padding:12px 10px}
+td{padding:12px 10px}
+.page{min-width:0}
+.domain-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.domain-card{background:rgba(8,16,29,.55);border:1px solid var(--line);border-radius:15px;padding:16px;display:grid;gap:12px}
+.domain-card-top{display:flex;align-items:center;gap:10px;min-width:0}
+.domain-card-name{font-weight:720;overflow-wrap:anywhere}
+.domain-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.domain-metric{background:rgba(255,255,255,.035);border-radius:10px;padding:9px}
+.domain-metric b{display:block;font-size:13px}
+.domain-metric span{font-size:10px;color:var(--muted)}
+.service-list{display:grid;gap:10px}
+.service-list>.row{padding:14px;border:1px solid var(--line);background:rgba(8,16,29,.52);border-radius:15px;margin:0 0 10px!important}
+#svcEditor{background:rgba(5,12,22,.58);border:1px solid rgba(120,170,255,.2);border-radius:18px;padding:20px!important}
+#svcEditor h3{font-size:11px!important;letter-spacing:.12em!important;text-transform:uppercase}
+#edTriggers .row,#edActions .row{background:linear-gradient(145deg,#17253a,#111c2d);border:1px solid rgba(148,163,184,.18);border-radius:13px;padding:12px;margin:10px 0!important;align-items:center}
+#edActions .chip,#edTriggers .chip{background:rgba(120,170,255,.12);color:#a9caff}
+@media(max-width:819px){.sidebar{width:min(290px,86vw);padding:16px 12px}.main-wrap{margin-left:0}.top-slim{padding:9px 14px}main{padding:18px 14px 32px;gap:12px}.card{padding:16px;margin-bottom:12px}.page-hero{margin:2px 0 18px}.stat-card{min-height:92px}}
+@media(max-width:480px){.page-hero h1{font-size:27px}.domain-metrics{grid-template-columns:1fr 1fr 1fr}#svcEditor{padding:13px!important}#edTriggers .row,#edActions .row{align-items:stretch}}
+
 </style>
 </head>
 <body>
@@ -274,6 +321,7 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
   <a href="#sec-console"><span class="ms sm">terminal</span> Console</a>
 </nav>
 <main>
+<div class="page-hero" id="pageHero"><div><div class="eyebrow" id="pageEyebrow">CWBRIDGE / OVERVIEW</div><h1 id="pageHeading">Overview</h1><p id="pageSubheading">Your CWBridge system at a glance.</p></div></div>
 <div class="page active" data-page="overview">
   <div class="card" id="sec-storage">
     <h2><span class="ms sm">hard_drive</span> Server storage</h2>
@@ -331,9 +379,14 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
 
   </div>
 <div class="page" data-page="domains">
+<div class="card">
+  <h2><span class="ms sm">language</span> Registered domains</h2>
+  <p class="hint">Domains already registered in CWBridge, with their current storage limits and usage.</p>
+  <div id="registeredDomains" class="domain-grid"><div class="empty">Loading registered domains…</div></div>
+</div>
 <div class="card" id="sec-domains">
     <h2><span class="ms sm">language</span> Auto-open on CW load</h2>
-    <p class="hint">Single domain. When CatWeb logs finished, opens in the current tab. Empty = off.</p>
+    <p class="hint">One optional auto-start domain. CWBridge opens this domain when CatWeb reports that it has finished loading. Leave empty to disable auto-start.</p>
     <div class="row">
       <div class="field"><input id="autoDomain" placeholder="67.rbx" autocomplete="off"></div>
       <button type="button" onclick="saveAutoDomain()"><span class="ms sm">save</span> Save</button>
@@ -421,21 +474,26 @@ img#shotImg{max-width:100%;height:auto;border-radius:10px;border:1px solid var(-
       <h3 style="font-size:12px;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">TRIGGERS</h3>
       <div id="edTriggers"></div>
       <div class="row" style="margin-top:6px">
-        <button type="button" class="ghost" onclick="addTrigger('LOG')"><span class="ms sm">article</span> Log match</button>
-        <button type="button" class="ghost" onclick="addTrigger('TIME')"><span class="ms sm">schedule</span> Interval</button>
+        <button type="button" class="ghost" onclick="addTrigger('LOG')"><span class="ms sm">article</span> Log event</button>
+        <button type="button" class="ghost" onclick="addTrigger('TIME')"><span class="ms sm">schedule</span> Timer event</button>
       </div>
+      <p class="hint">Supported event sources: log-pattern matches and repeating intervals. Conditional branches, loops, and accessibility-trigger execution are not implemented by the current engine.</p>
       <h3 style="font-size:12px;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">ACTIONS</h3>
       <div id="edActions"></div>
       <div class="row" style="margin-top:6px">
         <select id="edAddAct" style="max-width:160px">
           <option value="DELAY">Delay</option>
+          <option value="TAP">Tap</option>
+          <option value="GET_INFO">Get info</option>
+          <option value="HTTP_REQUEST">HTTP request</option>
+          <option value="AI">AI action</option>
+          <option value="RUN_SERVICE">Run another service</option>
           <option value="CTRL_T">Ctrl+T</option>
           <option value="PRESS_ENTER">Enter</option>
           <option value="SEND_TEXT">Send text</option>
           <option value="ENTER_TEXT">Paste + Enter</option>
           <option value="SET_VAR">Set variable</option>
           <option value="TEXT_MAN">TextMan</option>
-          <option value="TAP">Tap</option>
         </select>
         <button type="button" class="ghost" onclick="addAction()"><span class="ms sm">add</span> Add action</button>
       </div>
@@ -638,11 +696,15 @@ function D(id){ return document.getElementById(id); }
 function showPage(name){
   document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-page')===name); });
   document.querySelectorAll('.nav-item').forEach(function(a){ a.classList.toggle('active', a.getAttribute('data-page')===name); });
-  var pt=D('pageTitle'); if(pt){ var m={overview:'Overview',control:'Control',domains:'Domains',services:'Services',store:'Store',console:'Console',about:'About'}; pt.textContent=m[name]||name; }
+  var meta={overview:['Overview','Your CWBridge system at a glance.'],control:['Control','Operate and inspect the connected Android device.'],domains:['Domains','Registered domains, limits, and stored data.'],services:['Services','Build and manage event-driven automations.'],store:['Store','Manage datastore entries and integrations.'],console:['Console','Inspect structured logs and runtime activity.'],about:['About','Version, device, and project information.']};
+  var chosen=meta[name]||[name,''];
+  var pt=D('pageTitle'); if(pt) pt.textContent=chosen[0];
+  var ph=D('pageHeading'); if(ph) ph.textContent=chosen[0];
+  var ps=D('pageSubheading'); if(ps) ps.textContent=chosen[1];
+  var pe=D('pageEyebrow'); if(pe) pe.textContent='CWBRIDGE / '+String(name).toUpperCase();
   try{ localStorage.setItem('cw_page', name); }catch(e){}
   if(window.innerWidth<820){ var sb=D('sidebar'); if(sb) sb.classList.remove('open'); }
 }
-
 function esc(s){
   return String(s == null ? "" : s)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
@@ -1221,6 +1283,19 @@ async function refreshDomainDatalist(){
     }).join("");
   } catch(e){}
 }
+async function refreshRegisteredDomains(){
+  var host=D("registeredDomains"); if(!host) return;
+  try{
+    var results=await Promise.all([get("/api/store"),get("/api/auto-domain")]);
+    var domains=results[0].domains||[], auto=(results[1].domain||"").toLowerCase();
+    if(!domains.length){host.innerHTML="<div class=\"empty\"><span class=\"ms\">language</span>No registered domains yet. Domains appear here when they have a configured limit or stored data.</div>";return;}
+    host.innerHTML=domains.map(function(d){
+      var isAuto=String(d.domain||"").toLowerCase()===auto;
+      return "<div class=\"domain-card\"><div class=\"domain-card-top\"><span class=\"ms\" style=\"font-size:22px;color:var(--accent)\">language</span><div style=\"flex:1;min-width:0\"><div class=\"domain-card-name\">"+esc(d.domain)+"</div><div class=\"hint\">Registered domain</div></div>"+(isAuto?"<span class=\"chip ACTIVE\">AUTO-START</span>":"")+"</div><div class=\"domain-metrics\"><div class=\"domain-metric\"><b>"+esc(d.keys)+"</b><span>Keys</span></div><div class=\"domain-metric\"><b>"+esc(d.used)+"</b><span>Used</span></div><div class=\"domain-metric\"><b>"+esc(d.limit)+"</b><span>Limit</span></div></div><button type=\"button\" class=\"ghost\" onclick=\"openRegisteredDomain("+arg(d.domain)+")\">Manage stored data <span class=\"ms sm\">arrow_forward</span></button></div>";
+    }).join("");
+  }catch(e){host.innerHTML="<div class=\"empty\">Could not load registered domains: "+esc(e.message)+"</div>";}
+}
+function openRegisteredDomain(domain){var input=D("editDomain");if(input)input.value=domain;loadDomainDb();var meta=D("domainDbMeta");if(meta)meta.scrollIntoView({behavior:"smooth",block:"center"});}
 async function loadAutoDomain(){
   try {
     var r = await get("/api/auto-domain");
@@ -1270,11 +1345,13 @@ async function tapText(){
 }
 
 var ED = {id:'',name:'',description:'',isEnabled:true,triggers:[],actions:[]};
+var SERVICE_CATALOG = [];
 function uid(){ return String(Date.now()) + Math.floor(Math.random()*1000); }
 async function refreshServices(){
   try{
     var s = await api("/api/services");
     var list = s.services || [];
+    SERVICE_CATALOG = list;
     if(!list.length){
       D("svcList").innerHTML = "<div class=\"empty\"><span class=\"ms\">extension_off</span>No macros yet — create one</div>";
       return;
@@ -1354,37 +1431,32 @@ function closeEditor(){
 }
 function renderEditorLists(){
   var tg = D("edTriggers");
-  if(!ED.triggers.length) tg.innerHTML = "<div class=\"hint\">No triggers — macro only runs via Run button</div>";
+  if(!ED.triggers.length) tg.innerHTML = "<div class=\"hint\">No triggers — service runs manually or from the Run button</div>";
   else tg.innerHTML = ED.triggers.map(function(tr,i){
-    var kind = (tr._kind||tr.type||"LOG").toString().toUpperCase();
-    var body = "";
-    if(kind==="TIME"){
-      body = "every <input type=\"number\" style=\"width:90px\" value=\"" + esc(String(tr.intervalMs||1000)) +
-        "\" onchange=\"ED.triggers["+i+"].intervalMs=parseInt(this.value,10)||1000\"> ms";
-    } else {
-      body = "pattern <input style=\"min-width:140px\" value=\"" + esc(tr.pattern||"") +
-        "\" onchange=\"ED.triggers["+i+"].pattern=this.value\">";
-    }
-    return "<div class=\"row\" style=\"margin-bottom:4px\"><span class=\"chip\">" + esc(kind) +
-      "</span> " + body +
-      " <button type=\"button\" class=\"ghost\" onclick=\"ED.triggers.splice("+i+",1);renderEditorLists()\">×</button></div>";
+    var kind=(tr._kind||tr.type||"LOG").toString().toUpperCase(), body="";
+    if(kind==="TIME") body="every <input type=\"number\" style=\"width:100px\" value=\""+esc(String(tr.intervalMs||1000))+"\" onchange=\"ED.triggers["+i+"].intervalMs=Math.max(100,parseInt(this.value,10)||1000)\"> ms";
+    else if(kind==="ACCESSIBILITY") body="<span class=\"hint\">Legacy trigger — not executed by the current engine</span>";
+    else body="pattern <input style=\"min-width:150px\" value=\""+esc(tr.pattern||"")+"\" onchange=\"ED.triggers["+i+"].pattern=this.value\">";
+    return "<div class=\"row\"><span class=\"chip\">EVENT · "+esc(kind)+"</span> "+body+" <button type=\"button\" class=\"ghost\" onclick=\"ED.triggers.splice("+i+",1);renderEditorLists()\">Remove</button></div>";
   }).join("");
-  var ac = D("edActions");
-  if(!ED.actions.length) ac.innerHTML = "<div class=\"hint\">No actions yet</div>";
-  else ac.innerHTML = ED.actions.map(function(a,i){
-    var kind = (a._kind||a.type||"?").toString().toUpperCase();
-    var body = "";
-    if(kind==="DELAY") body = "<input type=\"number\" style=\"width:90px\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=parseInt(this.value,10)||1000\"> ms";
-    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body = "<input style=\"min-width:160px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"text / ${'$'}var\">";
-    else if(kind==="SET_VAR") body = "key <input style=\"width:90px\" value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"> = <input style=\"width:120px\" value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\">";
-    else if(kind==="TEXT_MAN") body = "src <input style=\"width:90px\" value=\""+esc(a.source||"${'$'}lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"> → <input style=\"width:90px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
-    else if(kind==="TAP") body = "text <input style=\"width:120px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\" placeholder=\"or use %\">";
-    else body = "<span class=\"hint\">(no params)</span>";
-    return "<div class=\"row\" style=\"margin-bottom:4px\"><span class=\"chip\">" + (i+1) + ". " + esc(kind) +
-      "</span> " + body +
-      " <button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">×</button></div>";
+  var ac=D("edActions");
+  if(!ED.actions.length) ac.innerHTML="<div class=\"hint\">No action blocks yet</div>";
+  else ac.innerHTML=ED.actions.map(function(a,i){
+    var kind=(a._kind||a.type||"?").toString().toUpperCase(), body="";
+    if(kind==="DELAY") body="<label>Duration (ms)</label><input type=\"number\" style=\"width:100px\" value=\""+esc(String(a.milliseconds||1000))+"\" onchange=\"ED.actions["+i+"].milliseconds=Math.max(0,parseInt(this.value,10)||0)\">";
+    else if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") body="<label>Text / variable template</label><input style=\"min-width:180px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\">";
+    else if(kind==="SET_VAR") body="<label>Variable key</label><input style=\"width:100px\" value=\""+esc(a.key||"")+"\" onchange=\"ED.actions["+i+"].key=this.value\"><label>Value</label><input style=\"width:140px\" value=\""+esc(a.value||"")+"\" onchange=\"ED.actions["+i+"].value=this.value\">";
+    else if(kind==="TEXT_MAN") body="<label>Source</label><input style=\"width:110px\" value=\""+esc(a.source||"lastMatch")+"\" onchange=\"ED.actions["+i+"].source=this.value\"><label>Mode</label><select onchange=\"ED.actions["+i+"].mode=this.value\">"+["full","trim","after","before","replace","regex"].map(function(v){return "<option value=\""+v+"\" "+((a.mode||"full")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select><label>Pattern</label><input style=\"width:110px\" value=\""+esc(a.pattern||"")+"\" onchange=\"ED.actions["+i+"].pattern=this.value\"><label>Save as</label><input style=\"width:100px\" value=\""+esc(a.saveTo||"result")+"\" onchange=\"ED.actions["+i+"].saveTo=this.value\">";
+    else if(kind==="TAP") body="<label>X %</label><input type=\"number\" style=\"width:70px\" value=\""+esc(a.xPercent==null?"":String(a.xPercent))+"\" onchange=\"ED.actions["+i+"].xPercent=this.value===''?null:parseFloat(this.value)\"><label>Y %</label><input type=\"number\" style=\"width:70px\" value=\""+esc(a.yPercent==null?"":String(a.yPercent))+"\" onchange=\"ED.actions["+i+"].yPercent=this.value===''?null:parseFloat(this.value)\"><label>Text</label><input style=\"width:110px\" value=\""+esc(a.text||"")+"\" onchange=\"ED.actions["+i+"].text=this.value\">";
+    else if(kind==="GET_INFO") body="<label>Info type</label><select onchange=\"ED.actions["+i+"].infoType=this.value\">"+["SCREEN_TEXT","NODE_TEXT","NODE_BOUNDS","CURRENT_APP","TIMESTAMP","CLIPBOARD"].map(function(v){return "<option value=\""+v+"\" "+((a.infoType||"SCREEN_TEXT")===v?"selected":"")+">"+v.replace(/_/g," ")+"</option>";}).join("")+"</select>";
+    else if(kind==="HTTP_REQUEST") body="<div class=\"field\" style=\"min-width:220px\"><label>URL</label><input value=\""+esc(a.url||"")+"\" onchange=\"ED.actions["+i+"].url=this.value\"></div><label>Method</label><select onchange=\"ED.actions["+i+"].method=this.value\">"+["GET","POST","PUT","PATCH","DELETE"].map(function(v){return "<option value=\""+v+"\" "+((a.method||"GET")===v?"selected":"")+">"+v+"</option>";}).join("")+"</select><label>Save response to</label><input style=\"width:120px\" value=\""+esc(a.storeResponseIn||"")+"\" onchange=\"ED.actions["+i+"].storeResponseIn=this.value\"><details class=\"advanced-settings\"><summary>Body & headers</summary><textarea placeholder=\"Request body\" onchange=\"ED.actions["+i+"].body=this.value\">"+esc(a.body||"")+"</textarea><textarea placeholder=\"Headers JSON\" onchange=\"try{ED.actions["+i+"].headers=JSON.parse(this.value||'{}')}catch(e){this.setCustomValidity('Invalid JSON')}\">"+esc(JSON.stringify(a.headers||{},null,2))+"</textarea></details>";
+    else if(kind==="AI") body="<div class=\"field\" style=\"min-width:220px\"><label>Prompt</label><textarea onchange=\"ED.actions["+i+"].prompt=this.value\">"+esc(a.prompt||"")+"</textarea></div><span class=\"hint\">Uses global AI settings</span>";
+    else if(kind==="RUN_SERVICE") body="<label>Target service</label><select onchange=\"ED.actions["+i+"].serviceId=this.value\"><option value=\"\">Choose…</option>"+SERVICE_CATALOG.filter(function(sv){return sv.id!==ED.id;}).map(function(sv){return "<option value=\""+esc(sv.id)+"\" "+(a.serviceId===sv.id?"selected":"")+">"+esc(sv.name)+"</option>";}).join("")+"</select>";
+    else body="<span class=\"hint\">No additional settings</span>";
+    return "<div class=\"row\"><span class=\"chip\">STEP "+(i+1)+" · "+esc(kind)+"</span> "+body+" <button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",-1)\" "+(i===0?"disabled":"")+">↑</button><button type=\"button\" class=\"ghost\" onclick=\"moveAction("+i+",1)\" "+(i===ED.actions.length-1?"disabled":"")+">↓</button><button type=\"button\" class=\"ghost\" onclick=\"ED.actions.splice("+i+",1);renderEditorLists()\">Remove</button></div>";
   }).join("");
 }
+function moveAction(index,delta){var next=index+delta;if(next<0||next>=ED.actions.length)return;var item=ED.actions.splice(index,1)[0];ED.actions.splice(next,0,item);renderEditorLists();}
 function addTrigger(kind){
   if(kind==="TIME"){
     ED.triggers.push({_kind:"TIME",id:uid(),name:"Interval",intervalMs:5000,repeat:true,type:"TIME"});
@@ -1400,7 +1472,11 @@ function addAction(){
   if(kind==="SEND_TEXT"||kind==="ENTER_TEXT") a.text = "";
   if(kind==="SET_VAR"){ a.key=""; a.value=""; }
   if(kind==="TEXT_MAN"){ a.source="${'$'}lastMatch"; a.mode="full"; a.pattern=""; a.group=1; a.replaceWith=""; a.saveTo="result"; }
-  if(kind==="TAP"){ a.text=""; }
+  if(kind==="TAP"){ a.text=""; a.xPercent=50; a.yPercent=50; }
+  if(kind==="GET_INFO") a.infoType="SCREEN_TEXT";
+  if(kind==="HTTP_REQUEST"){ a.url=""; a.method="GET"; a.headers={}; a.body=""; a.storeResponseIn=""; }
+  if(kind==="AI") a.prompt="";
+  if(kind==="RUN_SERVICE") a.serviceId="";
   ED.actions.push(a);
   renderEditorLists();
 }
@@ -1525,7 +1601,7 @@ function copyConsole(){
 }
 function refreshAll(){
   refreshStatus(); refreshServices(); refreshStore(); refreshVars(); refreshConsole();
-  loadAutoDomain(); refreshDomainDatalist(); loadLimits(); loadSinkConfig();
+  loadAutoDomain(); refreshDomainDatalist(); refreshRegisteredDomains(); loadLimits(); loadSinkConfig();
 }
 var inv = D("inv");
 if(inv) inv.addEventListener("keydown", function(e){

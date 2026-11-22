@@ -546,6 +546,63 @@
                             android:textColor="@color/muted"
                             android:textSize="12sp" />
 
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:text="DASHBOARD ADDRESS"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="10sp" />
+
+                        <TextView
+                            android:id="@+id/serverAddress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:fontFamily="monospace"
+                            android:text="Starting dashboard…"
+                            android:textColor="@android:color/white"
+                            android:textIsSelectable="true"
+                            android:textSize="14sp" />
+
+                        <ImageView
+                            android:id="@+id/serverQr"
+                            android:layout_width="184dp"
+                            android:layout_height="184dp"
+                            android:layout_gravity="center"
+                            android:layout_marginTop="14dp"
+                            android:background="@android:color/white"
+                            android:contentDescription="QR code to open the CWBridge dashboard"
+                            android:padding="8dp"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnOpenDashboard"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:enabled="false"
+                                android:text="Open dashboard"
+                                app:backgroundTint="@color/primary" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnCopyDashboard"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:layout_weight="1"
+                                android:enabled="false"
+                                android:text="Copy IP" />
+                        </LinearLayout>
+
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnServerToggle"
                             android:layout_width="match_parent"
