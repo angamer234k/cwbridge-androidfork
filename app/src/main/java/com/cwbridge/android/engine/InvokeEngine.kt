@@ -32,14 +32,15 @@ import org.json.JSONObject
 import com.cwbridge.android.ShizukuShell
 
 /**
- * Watches log lines for `invoke|request[.data1[.data2]]` and dispatches handlers.
+ * Watches log lines for `invoke|request[.data1[.data2]]||reqId` and dispatches handlers.
+ * Requests without a valid REQID are ignored before they can enter the queue.
  *
  * Same wire format as the MacroDroid Server macro:
- *   Info … invoke|save.mykey.hello
- *   Info … invoke|load.mykey.weather.rbx
- *   Info … invoke|status
- *   Info … invoke|tap.50.85
- *   Info … invoke|paste.hello world
+ *   Info … invoke|save.mykey.hello||req_1
+ *   Info … invoke|load.mykey.weather.rbx||req_2
+ *   Info … invoke|status||req_3
+ *   Info … invoke|tap.50.85||req_4
+ *   Info … invoke|paste.hello world||req_5
  */
 class InvokeEngine(
     private val context: Context,
