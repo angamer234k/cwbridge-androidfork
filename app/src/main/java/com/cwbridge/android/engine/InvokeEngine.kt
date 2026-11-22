@@ -838,6 +838,7 @@ class InvokeEngine(
         }
 
         for (attempt in 1..maxDeliveryAttempts) {
+            if (ack.isCompleted) break
             if (attempt > 1) {
                 // Focus first, then select all: tapping after Ctrl+A would collapse the selection.
                 if (!ShizukuShell.isReady()) break
@@ -850,6 +851,7 @@ class InvokeEngine(
                     break
                 }
                 delay(100)
+                if (ack.isCompleted) break
             }
 
             try {
@@ -894,6 +896,11 @@ class InvokeEngine(
             }
         }
 
+        if (ack.isCompleted && ack.await()) {
+            active.delivered = true
+            active.pendingAck = null
+            return
+        }
         LogBuffer.e(
             "Invoke",
             "UNCONFIRMED id=${active.queued.requestId}; queue paused until a matching ACK arrives",
