@@ -783,10 +783,15 @@ class InvokeEngine(
         if (active.delivered) return
 
         val safe = text.replace("||", "|").replace("\n", " ").replace("\r", " ").take(900)
-        val wire = if (active.queued.requiresAck) {
-            "${if (success) "0." else "1."}$safe||${active.queued.requestId}"
+        val responseBody = if (active.queued.requiresAck) {
+            "${if (success) "0." else "1."}$safe"
         } else {
             text
+        }
+        val wire = if (active.queued.requiresAck) {
+            "$responseBody||${active.queued.requestId}"
+        } else {
+            responseBody
         }
 
         val svc = TapService.instance
@@ -819,7 +824,7 @@ class InvokeEngine(
             return
         }
 
-        val expectedPrefix = wire.take(10)
+        val expectedPrefix = responseBody.take(10)
         val ack = CompletableDeferred<Boolean>()
         active.expectedAckPrefix = expectedPrefix
         active.pendingAck = ack
