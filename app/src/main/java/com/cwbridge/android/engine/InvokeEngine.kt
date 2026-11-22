@@ -447,6 +447,8 @@ class InvokeEngine(
                     }
                     pasteIntoGame(payload)
                     replyOk("weather", payload)
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (t: Throwable) {
                     replyErr("weather", t.message ?: "fetch failed")
                 }
@@ -632,6 +634,8 @@ class InvokeEngine(
                         "qr",
                         "size=${encoded.size} modules=${encoded.modules} bits=${encoded.colorMap.length}",
                     )
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (t: Throwable) {
                     replyErr("qr", t.message ?: "encode failed")
                 }
@@ -648,6 +652,8 @@ class InvokeEngine(
           val code = withContext(Dispatchers.Default) { Totp.code(secret) }
           pasteIntoGame(code)
           replyOk("totp", code)
+      } catch (cancel: CancellationException) {
+          throw cancel
       } catch (t: Throwable) {
           replyErr("totp", t.message ?: "totp failed")
       }
@@ -666,6 +672,8 @@ class InvokeEngine(
           val payload = if (ok) "1" else "0"
           pasteIntoGame(payload)
           replyOk("totpcheck", payload)
+      } catch (cancel: CancellationException) {
+          throw cancel
       } catch (t: Throwable) {
           replyErr("totpcheck", t.message ?: "check failed")
       }
@@ -739,6 +747,8 @@ class InvokeEngine(
                     }
                     pasteIntoGame(text, pressEnter = true)
                     replyOk("ai", text.take(500))
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (t: Throwable) {
                     replyErr("ai", t.message ?: "llm failed")
                 }
@@ -765,6 +775,8 @@ class InvokeEngine(
                             val msg = withContext(Dispatchers.IO) { OffDeviceSink.test(context) }
                             pasteIntoGame("1")
                             replyOk("sink", msg)
+                        } catch (cancel: CancellationException) {
+                            throw cancel
                         } catch (t: Throwable) {
                             replyErr("sink", t.message ?: "sink failed")
                         }
@@ -1018,6 +1030,8 @@ class InvokeEngine(
             val line = AiCatalog.formatPrice(row)
             pasteIntoGame(line)
             replyOk("ai", line)
+        } catch (cancel: CancellationException) {
+            throw cancel
         } catch (t: Throwable) {
             replyErr("ai", t.message ?: "models failed")
         }
