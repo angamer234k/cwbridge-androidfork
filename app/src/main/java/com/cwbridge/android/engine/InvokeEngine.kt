@@ -129,6 +129,16 @@ class InvokeEngine(
 
     fun isRunning(): Boolean = running.get()
 
+    /** Local control-panel requests already receive a generated local_ REQID. */
+    fun onLocalInvoke(raw: String) {
+        if (running.get()) handleLine(raw, requiresAckOverride = false)
+    }
+
+    /** App-owned automation requests get an ID but do not wait for a CatWeb page ACK. */
+    fun onInternalInvoke(raw: String) {
+        if (running.get()) handleLine(raw, requiresAckOverride = false)
+    }
+
     /** Also feed raw system logcat lines (may include Roblox FLog). */
     fun onExternalLog(raw: String) {
         if (!running.get()) return
@@ -141,7 +151,7 @@ class InvokeEngine(
         }
     }
 
-    private fun handleLine(raw: String) {
+    private fun handleLine(raw: String, requiresAckOverride: Boolean? = null) {
         if (!running.get() || InvokeProtocol.isAck(raw)) return
         val parsed = InvokeProtocol.parseRequest(raw) ?: return
 
@@ -152,8 +162,7 @@ class InvokeEngine(
             ?: listOf(parsed.data1, parsed.data2).firstOrNull { it.contains(".rbx") }
                 ?.let { blob -> Regex("[a-z0-9_-]+\\.rbx").find(blob.lowercase())?.value }
 
-        val requiresAck = !parsed.requestId.startsWith("local_") &&
-            !parsed.requestId.startsWith("internal_")
+        val requiresAck = requiresAckOverride ?: true
 
         val result = synchronized(queueLock) {
             when {
