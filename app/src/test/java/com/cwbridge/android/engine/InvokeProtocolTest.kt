@@ -44,7 +44,15 @@ class InvokeProtocolTest {
     }
 
     @Test
-    fun ackRequiresMatchingIdAndTenCharacterPrefix() {
+    fun ackOnlyRequiresMatchingRequestId() {
+        val ack = "Info invoke||ACK||24493351697"
+
+        assertTrue(InvokeProtocol.ackMatches(ack, "24493351697", "0.hello wo"))
+        assertFalse(InvokeProtocol.ackMatches(ack, "other", "0.hello wo"))
+    }
+
+    @Test
+    fun extendedAckAlsoValidatesOptionalTenCharacterPrefix() {
         val prefix = "0.hello wo"
         val ack = "Info invoke||ACK||req_123||0.hello world"
 
