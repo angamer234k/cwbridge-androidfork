@@ -59,14 +59,22 @@ internal object InvokeProtocol {
         else -> 1
     }
 
-    /** ACKs must match both the active request ID and the first ten response characters. */
+    /**
+     * CatWeb's ACK-only wire format is invoke||ACK||REQID.
+     * Older/extended senders may append ||<first ten response characters>;
+     * when present, keep validating that prefix for compatibility.
+     */
     fun ackMatches(raw: String, requestId: String, expectedPrefix: String): Boolean {
         val marker = raw.indexOf(ACK_MARKER)
         if (marker < 0) return false
         val payload = raw.substring(marker + ACK_MARKER.length).trimEnd('\r', '\n')
         val fields = payload.split("||", limit = 2)
-        if (fields.size != 2) return false
-        return fields[0].trim() == requestId && fields[1].take(10) == expectedPrefix
+        if (fields[0].trim() != requestId) return false
+        return when (fields.size) {
+            1 -> true
+            2 -> fields[1].take(10) == expectedPrefix
+            else -> false
+        }
     }
 
     fun isAck(raw: String): Boolean {
